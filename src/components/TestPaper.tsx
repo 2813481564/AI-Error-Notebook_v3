@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check } from 'lucide-react';
+import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2 } from 'lucide-react';
 import { ErrorQuestion } from '../lib/db';
 import FormattedMath from './FormattedMath';
 
@@ -15,6 +15,12 @@ export default function TestPaper({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
 
+  // 新增：模式管理 ('original' | 'variant')
+  const [paperMode, setPaperMode] = useState<'original' | 'variant'>('original');
+  const [variants, setVariants] = useState<any[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
+
   const handlePrint = () => {
     window.print();
   };
@@ -26,17 +32,84 @@ export default function TestPaper({
     setIsEditingTitle(false);
   };
 
+  // 生成 AI 变式强化试卷
+  const generateVariants = async () => {
+    if (variants.length > 0) {
+      setPaperMode('variant');
+      return;
+    }
+
+    setGenerating(true);
+    setLoadingStep(1);
+    
+    // 定时滚动展示逼真的 AI 名师出题状态，提升用户体验 (Wow UX)
+    const stepInterval = setInterval(() => {
+      setLoadingStep(prev => (prev < 3 ? prev + 1 : prev));
+    }, 2500);
+
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/paper/variants', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ questions })
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem('errorbook_token');
+        localStorage.removeItem('errorbook_username');
+        window.location.reload();
+        throw new Error('登录已过期，请重新登录');
+      }
+
+      if (res.status === 429) {
+        throw new Error('今日 AI 使用次数已达上限，无法生成变式练习卷。您可以联系管理员升级您的账户等级！');
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '生成失败');
+
+      setVariants(data);
+      setPaperMode('variant');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'AI 生成变式试卷失败，请重试');
+    } finally {
+      clearInterval(stepInterval);
+      setGenerating(false);
+      setLoadingStep(0);
+    }
+  };
+
+  // 决定最终渲染的题目列表
+  const displayedQuestions = paperMode === 'original' 
+    ? questions.map((q, idx) => ({
+        id: q.id,
+        subject: q.subject,
+        text: q.originalText,
+        solution: q.solution,
+        errorReason: q.errorReason,
+      }))
+    : variants.map((v, idx) => ({
+        id: `variant-${idx}`,
+        subject: v.subject || '数学',
+        text: v.variantText,
+        solution: v.solution,
+        errorReason: 'AI 变式题',
+      }));
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       
       {/* 打印机特化 CSS 注入 */}
       <style>{`
         @media print {
-          /* 隐藏任何带 no-print 类的元素 */
           .no-print {
             display: none !important;
           }
-          /* 恢复容器最大化和去掉页面背景 */
           body, html {
             background: #fff !important;
             color: #000 !important;
@@ -57,10 +130,7 @@ export default function TestPaper({
             border-radius: 0 !important;
             padding: 20px 0 !important;
             margin-bottom: 10px !important;
-            page-break-inside: avoid !important; /* 核心防截断 */
-          }
-          .print-question-image {
-            max-height: 250px !important;
+            page-break-inside: avoid !important;
           }
           .print-answer-lines {
             border-bottom: 1px solid #cbd5e1 !important;
@@ -68,6 +138,34 @@ export default function TestPaper({
           }
         }
       `}</style>
+
+      {/* Loading Overlay (Wow Aesthetics) */}
+      {generating && (
+        <div className="no-print fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-2xl max-w-sm w-full text-center space-y-6 flex flex-col items-center">
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center animate-bounce">
+              <Sparkles className="w-8 h-8 text-amber-500" />
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-black text-slate-900">AI 考点命题组卷中</h4>
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-500 font-bold">
+                <Loader2 className="w-4.5 h-4.5 text-blue-600 animate-spin" />
+                {loadingStep === 1 && <span className="animate-pulse">正在深度分析错题的核心知识漏洞...</span>}
+                {loadingStep === 2 && <span className="animate-pulse">正在为您精准命制 1:1 相似变式题...</span>}
+                {loadingStep >= 3 && <span className="animate-pulse">正在排版教师标准步骤与详细解析...</span>}
+              </div>
+            </div>
+
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="bg-blue-600 h-1.5 rounded-full transition-all duration-1000" 
+                style={{ width: `${(loadingStep / 3) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Control Bar (no-print) */}
       <div className="no-print flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-white border border-slate-200/60 p-5 rounded-3xl shadow-sm">
@@ -101,6 +199,25 @@ export default function TestPaper({
               </>
             )}
           </button>
+
+          {/* AI Variant Switcher Button */}
+          {paperMode === 'original' ? (
+            <button
+              onClick={generateVariants}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/10 cursor-pointer w-full sm:w-auto justify-center"
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+              <span>⚡ 生成 AI 变式练习卷</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setPaperMode('original')}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer w-full sm:w-auto justify-center"
+            >
+              <Undo2 className="w-4 h-4" />
+              <span>⏪ 返回原错题试卷</span>
+            </button>
+          )}
 
           {/* Print Trigger */}
           <button
@@ -138,7 +255,9 @@ export default function TestPaper({
               </div>
             ) : (
               <>
-                <h1 className="text-xl md:text-2xl font-black text-slate-950 tracking-tight">{title}</h1>
+                <h1 className="text-xl md:text-2xl font-black text-slate-950 tracking-tight">
+                  {title}{paperMode === 'variant' && ' (AI 变式强化训练卷)'}
+                </h1>
                 <button
                   onClick={() => { setTempTitle(title); setIsEditingTitle(true); }}
                   className="no-print p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
@@ -176,7 +295,7 @@ export default function TestPaper({
 
         {/* Paper Body */}
         <div className="divide-y divide-slate-100 space-y-6">
-          {questions.map((q, index) => (
+          {displayedQuestions.map((q, index) => (
             <div 
               key={q.id} 
               className="print-question-card pt-6 first:pt-0 space-y-4"
@@ -187,14 +306,14 @@ export default function TestPaper({
                   第 {index + 1} 题. 
                   <span className="no-print ml-2 bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{q.subject}</span>
                 </span>
-                <span className="no-print text-slate-400 font-bold"># 错题记录 ID: {q.id.slice(0, 8)}</span>
+                <span className="no-print text-slate-400 font-bold">
+                  {paperMode === 'original' ? `# 错题 ID: ${q.id.slice(0, 8)}` : '# AI 命制变式题'}
+                </span>
               </div>
-
-
 
               {/* Question Text */}
               <FormattedMath 
-                text={q.originalText} 
+                text={q.text} 
                 className="text-sm text-slate-900 leading-relaxed font-bold" 
               />
 
@@ -204,7 +323,7 @@ export default function TestPaper({
                 <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
                   <div className="text-xs text-amber-800 font-black flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                    <span>错误原因：{q.errorReason || '未归档'}</span>
+                    <span>类型：{q.errorReason || 'AI 变式'}</span>
                   </div>
                   
                   <div className="border-t border-amber-200/50 pt-3">

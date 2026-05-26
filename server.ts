@@ -349,6 +349,69 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req, res) => {
   }
 });
 
+// 批量生成试卷题目变式
+app.post("/api/paper/variants", requireAuth, checkAiLimit, async (req, res) => {
+  try {
+    const { questions } = req.body;
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: "组卷题目数据不能为空" });
+    }
+
+    const prompt = `
+请作为金牌备考辅导名师。输入是一个错题列表 JSON。
+请你为输入的每一道错题，分别精心命制一道【1:1 相似变式强化练习题】。
+
+命题要求：
+1. 考察的核心知识点和难度水平必须与原题完全保持一致。
+2. 改变题目的情境背景、具体数值或者提问角度，确保题目是全新的。
+3. 对变式题目提供标准、严谨、逻辑清晰的详细名师解题步骤。
+
+输入错题列表：
+${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalText, subject: q.subject, knowledgePoints: q.knowledgePoints })))}
+
+请务必返回以下格式的严格 JSON 数组，不要在最外层包含任何 Markdown 格式的 \`\`\`json 标记，必须是一个纯粹的合法 JSON 数组：
+[
+  {
+    "index": 1,
+    "subject": "题目科目",
+    "originalText": "原题题干文本",
+    "variantText": "命制的 1:1 变式题干文本（如果需要 LaTeX 数学公式，请使用标准的 $ 或 $$ 符号包围，以保证前端数学公式渲染完美）",
+    "solution": "变式题名师详细标准解题步骤（解题分析加推导步骤）"
+  }
+]
+`;
+
+    const response = await generateContentWithFallback({
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    { text: prompt }
+                ]
+            }
+        ],
+        config: {
+            responseMimeType: 'application/json',
+            temperature: 0.7
+        }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
+    
+    let parsedText = text;
+    if (parsedText.startsWith('```json')) {
+      parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
+    }
+    const data = JSON.parse(parsedText);
+    res.json(data);
+
+  } catch (error: any) {
+    console.error("Batch Paper Variants Error:", error);
+    res.status(500).json({ error: error.message || "批量生成变式失败" });
+  }
+});
+
 // 用户注册
 app.post("/api/auth/register", (req, res) => {
   try {
