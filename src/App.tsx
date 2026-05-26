@@ -1,10 +1,11 @@
 import { useState, ReactNode } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
+import UserManagement from './components/UserManagement';
 
-type View = 'dashboard' | 'add' | 'library';
+type View = 'dashboard' | 'add' | 'library' | 'users';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -12,6 +13,7 @@ export default function App() {
 
   const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
+  const [role, setRole] = useState<string | null>(localStorage.getItem('errorbook_role'));
   
   const [isRegister, setIsRegister] = useState(false);
   const [authUsername, setAuthUsername] = useState('');
@@ -44,8 +46,10 @@ export default function App() {
       }
       localStorage.setItem('errorbook_token', data.token);
       localStorage.setItem('errorbook_username', data.username);
+      localStorage.setItem('errorbook_role', data.role || 'normal');
       setToken(data.token);
       setUsername(data.username);
+      setRole(data.role || 'normal');
       setAuthUsername('');
       setAuthPassword('');
     } catch (err: any) {
@@ -68,8 +72,10 @@ export default function App() {
     }
     localStorage.removeItem('errorbook_token');
     localStorage.removeItem('errorbook_username');
+    localStorage.removeItem('errorbook_role');
     setToken(null);
     setUsername(null);
+    setRole(null);
     window.location.reload();
   };
 
@@ -195,7 +201,6 @@ export default function App() {
             <Camera className="w-4 h-4" />
             <span>拍照录题</span>
           </button>
-          
           <button
             onClick={() => setCurrentView('library')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -207,6 +212,20 @@ export default function App() {
             <Database className="w-4 h-4" />
             <span>错题库管理</span>
           </button>
+          
+          {username === 'admin' && (
+            <button
+              onClick={() => setCurrentView('users')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                currentView === 'users' 
+                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>用户管理</span>
+            </button>
+          )}
         </nav>
 
         {/* SQLite Storage Status & Link */}
@@ -272,6 +291,7 @@ export default function App() {
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
             {currentView === 'library' && <QuestionLibrary onNavigate={setCurrentView} />}
+            {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
           </div>
         </main>
 
@@ -282,14 +302,22 @@ export default function App() {
             active={currentView === 'dashboard'} 
             onClick={() => setCurrentView('dashboard')} 
           />
-          <div className="relative -top-5">
-            <button 
-              onClick={() => setCurrentView('add')}
-              className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
-            >
-               <Camera className="w-6 h-6" />
-            </button>
-          </div>
+          {username === 'admin' ? (
+            <NavItem 
+              icon={<Users className="w-5 h-5" />} label="用户管理" 
+              active={currentView === 'users'} 
+              onClick={() => setCurrentView('users')} 
+            />
+          ) : (
+            <div className="relative -top-5">
+              <button 
+                onClick={() => setCurrentView('add')}
+                className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
+              >
+                 <Camera className="w-6 h-6" />
+              </button>
+            </div>
+          )}
           <NavItem 
             icon={<Database className="w-5 h-5" />} label="错题库" 
             active={currentView === 'library'} 
