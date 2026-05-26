@@ -4,12 +4,14 @@ import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
 import UserManagement from './components/UserManagement';
+import TestPaper from './components/TestPaper';
 
-type View = 'dashboard' | 'add' | 'library' | 'users';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [showSqlTip, setShowSqlTip] = useState(false);
+  const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
 
   const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
@@ -290,8 +292,22 @@ export default function App() {
           <div className="max-w-4xl mx-auto space-y-6">
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
-            {currentView === 'library' && <QuestionLibrary onNavigate={setCurrentView} />}
+            {currentView === 'library' && (
+              <QuestionLibrary 
+                onNavigate={setCurrentView} 
+                onGeneratePaper={(selected) => {
+                  setPaperQuestions(selected);
+                  setCurrentView('paper');
+                }} 
+              />
+            )}
             {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
+            {currentView === 'paper' && (
+              <TestPaper 
+                questions={paperQuestions} 
+                onBack={() => setCurrentView('library')} 
+              />
+            )}
           </div>
         </main>
 

@@ -4,12 +4,19 @@ import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Tra
 import { format } from 'date-fns';
 import FormattedMath from './FormattedMath';
 
-export default function QuestionLibrary({ onNavigate }: { onNavigate: (v: any) => void }) {
+export default function QuestionLibrary({ 
+  onNavigate,
+  onGeneratePaper
+}: { 
+  onNavigate: (v: any) => void;
+  onGeneratePaper?: (questions: ErrorQuestion[]) => void;
+}) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
   const [filterSubject, setFilterSubject] = useState<string>('all');
   
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadQuestions();
@@ -27,6 +34,32 @@ export default function QuestionLibrary({ onNavigate }: { onNavigate: (v: any) =
     await db.deleteQuestion(id);
     setSelectedQuestion(null);
     loadQuestions();
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(q => q.id)));
+    }
+  };
+
+  const handleGeneratePaperClick = () => {
+    if (selectedIds.size === 0) return;
+    const selectedQuestions = questions.filter(q => selectedIds.has(q.id));
+    if (onGeneratePaper) {
+      onGeneratePaper(selectedQuestions);
+    }
   };
 
   if (selectedQuestion) {
@@ -64,6 +97,36 @@ export default function QuestionLibrary({ onNavigate }: { onNavigate: (v: any) =
         </button>
       </div>
 
+      {/* Selected Items floating indicator bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-blue-50 border border-blue-200/80 p-4 rounded-2xl shadow-sm gap-3 animate-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+            <p className="text-xs font-bold text-blue-900">已选中 {selectedIds.size} 道错题</p>
+            <button 
+              onClick={handleSelectAll} 
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 underline transition-colors cursor-pointer"
+            >
+              {selectedIds.size === filtered.length ? "取消全选" : "选择全部已过滤题"}
+            </button>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="flex-1 sm:flex-initial px-4 py-2 border border-slate-200 text-slate-600 bg-white rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              清空选择
+            </button>
+            <button
+              onClick={handleGeneratePaperClick}
+              className="flex-1 sm:flex-initial px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-extrabold hover:from-blue-700 hover:to-indigo-700 transition-colors shadow-md shadow-blue-500/10 cursor-pointer"
+            >
+              生成复习试卷
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter and Search */}
       <div className="flex flex-col sm:flex-row gap-3">
          <div className="relative flex-1">
@@ -88,33 +151,53 @@ export default function QuestionLibrary({ onNavigate }: { onNavigate: (v: any) =
 
       {/* List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map(q => (
-          <button 
-            key={q.id}
-            onClick={() => setSelectedQuestion(q)}
-            className="bg-white p-5 rounded-2xl border border-slate-200 text-left hover:border-blue-400 hover:shadow-md transition-all group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3.5">
-                <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
-                <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {format(new Date(q.createdAt), 'yyyy-MM-dd')}
-                </span>
+        {filtered.map(q => {
+          const isSelected = selectedIds.has(q.id);
+          return (
+            <div key={q.id} className="relative group">
+              <button 
+                onClick={() => setSelectedQuestion(q)}
+                className={`w-full bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between h-full ${
+                  isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:border-blue-400'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3.5 pr-8">
+                    <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
+                    <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {format(new Date(q.createdAt), 'yyyy-MM-dd')}
+                    </span>
+                  </div>
+                  <p className="text-slate-800 font-bold line-clamp-2 leading-relaxed mb-4 text-sm">{q.originalText}</p>
+                </div>
+                
+                <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
+                  <div className="flex gap-1.5 flex-wrap">
+                    {q.knowledgePoints.slice(0,2).map(p => (
+                      <span key={p} className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {p}</span>
+                    ))}
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                </div>
+              </button>
+
+              {/* Checkbox Overlay */}
+              <div className="absolute right-4 top-4.5 z-10">
+                <input 
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleSelect(q.id);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                />
               </div>
-              <p className="text-slate-800 font-bold line-clamp-2 leading-relaxed mb-4 text-sm">{q.originalText}</p>
             </div>
-            
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-              <div className="flex gap-1.5 flex-wrap">
-                {q.knowledgePoints.slice(0,2).map(p => (
-                  <span key={p} className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {p}</span>
-                ))}
-              </div>
-              <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-            </div>
-          </button>
-        ))}
+          );
+        })}
 
         {filtered.length === 0 && (
           <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-400 bg-white border border-slate-200 rounded-2xl text-center">
