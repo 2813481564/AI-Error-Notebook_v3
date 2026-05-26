@@ -190,16 +190,7 @@ export default function TestPaper({
                 <span className="no-print text-slate-400 font-bold"># 错题记录 ID: {q.id.slice(0, 8)}</span>
               </div>
 
-              {/* Question Original Image */}
-              {q.imageUrl && (
-                <div className="w-full flex justify-start my-2">
-                  <img 
-                    src={q.imageUrl} 
-                    alt={`第${index + 1}题图`}
-                    className="print-question-image max-h-[220px] w-auto object-contain rounded-xl border border-slate-200/50"
-                  />
-                </div>
-              )}
+
 
               {/* Question Text */}
               <FormattedMath 
