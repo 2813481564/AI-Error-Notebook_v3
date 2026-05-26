@@ -192,7 +192,7 @@ app.use(express.json({ limit: '50mb' }));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Robust helper function with automatic fallback to gemma-4-26b-a4b-it in case of any error
+// Robust helper function with automatic fallback to gemini-2.5-flash then gemma-4-26b-a4b-it in case of any error
 async function generateContentWithFallback(params: {
   contents: any[];
   config?: any;
@@ -210,20 +210,33 @@ async function generateContentWithFallback(params: {
   } catch (error: any) {
     console.warn(`[AI Warning] Model ${modelToUse} failed (Error: ${error.message || error.toString()}).`);
     
-    // 如果首选模型不是备用模型，我们自动使用备用模型 'gemma-4-26b-a4b-it' 重试
-    const fallbackModel = 'gemma-4-26b-a4b-it';
-    if (modelToUse !== fallbackModel) {
-      console.warn(`[AI Fallback] Retrying with backup model '${fallbackModel}'...`);
+    // 如果首选模型不是 gemini-2.5-flash，我们自动使用极速且极稳定的 gemini-2.5-flash 重试
+    if (modelToUse !== 'gemini-2.5-flash') {
+      console.warn(`[AI Fallback 1] Retrying with high-speed model 'gemini-2.5-flash'...`);
       try {
         return await ai.models.generateContent({
           ...params,
-          model: fallbackModel,
+          model: 'gemini-2.5-flash',
+        });
+      } catch (flashError: any) {
+        console.warn(`[AI Warning] Backup model gemini-2.5-flash also failed: ${flashError.message || flashError.toString()}`);
+      }
+    }
+
+    // 如果 flash 重试也失败了，最后用 gemma-4-26b-a4b-it 兜底
+    if (modelToUse !== 'gemma-4-26b-a4b-it') {
+      console.warn(`[AI Fallback 2] Retrying with backup model 'gemma-4-26b-a4b-it'...`);
+      try {
+        return await ai.models.generateContent({
+          ...params,
+          model: 'gemma-4-26b-a4b-it',
         });
       } catch (fallbackError: any) {
-        console.error("[AI Error] Backup model also failed:", fallbackError);
+        console.error("[AI Error] All fallback models failed:", fallbackError);
         throw fallbackError;
       }
     }
+
     throw error;
   }
 }
@@ -362,6 +375,7 @@ app.post("/api/paper/variants", requireAuth, checkAiLimit, async (req, res) => {
 1. 考察的核心知识点和难度水平必须与原题完全保持一致。
 2. 改变题目的情境背景、具体数值或者提问角度，确保题目是全新的。
 3. 对变式题目提供标准、严谨、逻辑清晰的详细名师解题步骤。
+4. ⚠️非常重要：变式题干与解答步骤务必保持精简（解题步骤只列出核心关键推导，不要废话），每个题目的解题步骤控制在 120 字以内，以防网络超时。
 
 输入错题列表：
 ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalText, subject: q.subject, knowledgePoints: q.knowledgePoints })))}
@@ -388,7 +402,7 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
             }
         ],
         config: {
-            temperature: 0.7
+            temperature: 0.3
         }
     });
 
