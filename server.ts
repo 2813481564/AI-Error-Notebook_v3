@@ -192,12 +192,78 @@ app.use(express.json({ limit: '50mb' }));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Robust helper function with automatic fallback to gemini-2.5-flash then gemma-4-26b-a4b-it in case of any error
+const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini';
+const AI_API_BASE_URL = process.env.AI_API_BASE_URL || '';
+const AI_API_KEY = process.env.AI_API_KEY || '';
+
+// Robust helper function with automatic fallback to gemma-4-26b-a4b-it or OpenAI provider compatible output
 async function generateContentWithFallback(params: {
   contents: any[];
   config?: any;
   model?: string;
 }) {
+  if (AI_PROVIDER === 'openai') {
+    const modelToUse = params.model || process.env.AI_MODEL || 'deepseek-chat';
+    console.log(`[AI Request via OpenAI Compat] Using model: ${modelToUse}`);
+    
+    // 自动将 Gemini contents 格式翻译转换为 OpenAI messages 格式
+    const messages = params.contents.map(c => {
+      const openAiContent: any[] = [];
+      if (c.parts) {
+        for (const part of c.parts) {
+          if (part.text) {
+            openAiContent.push({ type: 'text', text: part.text });
+          } else if (part.inlineData) {
+            openAiContent.push({
+              type: 'image_url',
+              image_url: {
+                url: `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`
+              }
+            });
+          }
+        }
+      }
+      return {
+        role: c.role || 'user',
+        content: openAiContent.length === 1 && openAiContent[0].type === 'text'
+          ? openAiContent[0].text
+          : openAiContent
+      };
+    });
+
+    try {
+      const response = await fetch(`${AI_API_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          messages: messages,
+          temperature: params.config?.temperature ?? 0.7,
+          ...(params.config?.responseMimeType === 'application/json' ? {
+            response_format: { type: 'json_object' }
+          } : {})
+        })
+      });
+
+      const json = await response.json() as any;
+      if (!response.ok) {
+        throw new Error(json.error?.message || `OpenAI API Error: status code ${response.status}`);
+      }
+
+      const text = json.choices?.[0]?.message?.content;
+      if (!text) throw new Error("Empty response from OpenAI compatible API");
+      
+      return { text };
+    } catch (error: any) {
+      console.error("[AI OpenAI Error] request failed:", error);
+      throw error;
+    }
+  }
+
+  // 以下为 Gemini / Google GenAI 默认处理逻辑
   const primaryModel = process.env.GEMINI_MODEL || 'gemma-4-31b-it';
   const modelToUse = params.model || primaryModel;
 
@@ -208,35 +274,31 @@ async function generateContentWithFallback(params: {
       model: modelToUse,
     });
   } catch (error: any) {
-    console.warn(`[AI Warning] Model ${modelToUse} failed (Error: ${error.message || error.toString()}).`);
-    
-    // 如果首选模型不是 gemini-2.5-flash，我们自动使用极速且极稳定的 gemini-2.5-flash 重试
-    if (modelToUse !== 'gemini-2.5-flash') {
-      console.warn(`[AI Fallback 1] Retrying with high-speed model 'gemini-2.5-flash'...`);
-      try {
-        return await ai.models.generateContent({
-          ...params,
-          model: 'gemini-2.5-flash',
-        });
-      } catch (flashError: any) {
-        console.warn(`[AI Warning] Backup model gemini-2.5-flash also failed: ${flashError.message || flashError.toString()}`);
-      }
-    }
+    const errorStr = (error.message || error.toString() || "").toLowerCase();
+    const isRetriableError = errorStr.includes("429") || 
+                         errorStr.includes("quota") || 
+                         errorStr.includes("limit") || 
+                         errorStr.includes("resource_exhausted") || 
+                         errorStr.includes("rate_limit") ||
+                         errorStr.includes("socket") ||
+                         errorStr.includes("fetch failed") ||
+                         errorStr.includes("503") ||
+                         errorStr.includes("unavailable") ||
+                         errorStr.includes("high demand") ||
+                         (error.status && (error.status === 503 || error.status === 429));
 
-    // 如果 flash 重试也失败了，最后用 gemma-4-26b-a4b-it 兜底
-    if (modelToUse !== 'gemma-4-26b-a4b-it') {
-      console.warn(`[AI Fallback 2] Retrying with backup model 'gemma-4-26b-a4b-it'...`);
+    if (isRetriableError && modelToUse !== 'gemma-4-26b-a4b-it') {
+      console.warn(`[AI Warning] Model ${modelToUse} failed due to network or quota limit: ${error.message || error.toString()}. Automatically retrying with fallback 'gemma-4-26b-a4b-it'...`);
       try {
         return await ai.models.generateContent({
           ...params,
           model: 'gemma-4-26b-a4b-it',
         });
       } catch (fallbackError: any) {
-        console.error("[AI Error] All fallback models failed:", fallbackError);
+        console.error("[AI Error] Fallback to gemma-4-26b-a4b-it also failed:", fallbackError);
         throw fallbackError;
       }
     }
-
     throw error;
   }
 }
