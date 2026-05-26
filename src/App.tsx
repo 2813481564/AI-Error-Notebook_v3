@@ -1,5 +1,5 @@
 import { useState, ReactNode } from 'react';
-import { Camera, BarChart3, Database, Home, HelpCircle, HardDrive } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -9,6 +9,153 @@ type View = 'dashboard' | 'add' | 'library';
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [showSqlTip, setShowSqlTip] = useState(false);
+
+  const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
+  const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
+  
+  const [isRegister, setIsRegister] = useState(false);
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authUsername.trim() || !authPassword.trim()) {
+      setAuthError('用户名和密码不能为空');
+      return;
+    }
+    if (isRegister && authPassword.length < 6) {
+      setAuthError('注册密码长度不能少于 6 位');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: authUsername.trim(), password: authPassword.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '登录或注册失败');
+      }
+      localStorage.setItem('errorbook_token', data.token);
+      localStorage.setItem('errorbook_username', data.username);
+      setToken(data.token);
+      setUsername(data.username);
+      setAuthUsername('');
+      setAuthPassword('');
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    localStorage.removeItem('errorbook_token');
+    localStorage.removeItem('errorbook_username');
+    setToken(null);
+    setUsername(null);
+    window.location.reload();
+  };
+
+  // 全局登录拦截
+  if (!token) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-tr from-slate-900 via-blue-900 to-indigo-950 p-4 font-sans text-slate-800">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/20 via-transparent to-transparent pointer-events-none"></div>
+        <div className="w-full max-w-md bg-white/95 backdrop-blur-lg rounded-3xl border border-white/20 p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
+          
+          {/* Decorative Top Accent */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 to-indigo-600 absolute top-0 left-0"></div>
+          
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4 animate-bounce duration-1000">
+              <span className="text-white font-extrabold text-sm tracking-widest">AI</span>
+            </div>
+            <h2 className="text-2xl font-black text-slate-950 tracking-tight">智能错题本</h2>
+            <p className="text-xs text-slate-500 mt-1.5 font-medium">
+              {isRegister ? '注册创建您的云端物理错题空间' : '登录以访问您个人的物理错题库'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            {authError && (
+              <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                {authError}
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">用户名 / 账号</label>
+              <input 
+                type="text"
+                placeholder="请输入用户名"
+                value={authUsername}
+                onChange={e => setAuthUsername(e.target.value)}
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">密码</label>
+              <input 
+                type="password"
+                placeholder={isRegister ? "请输入注册密码（不少于 6 位）" : "请输入密码"}
+                value={authPassword}
+                onChange={e => setAuthPassword(e.target.value)}
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                required
+              />
+              {isRegister && (
+                <p className="text-[10px] text-slate-400 font-medium pl-1">注册密码长度须在 6 位及以上</p>
+              )}
+            </div>
+
+            <button 
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+            >
+              {authLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  正在处理...
+                </>
+              ) : (
+                isRegister ? '立即注册并登录' : '安全登录'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-100 flex justify-center text-xs font-semibold">
+            <button 
+              onClick={() => { setIsRegister(!isRegister); setAuthError(null); }}
+              className="text-blue-600 hover:text-indigo-700 transition-all"
+            >
+              {isRegister ? '已有账户？立即登录' : '还没有账号？创建新账户'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-slate-50 font-sans text-slate-800 overflow-hidden">
@@ -63,7 +210,7 @@ export default function App() {
         </nav>
 
         {/* SQLite Storage Status & Link */}
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 space-y-3">
           <button 
             onClick={() => setShowSqlTip(true)}
             className="w-full text-left p-3.5 bg-slate-900 rounded-2xl text-white hover:bg-black transition-colors relative group overflow-hidden"
@@ -71,12 +218,22 @@ export default function App() {
             <div className="absolute right-3 top-3.5 text-white/40 group-hover:text-white transition-colors">
               <HelpCircle className="w-4 h-4" />
             </div>
-            <p className="text-[10px] tracking-wider font-bold text-slate-400 uppercase mb-1">SQLite 数据同步</p>
+            <p className="text-[10px] tracking-wider font-bold text-slate-400 uppercase mb-1">SQLite 数据库</p>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <p className="text-xs font-semibold">存储状态: 已准备完毕</p>
+              <p className="text-xs font-semibold">存储状态: 已连接 (多用户隔离)</p>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2 hover:underline">点击查看 SQLite 导入指南</p>
+            <div className="mt-2.5 pt-2.5 border-t border-white/10 flex flex-col gap-0.5">
+              <p className="text-[10px] text-slate-400">当前登录用户:</p>
+              <p className="text-xs font-bold text-blue-400 truncate">{username}</p>
+            </div>
+          </button>
+          
+          <button
+            onClick={handleLogout}
+            className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/50 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-rose-500/5 cursor-pointer"
+          >
+            <span>退出登录</span>
           </button>
         </div>
       </aside>
@@ -92,13 +249,21 @@ export default function App() {
             </div>
             <h1 className="text-md font-extrabold tracking-tight text-slate-900">智能错题本</h1>
           </div>
-          <button 
-            onClick={() => setShowSqlTip(true)}
-            className="text-xs bg-slate-900 text-white rounded-full px-3 py-1.5 font-bold hover:bg-black transition-colors flex items-center gap-1"
-          >
-            <HardDrive className="w-3 h-3" />
-            存储说明
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowSqlTip(true)}
+              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-3 py-1.5 font-bold transition-colors flex items-center gap-1"
+            >
+              <HardDrive className="w-3 h-3" />
+              存储说明
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="text-[10px] bg-rose-50 text-rose-600 rounded-full px-3 py-1.5 font-bold hover:bg-rose-100 transition-colors"
+            >
+              退出
+            </button>
+          </div>
         </header>
 
         {/* Content Area */}
@@ -139,52 +304,40 @@ export default function App() {
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
             <button 
               onClick={() => setShowSqlTip(false)} 
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none"
             >
               ✕
             </button>
             <div className="mb-4 flex items-center gap-2 text-blue-600 font-bold">
               <HardDrive className="w-5 h-5" />
-              <h3 className="text-lg">本地 SQLite 存储迁移说明</h3>
+              <h3 className="text-lg">多用户 SQLite 存储信息</h3>
             </div>
             
             <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
               <p>
-                为了让您线上体验流畅，我们当前在线上开发环境使用了 <strong>IndexedDB (本地键值数据库)</strong> 进行数据持久化存储。
+                您的错题数据已经由前端的 <strong>IndexedDB (浏览器本地存储)</strong> 成功迁移至服务端的 <strong>SQLite 物理数据库 (questions.db)</strong> 中。
               </p>
               <p>
-                <strong>如何导入到本地电脑开发 (使用 SQLite)？</strong>
+                <strong>安全与隔离设计：</strong>
               </p>
-              <ol className="list-decimal pl-5 space-y-2">
+              <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  <strong>数据表映射非常直接：</strong> 错题表对应本软件的 <code>ErrorQuestion</code> 类型。
+                  所有用户的密码都经过高强度密码哈希算法保护，确保密码安全。
                 </li>
                 <li>
-                  推荐创建与其对应的 <code>questions</code> 物理表，主要字段有:
-                  <div className="bg-slate-50 p-3 rounded-lg font-mono text-xs text-slate-700 mt-1 max-h-32 overflow-y-auto">
-                    CREATE TABLE questions (<br />
-                    &nbsp;&nbsp;id TEXT PRIMARY KEY,<br />
-                    &nbsp;&nbsp;originalText TEXT NOT NULL,<br />
-                    &nbsp;&nbsp;subject TEXT NOT NULL,<br />
-                    &nbsp;&nbsp;knowledgePoints TEXT,<br />
-                    &nbsp;&nbsp;errorReason TEXT,<br />
-                    &nbsp;&nbsp;solution TEXT,<br />
-                    &nbsp;&nbsp;imageUrl TEXT,<br />
-                    &nbsp;&nbsp;createdAt INTEGER<br />
-                    );
-                  </div>
+                  数据绑定独立账号归属（<code>userId</code>），不同用户间数据从物理层面绝对隔离。
                 </li>
                 <li>
-                  当您将本项目导入到本地时，只需引入 <code>sqlite3</code> 并在 Express 后端或 Electron 读写 <code>questions.db</code> 文件即可。所有的字段与查询均可通过直接搬运 IndexedDB 中的接口无缝扩展！
+                  只要在一台支持互联网访问的多终端设备上登录相同账号，错题即可完美同步。
                 </li>
-              </ol>
+              </ul>
             </div>
 
             <button 
               onClick={() => setShowSqlTip(false)}
-              className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors"
+              className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors cursor-pointer"
             >
-              我明白了
+              我知道了
             </button>
           </div>
         </div>

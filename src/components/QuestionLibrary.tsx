@@ -149,15 +149,27 @@ function QuestionDetail({
     
     setGenerating(true);
     try {
+      const token = localStorage.getItem('errorbook_token');
       const res = await fetch('/api/similar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           originalText: question.originalText,
           subject: question.subject,
           knowledgePoints: question.knowledgePoints
         })
       });
+      
+      if (res.status === 401) {
+        localStorage.removeItem('errorbook_token');
+        localStorage.removeItem('errorbook_username');
+        window.location.reload();
+        throw new Error('登录已过期，请重新登录');
+      }
+      
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSimilarData(data);

@@ -3,11 +3,92 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import Database from "better-sqlite3";
+import crypto from "crypto";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = 3005;
+
+// 初始化 SQLite 数据库
+const db = new Database(path.join(process.cwd(), "questions.db"));
+db.pragma("journal_mode = WAL");
+
+// 初始化表结构
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT NOT NULL
+  );
+  
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  
+  CREATE TABLE IF NOT EXISTS questions (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    imageUrl TEXT,
+    originalText TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    knowledgePoints TEXT,
+    errorReason TEXT,
+    solution TEXT,
+    createdAt INTEGER NOT NULL,
+    similarQuestion TEXT
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
+`);
+
+// 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
+try {
+  const tableInfo = db.pragma("table_info(questions)") as any[];
+  const hasUserId = tableInfo.some(col => col.name === 'userId');
+  if (!hasUserId) {
+    console.log("检测到旧版数据库结构，正在升级 questions 表以支持多用户体系...");
+    db.exec("ALTER TABLE questions ADD COLUMN userId TEXT NOT NULL DEFAULT 'admin'");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId)");
+    console.log("数据库升级成功！");
+  }
+} catch (err) {
+  console.error("数据库迁移检查失败:", err);
+}
+
+
+// 密码哈希
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+// 鉴权请求接口
+interface AuthenticatedRequest extends express.Request {
+  userId?: string;
+}
+
+// 鉴权中间件
+const requireAuth = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "未登录，请先登录" });
+  }
+  const token = authHeader.substring(7);
+  try {
+    const stmt = db.prepare("SELECT username FROM sessions WHERE token = ?");
+    const row = stmt.get(token) as { username: string } | undefined;
+    if (!row) {
+      return res.status(401).json({ error: "登录已过期或凭证无效，请重新登录" });
+    }
+    req.userId = row.username;
+    next();
+  } catch (err) {
+    console.error("Auth Middleware Error:", err);
+    return res.status(500).json({ error: "服务器内部鉴权错误" });
+  }
+};
 
 // Need to increase body limit for base64 images
 app.use(express.json({ limit: '50mb' }));
@@ -20,7 +101,7 @@ async function generateContentWithFallback(params: {
   config?: any;
   model?: string;
 }) {
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const primaryModel = process.env.GEMINI_MODEL || 'gemma-4-31b-it';
   const modelToUse = params.model || primaryModel;
 
   try {
@@ -37,15 +118,15 @@ async function generateContentWithFallback(params: {
                          errorStr.includes("resource_exhausted") || 
                          errorStr.includes("rate_limit");
 
-    if (isQuotaError && modelToUse !== 'gemini-3.5-flash') {
-      console.warn(`[AI Warning] Model ${modelToUse} failed due to quota/rate limit: ${error.message || error.toString()}. Automatically retrying with highly available 'gemini-3.5-flash'...`);
+    if (isQuotaError && modelToUse !== 'gemma-4-26b-a4b-it') {
+      console.warn(`[AI Warning] Model ${modelToUse} failed due to quota/rate limit: ${error.message || error.toString()}. Automatically retrying with fallback 'gemma-4-26b-a4b-it'...`);
       try {
         return await ai.models.generateContent({
           ...params,
-          model: 'gemini-3.5-flash',
+          model: 'gemma-4-26b-a4b-it',
         });
       } catch (fallbackError: any) {
-        console.error("[AI Error] Fallback to gemini-3.5-flash also failed:", fallbackError);
+        console.error("[AI Error] Fallback to gemma-4-26b-a4b-it also failed:", fallbackError);
         throw fallbackError;
       }
     }
@@ -54,7 +135,7 @@ async function generateContentWithFallback(params: {
 }
 
 // API Route for analyzing an image
-app.post("/api/analyze", async (req, res) => {
+app.post("/api/analyze", requireAuth, async (req, res) => {
   try {
     const { imageBase64, mimeType } = req.body;
     if (!imageBase64) {
@@ -122,7 +203,7 @@ app.post("/api/analyze", async (req, res) => {
 });
 
 // API Route for generating similar questions
-app.post("/api/similar", async (req, res) => {
+app.post("/api/similar", requireAuth, async (req, res) => {
   try {
     const { originalText, subject, knowledgePoints } = req.body;
     
@@ -168,6 +249,177 @@ app.post("/api/similar", async (req, res) => {
   } catch (error: any) {
     console.error("Similar question Error:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 用户注册
+app.post("/api/auth/register", (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password || username.trim() === "" || password.trim() === "") {
+      return res.status(400).json({ error: "用户名或密码不能为空" });
+    }
+    const cleanUsername = username.trim();
+    if (cleanUsername.length < 2) {
+      return res.status(400).json({ error: "用户名长度不能少于 2 位" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: "密码长度不能少于 6 位" });
+    }
+    
+    const checkStmt = db.prepare("SELECT username FROM users WHERE username = ?");
+    if (checkStmt.get(cleanUsername)) {
+      return res.status(400).json({ error: "该用户名已被注册" });
+    }
+    
+    const hashedPassword = hashPassword(password);
+    const insertUser = db.prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+    insertUser.run(cleanUsername, hashedPassword);
+    
+    const token = crypto.randomUUID();
+    const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
+    insertSession.run(token, cleanUsername, Date.now());
+    
+    res.json({ token, username: cleanUsername });
+  } catch (error: any) {
+    console.error("Register Error:", error);
+    res.status(500).json({ error: error.message || "注册失败" });
+  }
+});
+
+// 用户登录
+app.post("/api/auth/login", (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "用户名和密码不能为空" });
+    }
+    const cleanUsername = username.trim();
+    const hashedPassword = hashPassword(password);
+    
+    const stmt = db.prepare("SELECT username, password FROM users WHERE username = ?");
+    const user = stmt.get(cleanUsername) as { username: string; password: string } | undefined;
+    if (!user || user.password !== hashedPassword) {
+      return res.status(400).json({ error: "用户名或密码错误" });
+    }
+    
+    const token = crypto.randomUUID();
+    const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
+    insertSession.run(token, cleanUsername, Date.now());
+    
+    res.json({ token, username: cleanUsername });
+  } catch (error: any) {
+    console.error("Login Error:", error);
+    res.status(500).json({ error: error.message || "登录失败" });
+  }
+});
+
+// 用户注销
+app.post("/api/auth/logout", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      const stmt = db.prepare("DELETE FROM sessions WHERE token = ?");
+      stmt.run(token);
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Logout Error:", error);
+    res.status(500).json({ error: error.message || "注销失败" });
+  }
+});
+
+// 获取当前用户的全部错题
+app.get("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const stmt = db.prepare("SELECT * FROM questions WHERE userId = ? ORDER BY createdAt DESC");
+    const rows = stmt.all(req.userId) as any[];
+    
+    const questions = rows.map(row => ({
+      id: row.id,
+      imageUrl: row.imageUrl || undefined,
+      originalText: row.originalText,
+      subject: row.subject,
+      knowledgePoints: row.knowledgePoints ? JSON.parse(row.knowledgePoints) : [],
+      errorReason: row.errorReason || "",
+      solution: row.solution || "",
+      createdAt: row.createdAt,
+      similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined
+    }));
+    
+    res.json(questions);
+  } catch (error: any) {
+    console.error("Get Questions Error:", error);
+    res.status(500).json({ error: error.message || "获取错题失败" });
+  }
+});
+
+// 保存或更新错题
+app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const question = req.body;
+    if (!question || !question.id || !question.originalText) {
+      return res.status(400).json({ error: "错题数据不完整" });
+    }
+    
+    const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
+    const existing = checkStmt.get(question.id) as { userId: string } | undefined;
+    if (existing && existing.userId !== req.userId) {
+      return res.status(403).json({ error: "您没有权限修改该错题" });
+    }
+    
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO questions (
+        id, userId, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+      question.id,
+      req.userId,
+      question.imageUrl || null,
+      question.originalText,
+      question.subject || "其他",
+      question.knowledgePoints ? JSON.stringify(question.knowledgePoints) : "[]",
+      question.errorReason || "",
+      question.solution || "",
+      question.createdAt || Date.now(),
+      question.similarQuestion ? JSON.stringify(question.similarQuestion) : null
+    );
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Save Question Error:", error);
+    res.status(500).json({ error: error.message || "保存错题失败" });
+  }
+});
+
+// 删除错题
+app.delete("/api/questions/:id", requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    
+    const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
+    const existing = checkStmt.get(id) as { userId: string } | undefined;
+    if (!existing) {
+      return res.status(404).json({ error: "错题不存在" });
+    }
+    if (existing.userId !== req.userId) {
+      return res.status(403).json({ error: "您没有权限删除该错题" });
+    }
+    
+    const stmt = db.prepare("DELETE FROM questions WHERE id = ? AND userId = ?");
+    const result = stmt.run(id, req.userId);
+    
+    if (result.changes === 0) {
+      return res.status(400).json({ error: "删除失败" });
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Delete Question Error:", error);
+    res.status(500).json({ error: error.message || "删除错题失败" });
   }
 });
 
