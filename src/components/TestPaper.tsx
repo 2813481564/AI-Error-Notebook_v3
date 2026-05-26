@@ -69,8 +69,18 @@ export default function TestPaper({
         throw new Error('今日 AI 使用次数已达上限，无法生成变式练习卷。您可以联系管理员升级您的账户等级！');
       }
 
+      if (!res.ok) {
+        let errorMsg = '生成失败';
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (_) {
+          errorMsg = `请求失败，服务器返回状态: ${res.status}`;
+        }
+        throw new Error(errorMsg);
+      }
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '生成失败');
 
       setVariants(data);
       setPaperMode('variant');
