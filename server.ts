@@ -192,7 +192,7 @@ app.use(express.json({ limit: '50mb' }));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Robust helper function with automatic fallback to gemini-3.5-flash in case of quota or rate-limiting errors
+// Robust helper function with automatic fallback to gemma-4-26b-a4b-it in case of any error
 async function generateContentWithFallback(params: {
   contents: any[];
   config?: any;
@@ -208,22 +208,19 @@ async function generateContentWithFallback(params: {
       model: modelToUse,
     });
   } catch (error: any) {
-    const errorStr = (error.message || error.toString() || "").toLowerCase();
-    const isQuotaError = errorStr.includes("429") || 
-                         errorStr.includes("quota") || 
-                         errorStr.includes("limit") || 
-                         errorStr.includes("resource_exhausted") || 
-                         errorStr.includes("rate_limit");
-
-    if (isQuotaError && modelToUse !== 'gemma-4-26b-a4b-it') {
-      console.warn(`[AI Warning] Model ${modelToUse} failed due to quota/rate limit: ${error.message || error.toString()}. Automatically retrying with fallback 'gemma-4-26b-a4b-it'...`);
+    console.warn(`[AI Warning] Model ${modelToUse} failed (Error: ${error.message || error.toString()}).`);
+    
+    // 如果首选模型不是备用模型，我们自动使用备用模型 'gemma-4-26b-a4b-it' 重试
+    const fallbackModel = 'gemma-4-26b-a4b-it';
+    if (modelToUse !== fallbackModel) {
+      console.warn(`[AI Fallback] Retrying with backup model '${fallbackModel}'...`);
       try {
         return await ai.models.generateContent({
           ...params,
-          model: 'gemma-4-26b-a4b-it',
+          model: fallbackModel,
         });
       } catch (fallbackError: any) {
-        console.error("[AI Error] Fallback to gemma-4-26b-a4b-it also failed:", fallbackError);
+        console.error("[AI Error] Backup model also failed:", fallbackError);
         throw fallbackError;
       }
     }
@@ -391,7 +388,6 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
             }
         ],
         config: {
-            responseMimeType: 'application/json',
             temperature: 0.7
         }
     });
@@ -399,10 +395,18 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
     
-    let parsedText = text;
-    if (parsedText.startsWith('```json')) {
-      parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
+    let parsedText = text.trim();
+    
+    // 正则寻找最外层包裹的 JSON 数组结构
+    const jsonMatch = parsedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (jsonMatch) {
+      parsedText = jsonMatch[0];
+    } else {
+      if (parsedText.startsWith('```json')) {
+        parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
+      }
     }
+    
     const data = JSON.parse(parsedText);
     res.json(data);
 
