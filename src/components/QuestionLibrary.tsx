@@ -290,6 +290,66 @@ function QuestionDetail({
   const [editedKp, setEditedKp] = useState(question.knowledgePoints.join(', '));
   const [selectedStudent, setSelectedStudent] = useState(question.studentId || '');
   const [saving, setSaving] = useState(false);
+  const [savingToPublic, setSavingToPublic] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [modalType, setModalType] = useState<'original' | 'variant'>('original');
+  const [parsedQuestions, setParsedQuestions] = useState<{ id: string; number: string; content: string }[]>([]);
+  const [selectedModalIds, setSelectedModalIds] = useState<Set<string>>(new Set());
+
+  const openSaveModal = (type: 'original' | 'variant') => {
+    setModalType(type);
+    const sourceText = type === 'original' ? question.originalText : (similarData?.questionText || '');
+    const list = parseIndividualQuestions(sourceText);
+    setParsedQuestions(list);
+    setSelectedModalIds(new Set(list.map(item => item.id)));
+    setShowSaveModal(true);
+  };
+
+  const getCorrespondingSolution = (qIndex: number, type: 'original' | 'variant'): string => {
+    const sourceSolution = type === 'original' ? question.solution : (similarData?.solution || '');
+    const solutions = parseIndividualSolutions(sourceSolution);
+    if (solutions.length === 1) {
+      return solutions[0].content;
+    }
+    if (qIndex < solutions.length) {
+      return solutions[qIndex].content;
+    }
+    return sourceSolution;
+  };
+
+  const handleConfirmSaveToPublic = async () => {
+    if (selectedModalIds.size === 0) {
+      alert('请选择至少一道题目进行保存！');
+      return;
+    }
+    setSavingToPublic(true);
+    try {
+      const selectedItems = parsedQuestions.filter(item => selectedModalIds.has(item.id));
+      for (const item of selectedItems) {
+        const itemIdx = parsedQuestions.indexOf(item);
+        const matchedSolution = getCorrespondingSolution(itemIdx, modalType);
+        
+        const uuid = (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function')
+          ? window.crypto.randomUUID() 
+          : Math.random().toString(36).substring(2) + Date.now().toString(36);
+          
+        await db.savePublicQuestion({
+          id: uuid,
+          originalText: item.content,
+          subject: question.subject,
+          knowledgePoints: question.knowledgePoints,
+          solution: matchedSolution,
+          createdAt: Date.now()
+        });
+      }
+      alert(`已成功将选中的 ${selectedModalIds.size} 道题目保存至公共题库！`);
+      setShowSaveModal(false);
+    } catch (err: any) {
+      alert(err.message || '保存失败');
+    } finally {
+      setSavingToPublic(false);
+    }
+  };
 
   useEffect(() => {
     setEditedText(question.originalText);
@@ -537,12 +597,23 @@ function QuestionDetail({
                   </div>
                </div>
  
-               <div className="border-t border-slate-100 pt-6">
-                 <h4 className="flex items-center gap-2 text-blue-600 font-extrabold mb-4 text-sm">
-                   <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
-                 </h4>
-                 <FormattedMath text={question.solution} className="text-slate-805" />
-               </div>
+                <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">
+                      <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
+                    </h4>
+                    {!isStudent && (
+                      <button
+                        onClick={() => openSaveModal('original')}
+                        disabled={savingToPublic}
+                        className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-105 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                      >
+                        <span>📥 保存原题到公共题库</span>
+                      </button>
+                    )}
+                  </div>
+                  <FormattedMath text={question.solution} className="text-slate-805" />
+                </div>
              </>
            )}
          </div>
@@ -576,10 +647,21 @@ function QuestionDetail({
                  </div>
                ) : similarData ? (
                  <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-blue-800 font-bold mb-4">
-                      <span className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center text-xs">练</span>
-                      <h4 className="text-sm font-extrabold">高频错点相似强化训练题</h4>
-                    </div>
+                     <div className="flex items-center justify-between mb-4">
+                       <div className="flex items-center gap-2 text-blue-800 font-bold">
+                         <span className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center text-xs">练</span>
+                         <h4 className="text-sm font-extrabold">高频错点相似强化训练题</h4>
+                       </div>
+                       {!isStudent && (
+                         <button
+                           onClick={() => openSaveModal('variant')}
+                           disabled={savingToPublic}
+                           className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-100 hover:bg-amber-105 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                         >
+                           <span>📥 保存此变式题到公共题库</span>
+                         </button>
+                       )}
+                     </div>
                     <FormattedMath text={similarData.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
                     
                     <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/50">
@@ -596,6 +678,82 @@ function QuestionDetail({
             </div>
           )}
         </>
+      )}
+
+      {/* Save to Public Library Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 relative animate-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col">
+            <button 
+              onClick={() => setShowSaveModal(false)} 
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none cursor-pointer"
+            >
+              ✕
+            </button>
+            <div className="mb-4 flex items-center gap-2 text-blue-600 font-bold shrink-0">
+              <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
+              <h3 className="text-lg text-slate-900 font-extrabold">选择入库题目（共检测到 {parsedQuestions.length} 道题目）</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500 mb-4 shrink-0 font-medium">
+              系统检测到本题可能包含多道子题，请勾选您需要单独保存到公共题库的题目。每道勾选的题目将作为独立习题入库。
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-6">
+              {parsedQuestions.map(item => {
+                const isSelected = selectedModalIds.has(item.id);
+                return (
+                  <div 
+                    key={item.id}
+                    onClick={() => {
+                      const next = new Set(selectedModalIds);
+                      if (next.has(item.id)) {
+                        next.delete(item.id);
+                      } else {
+                        next.add(item.id);
+                      }
+                      setSelectedModalIds(next);
+                    }}
+                    className={`p-4 rounded-xl border text-left cursor-pointer transition-all hover:bg-slate-50 flex gap-3 items-start ${
+                      isSelected ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200'
+                    }`}
+                  >
+                    <input 
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}} // handled by parent div onClick
+                      className="mt-1 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase">
+                        题目 {item.number}
+                      </span>
+                      <div className="text-slate-800 text-sm font-semibold leading-relaxed">
+                        <FormattedMath text={item.content} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 justify-end shrink-0 pt-4 border-t border-slate-100">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmSaveToPublic}
+                disabled={savingToPublic || selectedModalIds.size === 0}
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-extrabold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-500/10 cursor-pointer"
+              >
+                {savingToPublic ? '正在保存...' : `确认保存这 ${selectedModalIds.size} 道题`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
@@ -623,4 +781,61 @@ function BrainCircuitIcon({ className }: { className?: string }) {
       <path d="M18.5 13a4.5 4.5 0 0 1-3 3" />
     </svg>
   );
+}
+
+export function parseIndividualQuestions(text: string): { id: string; number: string; content: string }[] {
+  if (!text) return [];
+  const regex = /(?:^|\n)\s*([0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六七八九十]+）)/g;
+  
+  const matches: { index: number; text: string }[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push({ index: match.index, text: match[1].trim() });
+  }
+  
+  if (matches.length === 0) {
+    return [{ id: '1', number: '整道题', content: text.trim() }];
+  }
+  
+  const result: { id: string; number: string; content: string }[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index + (text[matches[i].index] === '\n' ? 1 : 0);
+    const end = i + 1 < matches.length ? matches[i+1].index : text.length;
+    const fullContent = text.substring(start, end).trim();
+    
+    const prefix = matches[i].text;
+    result.push({
+      id: String(i + 1),
+      number: prefix,
+      content: fullContent
+    });
+  }
+  return result;
+}
+
+export function parseIndividualSolutions(text: string): { number: string; content: string }[] {
+  if (!text) return [];
+  const regex = /(?:^|\n)\s*(###\s*第?[0-9一二三四五六七八九十]+[题问小题步]解析|第?[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]解析?|【解析[0-9一二三四五六七八九十]+】)/g;
+  
+  const matches: { index: number; text: string }[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push({ index: match.index, text: match[1].trim() });
+  }
+  
+  if (matches.length === 0) {
+    return [{ number: '完整解析', content: text.trim() }];
+  }
+  
+  const result: { number: string; content: string }[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index + (text[matches[i].index] === '\n' ? 1 : 0);
+    const end = i + 1 < matches.length ? matches[i+1].index : text.length;
+    const fullContent = text.substring(start, end).trim();
+    result.push({
+      number: matches[i].text,
+      content: fullContent
+    });
+  }
+  return result;
 }

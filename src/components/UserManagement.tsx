@@ -7,6 +7,8 @@ interface UserItem {
   lastAiResetDate: string | null;
   aiUsedToday: number;
   questionCount: number;
+  idCardLast6?: string | null;
+  phoneLast4?: string | null;
 }
 
 export default function UserManagement({ onNavigate }: { onNavigate: (view: any) => void }) {
@@ -19,8 +21,19 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState<'student' | 'teacher'>('student');
+  const [editIdCard, setEditIdCard] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // 添加模态框状态
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addUsername, setAddUsername] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addRole, setAddRole] = useState<'student' | 'teacher'>('student');
+  const [addIdCard, setAddIdCard] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -70,6 +83,8 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
     setEditUsername(user.username);
     setEditRole((user.role === 'admin' ? 'student' : user.role) as any);
     setEditPassword('');
+    setEditIdCard(user.idCardLast6 || '');
+    setEditPhone(user.phoneLast4 || '');
     setEditError(null);
   };
 
@@ -90,7 +105,9 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
         body: JSON.stringify({
           newUsername: editUsername,
           password: editPassword || undefined,
-          role: editRole
+          role: editRole,
+          idCardLast6: editRole === 'student' ? editIdCard : undefined,
+          phoneLast4: editRole === 'student' ? editPhone : undefined
         })
       });
 
@@ -106,6 +123,50 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
       fetchUsers();
     } catch (err: any) {
       setEditError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setAddError(null);
+
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          role: addRole,
+          username: addUsername,
+          password: addRole === 'teacher' ? addPassword : undefined,
+          idCardLast6: addRole === 'student' ? addIdCard : undefined,
+          phoneLast4: addRole === 'student' ? addPhone : undefined
+        })
+      });
+
+      if (res.status === 401) {
+        window.location.reload();
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '添加用户失败');
+
+      setAddUsername('');
+      setAddPassword('');
+      setAddIdCard('');
+      setAddPhone('');
+      setAddRole('student');
+      setShowAddModal(false);
+      fetchUsers();
+    } catch (err: any) {
+      setAddError(err.message);
     } finally {
       setSubmitting(false);
     }
@@ -152,6 +213,15 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
             <p className="text-xs text-slate-500 font-medium">配置用户角色等级、日常 AI 限额以及重置账号密码</p>
           </div>
         </div>
+        <button
+          onClick={() => {
+            setAddError(null);
+            setShowAddModal(true);
+          }}
+          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md shadow-blue-500/10 cursor-pointer flex items-center gap-1.5"
+        >
+          <span>添加新用户</span>
+        </button>
       </div>
 
       {error && (
@@ -199,9 +269,17 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                           </span>
                         )}
                         {user.role === 'student' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                            学生 (只读题库)
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
+                              学生 (只读题库)
+                            </span>
+                            {(user.idCardLast6 || user.phoneLast4) && (
+                              <div className="text-[10px] text-slate-400 font-semibold pl-1 space-y-0.5">
+                                {user.idCardLast6 && <div>身份证后6位: {user.idCardLast6}</div>}
+                                {user.phoneLast4 && <div>手机号后4位: {user.phoneLast4}</div>}
+                              </div>
+                            )}
+                          </div>
                         )}
                         {user.role === 'admin' && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200/50 shadow-sm shadow-amber-500/5">
@@ -285,31 +363,6 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
 
             <form onSubmit={handleUpdate} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">用户名</label>
-                <input 
-                  type="text"
-                  value={editUsername}
-                  onChange={e => setEditUsername(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                  <Key className="w-3 h-3" />
-                  新密码
-                </label>
-                <input 
-                  type="password"
-                  placeholder="不修改请留空"
-                  value={editPassword}
-                  onChange={e => setEditPassword(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                />
-              </div>
-
-              <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">用户角色与 AI 限额等级</label>
                 <select
                   value={editRole}
@@ -320,6 +373,56 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   <option value="teacher">老师 (录入/出题, 5000次/日)</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">用户名 / 姓名</label>
+                <input 
+                  type="text"
+                  value={editUsername}
+                  onChange={e => setEditUsername(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all"
+                  required
+                />
+              </div>
+
+              {editRole === 'teacher' ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                    <Key className="w-3 h-3" />
+                    修改密码
+                  </label>
+                  <input 
+                    type="password"
+                    placeholder="不修改请留空"
+                    value={editPassword}
+                    onChange={e => setEditPassword(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位</label>
+                    <input 
+                      type="text"
+                      placeholder="例如: 12345X"
+                      value={editIdCard}
+                      onChange={e => setEditIdCard(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位</label>
+                    <input 
+                      type="text"
+                      placeholder="例如: 6789"
+                      value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex gap-3 mt-6">
                 <button
@@ -335,6 +438,119 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
                 >
                   {submitting ? '正在更新...' : '保存更改'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 新增用户模态框 */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setShowAddModal(false)} 
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors outline-none cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="mb-6 flex items-center gap-2.5 text-blue-600 font-bold">
+              <div className="p-2 bg-blue-50 rounded-xl">
+                <Users className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-black tracking-tight text-slate-900">新增用户账号</h3>
+            </div>
+
+            {addError && (
+              <div className="mb-4 p-3.5 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-semibold flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4" />
+                {addError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">用户角色类型</label>
+                <select
+                  value={addRole}
+                  onChange={e => setAddRole(e.target.value as any)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all"
+                >
+                  <option value="student">学生 (免密登录, 只读题库)</option>
+                  <option value="teacher">老师 (邮箱密码登录, 录入/出题)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">
+                  {addRole === 'teacher' ? '邮箱账号' : '真实姓名'}
+                </label>
+                <input 
+                  type="text"
+                  placeholder={addRole === 'teacher' ? "请输入老师邮箱（例如: abc@qq.com）" : "请输入学生姓名"}
+                  value={addUsername}
+                  onChange={e => setAddUsername(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                  required
+                />
+              </div>
+
+              {addRole === 'teacher' ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                    <Key className="w-3 h-3" />
+                    登录密码
+                  </label>
+                  <input 
+                    type="password"
+                    placeholder="请输入登录密码（不少于 6 位）"
+                    value={addPassword}
+                    onChange={e => setAddPassword(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    required
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位</label>
+                    <input 
+                      type="text"
+                      placeholder="请输入身份证后6位"
+                      value={addIdCard}
+                      onChange={e => setAddIdCard(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位</label>
+                    <input 
+                      type="text"
+                      placeholder="请输入手机号后4位"
+                      value={addPhone}
+                      onChange={e => setAddPhone(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
+                >
+                  {submitting ? '正在提交...' : '确认添加'}
                 </button>
               </div>
             </form>

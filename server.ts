@@ -34,7 +34,9 @@ db.exec(`
     password TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'student',
     lastAiResetDate TEXT,
-    aiUsedToday INTEGER NOT NULL DEFAULT 0
+    aiUsedToday INTEGER NOT NULL DEFAULT 0,
+    idCardLast6 TEXT,
+    phoneLast4 TEXT
   );
   
   CREATE TABLE IF NOT EXISTS sessions (
@@ -65,6 +67,15 @@ db.exec(`
   );
   
   CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
+
+  CREATE TABLE IF NOT EXISTS public_questions (
+    id TEXT PRIMARY KEY,
+    originalText TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    knowledgePoints TEXT,
+    solution TEXT,
+    createdAt INTEGER NOT NULL
+  );
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -124,6 +135,19 @@ try {
   if (!hasAiUsed) {
     db.exec("ALTER TABLE users ADD COLUMN aiUsedToday INTEGER NOT NULL DEFAULT 0");
   }
+  
+  // 新增身份证与手机字段检测迁移
+  const hasIdCard = tableInfo.some(col => col.name === 'idCardLast6');
+  if (!hasIdCard) {
+    console.log("正在升级 users 表以支持身份证后6位字段...");
+    db.exec("ALTER TABLE users ADD COLUMN idCardLast6 TEXT");
+  }
+  const hasPhone = tableInfo.some(col => col.name === 'phoneLast4');
+  if (!hasPhone) {
+    console.log("正在升级 users 表以支持手机号后4位字段...");
+    db.exec("ALTER TABLE users ADD COLUMN phoneLast4 TEXT");
+  }
+  
   console.log("users 表升级检查完成！");
 } catch (err) {
   console.error("users 数据库迁移检查失败:", err);
@@ -690,24 +714,59 @@ app.post("/api/auth/register", (req, res) => {
 // 用户登录
 app.post("/api/auth/login", (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: "用户名和密码不能为空" });
+    const { username, password, loginRole, loginType, idCardLast6, phoneLast4 } = req.body;
+    if (!username || username.trim() === "") {
+      return res.status(400).json({ error: "姓名或账号不能为空" });
     }
     const cleanUsername = username.trim();
-    const hashedPassword = hashPassword(password);
-    
-    const stmt = db.prepare("SELECT username, password, role FROM users WHERE username = ?");
-    const user = stmt.get(cleanUsername) as { username: string; password: string; role: string } | undefined;
-    if (!user || user.password !== hashedPassword) {
-      return res.status(400).json({ error: "用户名或密码错误" });
+
+    if (loginRole === 'student') {
+      // 学生登录：免密，支持姓名+身份证后6位，或姓名+手机后4位
+      if (loginType === 'idCard') {
+        if (!idCardLast6 || idCardLast6.trim() === "") {
+          return res.status(400).json({ error: "身份证后6位不能为空" });
+        }
+        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND idCardLast6 = ? AND role = 'student'").get(cleanUsername, idCardLast6.trim()) as { username: string, role: string } | undefined;
+        if (!user) {
+          return res.status(400).json({ error: "姓名或身份证后6位错误" });
+        }
+        
+        const token = crypto.randomUUID();
+        db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
+        return res.json({ token, username: user.username, role: user.role });
+      } else if (loginType === 'phone') {
+        if (!phoneLast4 || phoneLast4.trim() === "") {
+          return res.status(400).json({ error: "手机号后4位不能为空" });
+        }
+        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND phoneLast4 = ? AND role = 'student'").get(cleanUsername, phoneLast4.trim()) as { username: string, role: string } | undefined;
+        if (!user) {
+          return res.status(400).json({ error: "姓名或手机号后4位错误" });
+        }
+        
+        const token = crypto.randomUUID();
+        db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
+        return res.json({ token, username: user.username, role: user.role });
+      } else {
+        return res.status(400).json({ error: "请选择学生登录验证方式" });
+      }
+    } else {
+      // 老师/管理员登录：邮箱/账号+密码
+      if (!password) {
+        return res.status(400).json({ error: "密码不能为空" });
+      }
+      const hashedPassword = hashPassword(password);
+      const user = db.prepare("SELECT username, password, role FROM users WHERE username = ?").get(cleanUsername) as { username: string; password: string; role: string } | undefined;
+      if (!user || user.password !== hashedPassword) {
+        return res.status(400).json({ error: "用户名或密码错误" });
+      }
+      if (user.role === 'student') {
+        return res.status(400).json({ error: "此账号为学生角色，请选择学生登录" });
+      }
+      
+      const token = crypto.randomUUID();
+      db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
+      return res.json({ token, username: user.username, role: user.role });
     }
-    
-    const token = crypto.randomUUID();
-    const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
-    insertSession.run(token, cleanUsername, Date.now());
-    
-    res.json({ token, username: cleanUsername, role: user.role });
   } catch (error: any) {
     console.error("Login Error:", error);
     res.status(500).json({ error: error.message || "登录失败" });
@@ -741,6 +800,8 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
         u.role, 
         u.lastAiResetDate, 
         u.aiUsedToday,
+        u.idCardLast6,
+        u.phoneLast4,
         COUNT(q.id) as questionCount
       FROM users u
       LEFT JOIN questions q ON u.username = q.userId
@@ -756,11 +817,74 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
   }
 });
 
+// 添加用户 (仅 admin)
+app.post("/api/admin/users", requireAdmin, (req, res) => {
+  try {
+    const { role, username, password, idCardLast6, phoneLast4 } = req.body;
+    if (!role || !['student', 'teacher'].includes(role)) {
+      return res.status(400).json({ error: "非法的用户角色等级" });
+    }
+    if (!username || username.trim() === "") {
+      return res.status(400).json({ error: "用户名/账号不能为空" });
+    }
+    const cleanUsername = username.trim();
+    if (cleanUsername.length < 2) {
+      return res.status(400).json({ error: "用户名长度不能少于 2 位" });
+    }
+
+    const exists = db.prepare("SELECT username FROM users WHERE username = ?").get(cleanUsername);
+    if (exists) {
+      return res.status(400).json({ error: "该用户名/账号已存在" });
+    }
+
+    if (role === 'student') {
+      const cleanIdCard = idCardLast6?.trim();
+      const cleanPhone = phoneLast4?.trim();
+      if (!cleanIdCard && !cleanPhone) {
+        return res.status(400).json({ error: "身份证后6位和手机号后4位必须至少填写一项" });
+      }
+      if (cleanIdCard && cleanIdCard.length !== 6) {
+        return res.status(400).json({ error: "身份证后6位必须是6位" });
+      }
+      if (cleanPhone && cleanPhone.length !== 4) {
+        return res.status(400).json({ error: "手机号后4位必须是4位" });
+      }
+      // 学生账号哈希默认无密码占位
+      const hashedPassword = hashPassword("student_no_password");
+      db.prepare(`
+        INSERT INTO users (username, password, role, idCardLast6, phoneLast4)
+        VALUES (?, ?, 'student', ?, ?)
+      `).run(cleanUsername, hashedPassword, cleanIdCard || null, cleanPhone || null);
+    } else if (role === 'teacher') {
+      if (!password || password.trim() === "") {
+        return res.status(400).json({ error: "老师登录密码不能为空" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "密码长度不能少于 6 位" });
+      }
+      const emailRegex = /^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$/;
+      if (!emailRegex.test(cleanUsername)) {
+        return res.status(400).json({ error: "老师账号必须为合法的邮箱格式" });
+      }
+      const hashedPassword = hashPassword(password);
+      db.prepare(`
+        INSERT INTO users (username, password, role)
+        VALUES (?, ?, 'teacher')
+      `).run(cleanUsername, hashedPassword);
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Admin Create User Error:", error);
+    res.status(500).json({ error: error.message || "创建用户失败" });
+  }
+});
+
 // 修改用户属性 (仅 admin)
 app.put("/api/admin/users/:username", requireAdmin, (req, res) => {
   try {
     const oldUsername = req.params.username;
-    const { newUsername, password, role } = req.body;
+    const { newUsername, password, role, idCardLast6, phoneLast4 } = req.body;
 
     if (!newUsername || newUsername.trim() === "") {
       return res.status(400).json({ error: "用户名不能为空" });
@@ -796,6 +920,20 @@ app.put("/api/admin/users/:username", requireAdmin, (req, res) => {
 
       if (role) {
         db.prepare("UPDATE users SET role = ? WHERE username = ?").run(role, cleanNewUsername);
+      }
+
+      // 更新学生额外字段
+      const userObj = db.prepare("SELECT role FROM users WHERE username = ?").get(cleanNewUsername) as { role: string } | undefined;
+      if (userObj && userObj.role === 'student') {
+        const cleanIdCard = idCardLast6 === undefined ? undefined : idCardLast6?.trim();
+        const cleanPhone = phoneLast4 === undefined ? undefined : phoneLast4?.trim();
+        
+        if (cleanIdCard !== undefined) {
+          db.prepare("UPDATE users SET idCardLast6 = ? WHERE username = ?").run(cleanIdCard || null, cleanNewUsername);
+        }
+        if (cleanPhone !== undefined) {
+          db.prepare("UPDATE users SET phoneLast4 = ? WHERE username = ?").run(cleanPhone || null, cleanNewUsername);
+        }
       }
     });
 
@@ -963,6 +1101,89 @@ app.delete("/api/questions/:id", requireAuth, (req: AuthenticatedRequest, res) =
   } catch (error: any) {
     console.error("Delete Question Error:", error);
     res.status(500).json({ error: error.message || "删除错题失败" });
+  }
+});
+
+// 教师或管理员权限中间件
+const requireTeacherOrAdmin = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+  requireAuth(req, res, () => {
+    try {
+      const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+      if (!user || (user.role !== 'admin' && user.role !== 'teacher')) {
+        return res.status(403).json({ error: "权限不足，仅老师或管理员有此操作权限" });
+      }
+      next();
+    } catch (err) {
+      return res.status(500).json({ error: "服务器内部鉴权错误" });
+    }
+  });
+};
+
+// ================= 公共题库 API =================
+
+// 获取公共题库中的所有题目列表 (需要登录鉴权)
+app.get("/api/public-questions", requireAuth, (req, res) => {
+  try {
+    const stmt = db.prepare("SELECT * FROM public_questions ORDER BY createdAt DESC");
+    const rows = stmt.all() as any[];
+    const questions = rows.map(row => ({
+      id: row.id,
+      originalText: row.originalText,
+      subject: row.subject,
+      knowledgePoints: row.knowledgePoints ? JSON.parse(row.knowledgePoints) : [],
+      solution: row.solution || "",
+      createdAt: row.createdAt
+    }));
+    res.json(questions);
+  } catch (error: any) {
+    console.error("Get Public Questions Error:", error);
+    res.status(500).json({ error: error.message || "获取公共题库失败" });
+  }
+});
+
+// 向公共题库中添加或更新题目 (仅限老师或管理员)
+app.post("/api/public-questions", requireTeacherOrAdmin, (req, res) => {
+  try {
+    const question = req.body;
+    if (!question || !question.id || !question.originalText) {
+      return res.status(400).json({ error: "题目数据不完整" });
+    }
+
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO public_questions (
+        id, originalText, subject, knowledgePoints, solution, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      question.id,
+      question.originalText,
+      question.subject || "其他",
+      question.knowledgePoints ? JSON.stringify(question.knowledgePoints) : "[]",
+      question.solution || "",
+      question.createdAt || Date.now()
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Save Public Question Error:", error);
+    res.status(500).json({ error: error.message || "保存至题库失败" });
+  }
+});
+
+// 从公共题库中删除某道题目 (仅限老师或管理员)
+app.delete("/api/public-questions/:id", requireTeacherOrAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const stmt = db.prepare("DELETE FROM public_questions WHERE id = ?");
+    const result = stmt.run(id);
+    if (result.changes === 0) {
+      return res.status(400).json({ error: "删除失败，题目不存在" });
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Delete Public Question Error:", error);
+    res.status(500).json({ error: error.message || "从题库删除失败" });
   }
 });
 
