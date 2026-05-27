@@ -333,17 +333,19 @@ export default function App() {
             <span>错题库管理</span>
           </button>
 
-          <button
-            onClick={() => setCurrentView('publicLibrary')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              currentView === 'publicLibrary' 
-                ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>公共题库</span>
-          </button>
+          {role !== 'student' && (
+            <button
+              onClick={() => setCurrentView('publicLibrary')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                currentView === 'publicLibrary' 
+                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>公共题库</span>
+            </button>
+          )}
           
           {role === 'admin' && (
             <button
@@ -432,7 +434,7 @@ export default function App() {
                 }} 
               />
             )}
-            {currentView === 'publicLibrary' && (
+            {currentView === 'publicLibrary' && role !== 'student' && (
               <PublicQuestionLibrary 
                 onNavigate={setCurrentView}
                 onGeneratePaper={(selected) => {
@@ -480,11 +482,13 @@ export default function App() {
             active={currentView === 'library'} 
             onClick={() => setCurrentView('library')} 
           />
-          <NavItem 
-            icon={<BookOpen className="w-5 h-5" />} label="公共题库" 
-            active={currentView === 'publicLibrary'} 
-            onClick={() => setCurrentView('publicLibrary')} 
-          />
+          {role !== 'student' && (
+            <NavItem 
+              icon={<BookOpen className="w-5 h-5" />} label="公共题库" 
+              active={currentView === 'publicLibrary'} 
+              onClick={() => setCurrentView('publicLibrary')} 
+            />
+          )}
         </nav>
       </div>
 
