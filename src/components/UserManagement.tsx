@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Edit2, Trash2, X, ShieldAlert, Award, Key } from 'lucide-react';
 
 interface UserItem {
   username: string;
-  role: 'normal' | 'vip' | 'svip' | 'admin';
+  role: 'student' | 'teacher' | 'admin';
   lastAiResetDate: string | null;
   aiUsedToday: number;
   questionCount: number;
@@ -18,7 +18,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editRole, setEditRole] = useState<'normal' | 'vip' | 'svip'>('normal');
+  const [editRole, setEditRole] = useState<'student' | 'teacher'>('student');
   const [editError, setEditError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,15 +60,15 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   }, []);
 
   const getLimitByRole = (role: string) => {
-    if (role === 'vip') return 120;
-    if (role === 'svip') return 5000;
+    if (role === 'teacher') return 5000;
+    if (role === 'admin') return Infinity;
     return 30;
   };
 
   const handleEditClick = (user: UserItem) => {
     setEditingUser(user);
     setEditUsername(user.username);
-    setEditRole((user.role === 'admin' ? 'normal' : user.role) as any);
+    setEditRole((user.role === 'admin' ? 'student' : user.role) as any);
     setEditPassword('');
     setEditError(null);
   };
@@ -192,21 +192,21 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                     <tr key={user.username} className="hover:bg-slate-50/40 transition-colors">
                       <td className="py-4 px-6 font-bold text-slate-900">{user.username}</td>
                       <td className="py-4 px-6">
-                        {user.role === 'vip' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200/50 shadow-sm shadow-amber-500/5">
-                            <Award className="w-3.5 h-3.5 text-amber-500" />
-                            VIP (120次/日)
-                          </span>
-                        )}
-                        {user.role === 'svip' && (
+                        {user.role === 'teacher' && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200/50 shadow-sm shadow-purple-500/5">
                             <Award className="w-3.5 h-3.5 text-purple-500 animate-pulse" />
-                            SVIP (5000次/日)
+                            老师 (5000次/日)
                           </span>
                         )}
-                        {user.role === 'normal' && (
+                        {user.role === 'student' && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                            普通用户 (30次/日)
+                            学生 (只读题库)
+                          </span>
+                        )}
+                        {user.role === 'admin' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200/50 shadow-sm shadow-amber-500/5">
+                            <Award className="w-3.5 h-3.5 text-amber-500" />
+                            管理员
                           </span>
                         )}
                       </td>
@@ -316,9 +316,8 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   onChange={e => setEditRole(e.target.value as any)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all"
                 >
-                  <option value="normal">普通用户 (30次/日)</option>
-                  <option value="vip">VIP 会员 (120次/日)</option>
-                  <option value="svip">SVIP 会员 (5000次/日)</option>
+                  <option value="student">学生 (只读题库, 30次/日)</option>
+                  <option value="teacher">老师 (录入/出题, 5000次/日)</option>
                 </select>
               </div>
 

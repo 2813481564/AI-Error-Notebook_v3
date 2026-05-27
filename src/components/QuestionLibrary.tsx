@@ -14,13 +14,36 @@ export default function QuestionLibrary({
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
   const [filterSubject, setFilterSubject] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [students, setStudents] = useState<string[]>([]);
   
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  const userRole = localStorage.getItem('errorbook_role') || 'student';
+  const isStudent = userRole === 'student';
 
   useEffect(() => {
     loadQuestions();
   }, []);
+
+  useEffect(() => {
+    if (!isStudent) {
+      const token = localStorage.getItem('errorbook_token');
+      fetch('/api/students', {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setStudents(data.map((u: any) => u.username));
+        }
+      })
+      .catch(console.error);
+    }
+  }, [isStudent]);
 
   const loadQuestions = () => {
     db.getAllQuestions().then(data => {
@@ -65,6 +88,7 @@ export default function QuestionLibrary({
   if (selectedQuestion) {
     return <QuestionDetail 
       question={selectedQuestion} 
+      students={students}
       onBack={() => setSelectedQuestion(null)} 
       onDelete={() => handleDelete(selectedQuestion.id)}
       onUpdate={(updated) => {
@@ -77,6 +101,7 @@ export default function QuestionLibrary({
   const subjects = Array.from(new Set(questions.map(q => q.subject)));
   const filtered = questions.filter(q => {
     if (filterSubject !== 'all' && q.subject !== filterSubject) return false;
+    if (!isStudent && filterStatus !== 'all' && q.status !== filterStatus) return false;
     if (search && !q.originalText.includes(search) && !q.knowledgePoints.some(p => p.includes(search))) return false;
     return true;
   });
@@ -89,12 +114,14 @@ export default function QuestionLibrary({
           <h2 className="text-2xl font-black text-slate-950 tracking-tight">错题库管理</h2>
           <p className="text-sm text-slate-500 font-medium">按学科、知识点、错误原因智能归档</p>
         </div>
-        <button 
-          onClick={() => onNavigate('add')} 
-          className="text-xs font-bold text-white bg-blue-600 px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10"
-        >
-           + 录入新错题
-        </button>
+        {!isStudent && (
+          <button 
+            onClick={() => onNavigate('add')} 
+            className="text-xs font-bold text-white bg-blue-600 px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10"
+          >
+             + 录入新错题
+          </button>
+        )}
       </div>
 
       {/* Selected Items floating indicator bar */}
@@ -147,6 +174,17 @@ export default function QuestionLibrary({
            <option value="all">所有学科分类</option>
            {subjects.map(s => <option key={s} value={s}>{s}</option>)}
          </select>
+         {!isStudent && (
+           <select 
+             value={filterStatus}
+             onChange={e => setFilterStatus(e.target.value)}
+             className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
+           >
+             <option value="all">所有审核状态</option>
+             <option value="pending">待审核</option>
+             <option value="audited">已审核通过</option>
+           </select>
+         )}
       </div>
 
       {/* List */}
@@ -163,7 +201,18 @@ export default function QuestionLibrary({
               >
                 <div>
                   <div className="flex items-center justify-between mb-3.5 pr-8">
-                    <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
+                      {!isStudent && (
+                        q.status === 'pending' ? (
+                          <span className="bg-amber-50 text-amber-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-amber-200/50">待审核</span>
+                        ) : (
+                          <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-emerald-200/50">
+                            {q.studentId ? `已推送: ${q.studentId.split('@')[0]}` : '已审核 (未推送)'}
+                          </span>
+                        )
+                      )}
+                    </div>
                     <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {format(new Date(q.createdAt), 'yyyy-MM-dd')}
@@ -183,18 +232,20 @@ export default function QuestionLibrary({
               </button>
 
               {/* Checkbox Overlay */}
-              <div className="absolute right-4 top-4.5 z-10">
-                <input 
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    toggleSelect(q.id);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
-                />
-              </div>
+              {!isStudent && (
+                <div className="absolute right-4 top-4.5 z-10">
+                  <input 
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      toggleSelect(q.id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -213,11 +264,13 @@ export default function QuestionLibrary({
 
 function QuestionDetail({ 
   question, 
+  students,
   onBack, 
   onDelete,
   onUpdate
 }: { 
   question: ErrorQuestion, 
+  students: string[],
   onBack: () => void, 
   onDelete: () => void,
   onUpdate?: (updated: ErrorQuestion) => void
@@ -225,6 +278,28 @@ function QuestionDetail({
   const [similarTabActive, setSimilarTabActive] = useState(false);
   const [similarData, setSimilarData] = useState<{questionText: string, solution: string} | null>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
+  
+  const userRole = localStorage.getItem('errorbook_role') || 'student';
+  const isStudent = userRole === 'student';
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedText, setEditedText] = useState(question.originalText);
+  const [editedSubject, setEditedSubject] = useState(question.subject);
+  const [editedSolution, setEditedSolution] = useState(question.solution);
+  const [editedErrorReason, setEditedErrorReason] = useState(question.errorReason);
+  const [editedKp, setEditedKp] = useState(question.knowledgePoints.join(', '));
+  const [selectedStudent, setSelectedStudent] = useState(question.studentId || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEditedText(question.originalText);
+    setEditedSubject(question.subject);
+    setEditedSolution(question.solution);
+    setEditedErrorReason(question.errorReason);
+    setEditedKp(question.knowledgePoints.join(', '));
+    setSelectedStudent(question.studentId || '');
+    setIsEditing(false);
+  }, [question]);
 
   const generateSimilar = async () => {
     setSimilarTabActive(true);
@@ -270,6 +345,32 @@ function QuestionDetail({
     }
   };
 
+  const handleSaveAndPush = async (newStatus: 'pending' | 'audited') => {
+    setSaving(true);
+    try {
+      const updatedQuestion: ErrorQuestion = {
+        ...question,
+        originalText: editedText,
+        subject: editedSubject,
+        solution: editedSolution,
+        errorReason: editedErrorReason,
+        knowledgePoints: editedKp.split(',').map(s => s.trim()).filter(Boolean),
+        studentId: selectedStudent || undefined,
+        status: newStatus
+      };
+      await db.saveQuestion(updatedQuestion);
+      if (onUpdate) {
+        onUpdate(updatedQuestion);
+      }
+      setIsEditing(false);
+      alert(newStatus === 'audited' ? '审核通过并成功推送给学生！' : '修改保存成功！');
+    } catch (err: any) {
+      alert(err.message || '操作失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto">
       
@@ -278,9 +379,25 @@ function QuestionDetail({
           <ArrowLeft className="w-4 h-4" />
           <span>返回列表</span>
         </button>
-        <button onClick={onDelete} className="text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-colors">
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {!isStudent && (
+            <button 
+              onClick={() => setIsEditing(!isEditing)} 
+              className={`text-xs font-bold px-4 py-2 rounded-xl transition-all border ${
+                isEditing 
+                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {isEditing ? '取消修改' : '编辑与审核推送'}
+            </button>
+          )}
+          {!isStudent && (
+            <button onClick={onDelete} className="text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-colors">
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -295,76 +412,190 @@ function QuestionDetail({
          )}
          
          <div className="p-6 md:p-8 space-y-6">
-            <div>
-               <div className="flex flex-wrap items-center gap-2.5 mb-4">
-                 <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold border border-blue-100">{question.subject}</span>
-                 <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border border-rose-100">
-                    <TargetIcon className="w-3.5 h-3.5" /> 错误原因: {question.errorReason}
-                 </span>
-                 <span className="text-xs text-slate-400 font-semibold ml-auto">{format(new Date(question.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+           {isEditing ? (
+             <div className="space-y-5">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学科分类</label>
+                   <input
+                     type="text"
+                     value={editedSubject}
+                     onChange={e => setEditedSubject(e.target.value)}
+                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                   />
+                 </div>
+                 
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
+                   <select 
+                     value={editedErrorReason} 
+                     onChange={e => setEditedErrorReason(e.target.value)}
+                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                   >
+                     <option value="概念不清">概念不清</option>
+                     <option value="粗心大意">粗心大意</option>
+                     <option value="思路错误">思路错误</option>
+                     <option value="完全不会">完全不会</option>
+                     <option value="其他">其他</option>
+                   </select>
+                 </div>
                </div>
-               <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
-               
-               <div className="mt-4 flex flex-wrap gap-1.5">
-                 {question.knowledgePoints.map(p => (
-                   <span key={p} className="text-xs bg-slate-50 text-slate-705 px-3 py-1 rounded-lg border border-slate-100 font-bold"># {p}</span>
-                 ))}
-               </div>
-            </div>
 
-            <div className="border-t border-slate-100 pt-6">
-              <h4 className="flex items-center gap-2 text-blue-600 font-extrabold mb-4 text-sm">
-                <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
-              </h4>
-              <FormattedMath text={question.solution} className="text-slate-805" />
-            </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">题目完整文本 (LaTeX 数学公式请保持格式)</label>
+                 <textarea
+                   value={editedText}
+                   onChange={e => setEditedText(e.target.value)}
+                   rows={6}
+                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                 />
+               </div>
+
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考查核心知识点 (用英文逗号分隔)</label>
+                 <input
+                   type="text"
+                   value={editedKp}
+                   onChange={e => setEditedKp(e.target.value)}
+                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                   placeholder="如：二次函数, 极值点"
+                 />
+               </div>
+
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">名师精解与步骤引导 (LaTeX 数学公式请保持格式)</label>
+                 <textarea
+                   value={editedSolution}
+                   onChange={e => setEditedSolution(e.target.value)}
+                   rows={8}
+                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                 />
+               </div>
+
+               {/* Push Student Section */}
+               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                 <div>
+                   <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                     <TargetIcon className="w-4 h-4 text-blue-600" /> 指派推送学生 (QQ邮箱)
+                   </h4>
+                   <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">推送后，指定学生在登录其账号时将看到此已审核通过的错题。</p>
+                 </div>
+                 <select
+                   value={selectedStudent}
+                   onChange={e => setSelectedStudent(e.target.value)}
+                   className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
+                 >
+                   <option value="">-- 请选择接收该错题的学生 (QQ邮箱) --</option>
+                   {students.map(s => (
+                     <option key={s} value={s}>{s}</option>
+                   ))}
+                 </select>
+                 
+                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                   <button
+                     onClick={() => handleSaveAndPush('audited')}
+                     disabled={saving || !selectedStudent}
+                     className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                   >
+                     {saving ? '正在提交...' : '审核通过并推送'}
+                   </button>
+                   <button
+                     onClick={() => handleSaveAndPush('pending')}
+                     disabled={saving}
+                     className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
+                   >
+                     仅保存修改
+                   </button>
+                 </div>
+               </div>
+             </div>
+           ) : (
+             <>
+               <div>
+                  <div className="flex flex-wrap items-center gap-2.5 mb-4">
+                    <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold border border-blue-100">{question.subject}</span>
+                    <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border border-rose-100">
+                       <TargetIcon className="w-3.5 h-3.5" /> 错误原因: {question.errorReason}
+                    </span>
+                    {!isStudent && (
+                      question.status === 'pending' ? (
+                        <span className="bg-amber-50 text-amber-700 px-3 py-1 rounded-xl text-xs font-bold border border-amber-100 animate-pulse">待审核推送</span>
+                      ) : (
+                        <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold border border-emerald-100">
+                          已推送: {question.studentId || '系统'}
+                        </span>
+                      )
+                    )}
+                    <span className="text-xs text-slate-400 font-semibold ml-auto">{format(new Date(question.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+                  </div>
+                  <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
+                  
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {question.knowledgePoints.map(p => (
+                      <span key={p} className="text-xs bg-slate-50 text-slate-705 px-3 py-1 rounded-lg border border-slate-100 font-bold"># {p}</span>
+                    ))}
+                  </div>
+               </div>
+ 
+               <div className="border-t border-slate-100 pt-6">
+                 <h4 className="flex items-center gap-2 text-blue-600 font-extrabold mb-4 text-sm">
+                   <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
+                 </h4>
+                 <FormattedMath text={question.solution} className="text-slate-805" />
+               </div>
+             </>
+           )}
          </div>
       </div>
 
       {/* Action / Tabs */}
-      <div className="flex gap-2 p-1 bg-slate-200/50 rounded-2xl">
-        <button 
-           onClick={() => setSimilarTabActive(false)}
-           className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all ${!similarTabActive ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-        >
-          原题精解回顾
-        </button>
-        <button 
-           onClick={generateSimilar}
-           className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all flex justify-center items-center gap-2 ${similarTabActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/10' : 'text-slate-500 hover:text-slate-900'}`}
-        >
-          <BrainCircuitIcon className="w-4 h-4" /> 关联考点同类题推荐
-        </button>
-      </div>
+      {!isStudent && !isEditing && (
+        <>
+          <div className="flex gap-2 p-1 bg-slate-200/50 rounded-2xl">
+            <button 
+               onClick={() => setSimilarTabActive(false)}
+               className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all ${!similarTabActive ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+            >
+              原题精解回顾
+            </button>
+            <button 
+               onClick={generateSimilar}
+               className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all flex justify-center items-center gap-2 ${similarTabActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/10' : 'text-slate-500 hover:text-slate-900'}`}
+            >
+              <BrainCircuitIcon className="w-4 h-4" /> 关联考点同类题推荐
+            </button>
+          </div>
 
-      {/* Similar Question Area */}
-      {similarTabActive && (
-        <div className="bg-white border-2 border-blue-100 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-2 fade-in shadow-sm">
-           {generating ? (
-             <div className="py-12 flex flex-col items-center justify-center space-y-4">
-               <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-               <p className="text-slate-600 font-bold tracking-wide animate-pulse">AI 正在深度关联题库，为您生成相似巩固练习题...</p>
-             </div>
-           ) : similarData ? (
-             <div className="space-y-6">
-                <div className="flex items-center gap-2 text-blue-800 font-bold mb-4">
-                  <span className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center text-xs">练</span>
-                  <h4 className="text-sm font-extrabold">高频错点相似强化训练题</h4>
-                </div>
-                <FormattedMath text={similarData.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
-                
-                <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/50">
-                  <summary className="cursor-pointer bg-slate-55 p-4 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs">
-                    精编解答步骤与知识梳理 (点击展开)
-                    <ChevronRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
-                  </summary>
-                  <div className="p-4 bg-white">
-                    <FormattedMath text={similarData.solution} className="text-slate-800" />
-                  </div>
-                </details>
-             </div>
-           ) : null}
-        </div>
+          {/* Similar Question Area */}
+          {similarTabActive && (
+            <div className="bg-white border-2 border-blue-100 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-2 fade-in shadow-sm">
+               {generating ? (
+                 <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                   <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                   <p className="text-slate-600 font-bold tracking-wide animate-pulse">AI 正在深度关联题库，为您生成相似巩固练习题...</p>
+                 </div>
+               ) : similarData ? (
+                 <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-blue-800 font-bold mb-4">
+                      <span className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center text-xs">练</span>
+                      <h4 className="text-sm font-extrabold">高频错点相似强化训练题</h4>
+                    </div>
+                    <FormattedMath text={similarData.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
+                    
+                    <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/50">
+                      <summary className="cursor-pointer bg-slate-55 p-4 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs">
+                        精编解答步骤与知识梳理 (点击展开)
+                        <ChevronRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
+                      </summary>
+                      <div className="p-4 bg-white">
+                        <FormattedMath text={similarData.solution} className="text-slate-805" />
+                      </div>
+                    </details>
+                 </div>
+               ) : null}
+            </div>
+          )}
+        </>
       )}
 
     </div>

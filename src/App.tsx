@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import React, { useState, ReactNode } from 'react';
 import { Camera, Database, Home, HelpCircle, HardDrive, Users } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
@@ -20,8 +20,49 @@ export default function App() {
   const [isRegister, setIsRegister] = useState(false);
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [sendingCode, setSendingCode] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  const handleSendCode = async () => {
+    if (!authUsername.trim()) {
+      setAuthError('请输入邮箱');
+      return;
+    }
+    const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
+    if (!qqEmailRegex.test(authUsername.trim())) {
+      setAuthError('注册账号必须为有效的 QQ 邮箱（如: 123456@qq.com）');
+      return;
+    }
+
+    setSendingCode(true);
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authUsername.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '验证码发送失败');
+      
+      setCountdown(60);
+      alert(data.message || '验证码发送成功');
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setSendingCode(false);
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +70,15 @@ export default function App() {
       setAuthError('用户名和密码不能为空');
       return;
     }
-    if (isRegister && authPassword.length < 6) {
-      setAuthError('注册密码长度不能少于 6 位');
-      return;
+    if (isRegister) {
+      if (authPassword.length < 6) {
+        setAuthError('注册密码长度不能少于 6 位');
+        return;
+      }
+      if (!verificationCode.trim()) {
+        setAuthError('请输入验证码');
+        return;
+      }
     }
     setAuthLoading(true);
     setAuthError(null);
@@ -40,7 +87,11 @@ export default function App() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: authUsername.trim(), password: authPassword.trim() })
+        body: JSON.stringify({ 
+          username: authUsername.trim(), 
+          password: authPassword.trim(),
+          code: isRegister ? verificationCode.trim() : undefined
+        })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -48,12 +99,13 @@ export default function App() {
       }
       localStorage.setItem('errorbook_token', data.token);
       localStorage.setItem('errorbook_username', data.username);
-      localStorage.setItem('errorbook_role', data.role || 'normal');
+      localStorage.setItem('errorbook_role', data.role || 'student');
       setToken(data.token);
       setUsername(data.username);
-      setRole(data.role || 'normal');
+      setRole(data.role || 'student');
       setAuthUsername('');
       setAuthPassword('');
+      setVerificationCode('');
     } catch (err: any) {
       setAuthError(err.message);
     } finally {
@@ -110,10 +162,10 @@ export default function App() {
             )}
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">用户名 / 账号</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">QQ 邮箱 / 账号</label>
               <input 
                 type="text"
-                placeholder="请输入用户名"
+                placeholder="请输入 QQ 邮箱（例如: 123456@qq.com）"
                 value={authUsername}
                 onChange={e => setAuthUsername(e.target.value)}
                 className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
@@ -135,6 +187,31 @@ export default function App() {
                 <p className="text-[10px] text-slate-400 font-medium pl-1">注册密码长度须在 6 位及以上</p>
               )}
             </div>
+
+            {isRegister && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">邮箱验证码</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text"
+                    placeholder="请输入 6 位验证码"
+                    value={verificationCode}
+                    onChange={e => setVerificationCode(e.target.value)}
+                    className="flex-1 p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    maxLength={6}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={sendingCode || countdown > 0}
+                    className="px-4 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer select-none"
+                  >
+                    {sendingCode ? '正在发送...' : countdown > 0 ? `${countdown}s 后重新获取` : '获取验证码'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button 
               type="submit"
@@ -192,17 +269,20 @@ export default function App() {
             <span>首页统计</span>
           </button>
           
-          <button
-            onClick={() => setCurrentView('add')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              currentView === 'add' 
-                ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            <Camera className="w-4 h-4" />
-            <span>拍照录题</span>
-          </button>
+          {role !== 'student' && (
+            <button
+              onClick={() => setCurrentView('add')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                currentView === 'add' 
+                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <Camera className="w-4 h-4" />
+              <span>拍照录题</span>
+            </button>
+          )}
+          
           <button
             onClick={() => setCurrentView('library')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -215,7 +295,7 @@ export default function App() {
             <span>错题库管理</span>
           </button>
           
-          {username === 'admin' && (
+          {role === 'admin' && (
             <button
               onClick={() => setCurrentView('users')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -318,13 +398,13 @@ export default function App() {
             active={currentView === 'dashboard'} 
             onClick={() => setCurrentView('dashboard')} 
           />
-          {username === 'admin' ? (
+          {role === 'admin' ? (
             <NavItem 
               icon={<Users className="w-5 h-5" />} label="用户管理" 
               active={currentView === 'users'} 
               onClick={() => setCurrentView('users')} 
             />
-          ) : (
+          ) : role !== 'student' ? (
             <div className="relative -top-5">
               <button 
                 onClick={() => setCurrentView('add')}
@@ -333,7 +413,7 @@ export default function App() {
                  <Camera className="w-6 h-6" />
               </button>
             </div>
-          )}
+          ) : null}
           <NavItem 
             icon={<Database className="w-5 h-5" />} label="错题库" 
             active={currentView === 'library'} 

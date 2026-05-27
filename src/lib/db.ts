@@ -13,6 +13,8 @@ export interface ErrorQuestion {
   solution: string;
   createdAt: number;
   similarQuestion?: SimilarQuestion;
+  studentId?: string;
+  status?: 'pending' | 'audited';
 }
 
 export interface Stats {

@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -15,12 +16,23 @@ const PORT = 3005;
 const db = new Database(path.join(process.cwd(), "questions.db"));
 db.pragma("journal_mode = WAL");
 
+// 配置 SMTP 发送服务
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.qq.com",
+  port: parseInt(process.env.SMTP_PORT || "465"),
+  secure: parseInt(process.env.SMTP_PORT || "465") === 465,
+  auth: {
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || ""
+  }
+});
+
 // 初始化表结构
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'normal',
+    role TEXT NOT NULL DEFAULT 'student',
     lastAiResetDate TEXT,
     aiUsedToday INTEGER NOT NULL DEFAULT 0
   );
@@ -31,9 +43,17 @@ db.exec(`
     createdAt INTEGER NOT NULL
   );
   
+  CREATE TABLE IF NOT EXISTS verification_codes (
+    email TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  
   CREATE TABLE IF NOT EXISTS questions (
     id TEXT PRIMARY KEY,
     userId TEXT NOT NULL,
+    studentId TEXT,
+    status TEXT DEFAULT 'pending',
     imageUrl TEXT,
     originalText TEXT NOT NULL,
     subject TEXT NOT NULL,
@@ -61,14 +81,41 @@ try {
   console.error("questions 数据库迁移检查失败:", err);
 }
 
+// 数据库迁移逻辑：检测 questions 表是否缺少 studentId 和 status 字段
+try {
+  const tableInfo = db.pragma("table_info(questions)") as any[];
+  const hasStudentId = tableInfo.some(col => col.name === 'studentId');
+  if (!hasStudentId) {
+    console.log("正在升级 questions 表以支持学生分配字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN studentId TEXT");
+  }
+  const hasStatus = tableInfo.some(col => col.name === 'status');
+  if (!hasStatus) {
+    db.exec("ALTER TABLE questions ADD COLUMN status TEXT DEFAULT 'pending'");
+  }
+  db.exec("UPDATE questions SET status = 'audited' WHERE status IS NULL");
+} catch (err) {
+  console.error("questions 新字段迁移检查失败:", err);
+}
+
 // 数据库迁移逻辑：检测 users 表是否缺少多用户管理和限流字段
 try {
   const tableInfo = db.pragma("table_info(users)") as any[];
   const hasRole = tableInfo.some(col => col.name === 'role');
   if (!hasRole) {
     console.log("检测到旧版数据库结构，正在升级 users 表以支持多用户等级与限流...");
-    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'normal'");
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'");
   }
+  
+  // 迁移普通用户为学生角色，VIP/SVIP 迁移为老师角色
+  try {
+    db.exec("UPDATE users SET role = 'student' WHERE role = 'normal'");
+    db.exec("UPDATE users SET role = 'teacher' WHERE role IN ('vip', 'svip')");
+    console.log("用户角色成功升级迁移 (normal->student, vip/svip->teacher)！");
+  } catch (migrateErr) {
+    console.error("角色迁移升级失败:", migrateErr);
+  }
+
   const hasResetDate = tableInfo.some(col => col.name === 'lastAiResetDate');
   if (!hasResetDate) {
     db.exec("ALTER TABLE users ADD COLUMN lastAiResetDate TEXT");
@@ -160,8 +207,7 @@ const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, next: ex
     }
 
     let limit = 30;
-    if (user.role === 'vip') limit = 120;
-    else if (user.role === 'svip') limit = 5000;
+    if (user.role === 'teacher') limit = 5000;
     else if (user.role === 'admin') limit = Infinity;
 
     if (used >= limit) {
@@ -180,10 +226,15 @@ const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, next: ex
 // 管理员专用中间件
 const requireAdmin = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
   requireAuth(req, res, () => {
-    if (req.userId !== 'admin') {
-      return res.status(403).json({ error: "权限不足，只有系统管理员方可访问此资源" });
+    try {
+      const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "权限不足，只有系统管理员方可访问此资源" });
+      }
+      next();
+    } catch (err) {
+      return res.status(500).json({ error: "服务器内部鉴权错误" });
     }
-    next();
   });
 };
 
@@ -304,8 +355,14 @@ async function generateContentWithFallback(params: {
 }
 
 // API Route for analyzing an image
-app.post("/api/analyze", requireAuth, checkAiLimit, async (req, res) => {
+app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedRequest, res) => {
   try {
+    // 检查角色权限：学生无法使用 AI 功能
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
+    }
+
     const { imageBase64, mimeType } = req.body;
     if (!imageBase64) {
        return res.status(400).json({ error: "Missing imageBase64" });
@@ -372,8 +429,14 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req, res) => {
 });
 
 // API Route for generating similar questions
-app.post("/api/similar", requireAuth, checkAiLimit, async (req, res) => {
+app.post("/api/similar", requireAuth, checkAiLimit, async (req: AuthenticatedRequest, res) => {
   try {
+    // 检查角色权限：学生无法使用 AI 推荐同类题
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法生成同类题" });
+    }
+
     const { originalText, subject, knowledgePoints } = req.body;
     
     const prompt = `
@@ -422,8 +485,14 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req, res) => {
 });
 
 // 批量生成试卷题目变式
-app.post("/api/paper/variants", requireAuth, checkAiLimit, async (req, res) => {
+app.post("/api/paper/variants", requireAuth, checkAiLimit, async (req: AuthenticatedRequest, res) => {
   try {
+    // 检查角色权限：学生无法使用 AI 变式功能
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法生成试卷变式" });
+    }
+
     const { questions } = req.body;
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ error: "组卷题目数据不能为空" });
@@ -492,12 +561,80 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
   }
 });
 
+// 发送验证码接口
+app.post("/api/auth/send-code", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "邮箱不能为空" });
+    }
+    
+    // 校验是否为合法 QQ 邮箱
+    const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
+    if (!qqEmailRegex.test(email)) {
+      return res.status(400).json({ error: "仅支持使用 QQ 邮箱注册" });
+    }
+
+    // 检查邮箱是否已被注册
+    const userExist = db.prepare("SELECT username FROM users WHERE username = ?").get(email);
+    if (userExist) {
+      return res.status(400).json({ error: "该邮箱已被注册，请直接登录" });
+    }
+
+    // 生成 6 位随机验证码
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const createdAt = Date.now();
+
+    // 插入或更新验证码记录
+    db.prepare(`
+      INSERT OR REPLACE INTO verification_codes (email, code, createdAt)
+      VALUES (?, ?, ?)
+    `).run(email, code, createdAt);
+
+    // 检查环境变量是否配置了邮箱服务
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS || process.env.SMTP_PASS === "your-smtp-auth-code") {
+      console.log(`[开发测试模式] 验证码发送至: ${email}，验证码为: ${code}`);
+      return res.json({ 
+        success: true, 
+        message: "验证码已生成（开发测试模式，验证码已打印在控制台）",
+        devCode: code
+      });
+    }
+
+    // 邮件内容
+    const mailOptions = {
+      from: `"智能错题识别系统" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: "【智能错题识别】注册验证码",
+      html: `
+        <div style="padding: 24px; font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 12px;">
+          <h2 style="color: #2563eb; font-size: 20px; font-weight: bold; margin-bottom: 16px;">智能错题识别系统</h2>
+          <p style="font-size: 14px; line-height: 1.6; color: #555;">您好，您正在使用 QQ 邮箱注册智能错题识别账号。</p>
+          <p style="font-size: 14px; line-height: 1.6; color: #555;">您的注册验证码为：</p>
+          <div style="background-color: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 24px; font-weight: 800; color: #1e293b; letter-spacing: 4px;">${code}</span>
+          </div>
+          <p style="font-size: 12px; color: #9ca3af; margin-top: 24px; border-top: 1px solid #f3f4f6; padding-top: 16px;">
+            提示：此验证码有效时间为 10 分钟。如果不是您本人的操作，请忽略此邮件。
+          </p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "验证码已发送至您的 QQ 邮箱" });
+  } catch (error: any) {
+    console.error("Send Code Error:", error);
+    res.status(500).json({ error: error.message || "验证码发送失败，请稍后重试" });
+  }
+});
+
 // 用户注册
 app.post("/api/auth/register", (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password || username.trim() === "" || password.trim() === "") {
-      return res.status(400).json({ error: "用户名或密码不能为空" });
+    const { username, password, code } = req.body;
+    if (!username || !password || !code || username.trim() === "" || password.trim() === "" || code.trim() === "") {
+      return res.status(400).json({ error: "邮箱、密码和验证码均不能为空" });
     }
     const cleanUsername = username.trim();
     if (cleanUsername.length < 2) {
@@ -507,20 +644,43 @@ app.post("/api/auth/register", (req, res) => {
       return res.status(400).json({ error: "密码长度不能少于 6 位" });
     }
     
+    // 限制只能通过 QQ 邮箱注册
+    const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
+    if (!qqEmailRegex.test(cleanUsername)) {
+      return res.status(400).json({ error: "注册账号必须为有效的 QQ 邮箱（如: 123456@qq.com）" });
+    }
+    
+    // 校验验证码
+    const codeRecord = db.prepare("SELECT code, createdAt FROM verification_codes WHERE email = ?").get(cleanUsername) as { code: string, createdAt: number } | undefined;
+    if (!codeRecord) {
+      return res.status(400).json({ error: "尚未获取验证码或验证码已失效" });
+    }
+
+    if (codeRecord.code !== code.trim()) {
+      return res.status(400).json({ error: "验证码错误，请重新输入" });
+    }
+
+    if (Date.now() - codeRecord.createdAt > 10 * 60 * 1000) {
+      return res.status(400).json({ error: "验证码已过期，请重新获取" });
+    }
+
+    // 验证成功，删除验证码记录
+    db.prepare("DELETE FROM verification_codes WHERE email = ?").run(cleanUsername);
+
     const checkStmt = db.prepare("SELECT username FROM users WHERE username = ?");
     if (checkStmt.get(cleanUsername)) {
       return res.status(400).json({ error: "该用户名已被注册" });
     }
     
     const hashedPassword = hashPassword(password);
-    const insertUser = db.prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+    const insertUser = db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'student')");
     insertUser.run(cleanUsername, hashedPassword);
     
     const token = crypto.randomUUID();
     const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
     insertSession.run(token, cleanUsername, Date.now());
     
-    res.json({ token, username: cleanUsername, role: 'normal' });
+    res.json({ token, username: cleanUsername, role: 'student' });
   } catch (error: any) {
     console.error("Register Error:", error);
     res.status(500).json({ error: error.message || "注册失败" });
@@ -610,7 +770,7 @@ app.put("/api/admin/users/:username", requireAdmin, (req, res) => {
       return res.status(400).json({ error: "用户名长度不能少于 2 位" });
     }
 
-    if (role && !['normal', 'vip', 'svip', 'admin'].includes(role)) {
+    if (role && !['student', 'teacher', 'admin'].includes(role)) {
       return res.status(400).json({ error: "非法的用户角色等级" });
     }
 
@@ -669,14 +829,40 @@ app.delete("/api/admin/users/:username", requireAdmin, (req, res) => {
   }
 });
 
-// 获取当前用户的全部错题
+// 获取所有学生列表 (仅 admin 和 teacher 可访问，用于指派推送)
+app.get("/api/students", requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || (user.role !== 'admin' && user.role !== 'teacher')) {
+      return res.status(403).json({ error: "权限不足，仅老师或管理员可查看学生列表" });
+    }
+    const stmt = db.prepare("SELECT username FROM users WHERE role = 'student' ORDER BY username ASC");
+    const students = stmt.all();
+    res.json(students);
+  } catch (error: any) {
+    console.error("Get Students Error:", error);
+    res.status(500).json({ error: error.message || "获取学生列表失败" });
+  }
+});
+
+// 获取错题 (学生只能查看指派给自己的已审核错题，老师/管理员查看全部)
 app.get("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
   try {
-    const stmt = db.prepare("SELECT * FROM questions WHERE userId = ? ORDER BY createdAt DESC");
-    const rows = stmt.all(req.userId) as any[];
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    let rows: any[];
+    if (user?.role === 'student') {
+      const stmt = db.prepare("SELECT * FROM questions WHERE studentId = ? AND status = 'audited' ORDER BY createdAt DESC");
+      rows = stmt.all(req.userId) as any[];
+    } else {
+      const stmt = db.prepare("SELECT * FROM questions ORDER BY createdAt DESC");
+      rows = stmt.all() as any[];
+    }
     
     const questions = rows.map(row => ({
       id: row.id,
+      userId: row.userId,
+      studentId: row.studentId || undefined,
+      status: row.status || 'pending',
       imageUrl: row.imageUrl || undefined,
       originalText: row.originalText,
       subject: row.subject,
@@ -701,22 +887,34 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
     if (!question || !question.id || !question.originalText) {
       return res.status(400).json({ error: "错题数据不完整" });
     }
+
+    // 检查角色权限：学生无法录错题
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法录入或编辑错题" });
+    }
     
-    const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
-    const existing = checkStmt.get(question.id) as { userId: string } | undefined;
-    if (existing && existing.userId !== req.userId) {
+    const checkStmt = db.prepare("SELECT userId, studentId, status FROM questions WHERE id = ?");
+    const existing = checkStmt.get(question.id) as { userId: string, studentId: string | null, status: string } | undefined;
+    if (existing && existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
       return res.status(403).json({ error: "您没有权限修改该错题" });
     }
+
+    const targetUserId = existing ? existing.userId : req.userId;
+    const targetStudentId = question.studentId !== undefined ? question.studentId : (existing ? existing.studentId : null);
+    const targetStatus = question.status !== undefined ? question.status : (existing ? existing.status : 'pending');
     
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     stmt.run(
       question.id,
-      req.userId,
+      targetUserId,
+      targetStudentId,
+      targetStatus,
       question.imageUrl || null,
       question.originalText,
       question.subject || "其他",
@@ -738,18 +936,24 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
 app.delete("/api/questions/:id", requireAuth, (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+
+    // 检查角色权限：学生无法删除错题
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法删除错题" });
+    }
     
     const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
     const existing = checkStmt.get(id) as { userId: string } | undefined;
     if (!existing) {
       return res.status(404).json({ error: "错题不存在" });
     }
-    if (existing.userId !== req.userId) {
+    if (existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
       return res.status(403).json({ error: "您没有权限删除该错题" });
     }
     
-    const stmt = db.prepare("DELETE FROM questions WHERE id = ? AND userId = ?");
-    const result = stmt.run(id, req.userId);
+    const stmt = db.prepare("DELETE FROM questions WHERE id = ?");
+    const result = stmt.run(id);
     
     if (result.changes === 0) {
       return res.status(400).json({ error: "删除失败" });

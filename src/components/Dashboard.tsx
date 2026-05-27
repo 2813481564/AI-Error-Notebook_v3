@@ -5,6 +5,9 @@ import { Target, BookOpen, BrainCircuit, Sparkles } from 'lucide-react';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
+  
+  const userRole = localStorage.getItem('errorbook_role') || 'student';
+  const isStudent = userRole === 'student';
 
   useEffect(() => {
     db.getAllQuestions().then(setQuestions).catch(console.error);
@@ -109,13 +112,17 @@ export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void
           <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-center">
             <BrainCircuit className="w-12 h-12 text-slate-200 mb-3" />
             <p className="font-medium">暂无错题数据记录</p>
-            <p className="text-xs mt-1 text-slate-400">一键「拍照录题」后，AI 将自动分析提取周报</p>
-            <button 
-              onClick={() => onNavigate('add')}
-              className="mt-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition"
-            >
-              拍照录入首道错题
-            </button>
+            <p className="text-xs mt-1 text-slate-400">
+              {isStudent ? '请等待老师在错题库中录入错题' : '一键「拍照录题」后，AI 将自动分析提取周报'}
+            </p>
+            {!isStudent && (
+              <button 
+                onClick={() => onNavigate('add')}
+                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition"
+              >
+                拍照录入首道错题
+              </button>
+            )}
           </div>
         )}
       </div>
