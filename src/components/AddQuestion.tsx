@@ -9,8 +9,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [parsedData, setParsedData] = useState<Partial<ErrorQuestion> | null>(null);
-  const [errorReason, setErrorReason] = useState('概念不清');
+  const [parsedData, setParsedData] = useState<ErrorQuestion[] | null>(null);
+  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
+  const [errorReasons, setErrorReasons] = useState<Record<number, string>>({});
+  const [expandedSolutions, setExpandedSolutions] = useState<Record<number, boolean>>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +54,25 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '分析失败');
       
-      setParsedData(data);
+      if (Array.isArray(data)) {
+        setParsedData(data);
+        setSelectedIndexes(new Set(data.map((_, i) => i)));
+        
+        const reasons: Record<number, string> = {};
+        const expanded: Record<number, boolean> = {};
+        data.forEach((_, i) => {
+          reasons[i] = '概念不清';
+          expanded[i] = i === 0; // Expand first by default
+        });
+        setErrorReasons(reasons);
+        setExpandedSolutions(expanded);
+      } else {
+        const arrayData = [data as any];
+        setParsedData(arrayData);
+        setSelectedIndexes(new Set([0]));
+        setErrorReasons({ 0: '概念不清' });
+        setExpandedSolutions({ 0: true });
+      }
     } catch (err: any) {
        setError(err.message);
     } finally {
@@ -60,22 +80,58 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     }
   };
 
+  const toggleSelectedIndex = (idx: number) => {
+    const next = new Set(selectedIndexes);
+    if (next.has(idx)) {
+      next.delete(idx);
+    } else {
+      next.add(idx);
+    }
+    setSelectedIndexes(next);
+  };
+
+  const updateErrorReason = (idx: number, val: string) => {
+    setErrorReasons(prev => ({ ...prev, [idx]: val }));
+  };
+
+  const toggleSolutionExpanded = (idx: number) => {
+    setExpandedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
   const handleSave = async () => {
-    if (!parsedData || !parsedData.originalText) return;
+    if (!parsedData || parsedData.length === 0) return;
+    if (selectedIndexes.size === 0) {
+      alert('请选择至少一道题目进行保存归档！');
+      return;
+    }
     
-    const question: ErrorQuestion = {
-      id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
-      imageUrl: imageStr || undefined,
-      originalText: parsedData.originalText,
-      subject: parsedData.subject || '其他',
-      knowledgePoints: parsedData.knowledgePoints || [],
-      errorReason,
-      solution: parsedData.solution || '',
-      createdAt: Date.now()
-    };
-    
-    await db.saveQuestion(question);
-    onNavigate('library');
+    try {
+      const selectedQuestions = parsedData.filter((_, idx) => selectedIndexes.has(idx));
+      
+      for (const item of selectedQuestions) {
+        const itemIdx = parsedData.indexOf(item);
+        const reason = errorReasons[itemIdx] || '概念不清';
+        
+        const question: ErrorQuestion = {
+          id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
+          imageUrl: imageStr || undefined,
+          originalText: item.originalText,
+          subject: item.subject || '其他',
+          knowledgePoints: item.knowledgePoints || [],
+          errorReason: reason,
+          solution: item.solution || '',
+          createdAt: Date.now(),
+          studentAnswer: item.studentAnswer || '',
+          errorDiagnosis: item.errorDiagnosis || []
+        };
+        
+        await db.saveQuestion(question);
+      }
+      
+      onNavigate('library');
+    } catch (err: any) {
+      setError(err.message || '保存错题失败，请重试');
+    }
   };
 
   return (
@@ -142,54 +198,145 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           {analyzing && (
             <div className="bg-white p-8 rounded-2xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-               <p className="text-slate-700 font-semibold tracking-wide animate-pulse">AI 正在深度分析题目...</p>
+               <p className="text-slate-700 font-semibold tracking-wide animate-pulse">AI 正在进行试卷自动分题与多步深度解析批改...</p>
             </div>
           )}
 
           {parsedData && (
-             <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-6 shadow-sm">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                     <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold border border-blue-100">{parsedData.subject}</span>
-                     <span className="text-xs text-slate-400 font-semibold">AI 高精度识别题目</span>
-                  </div>
-                  <FormattedMath text={parsedData.originalText} className="text-slate-900 font-bold" />
+             <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex items-center justify-between shadow-sm">
+                  <span className="text-xs font-bold text-blue-900">
+                    AI 成功在试卷中识别到 {parsedData.length} 道题目
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    勾选需要归档的题目即可批量保存
+                  </span>
                 </div>
 
-                <div className="pt-5 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">核心考查知识点</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {parsedData.knowledgePoints?.map((p, i) => (
-                      <span key={i} className="text-xs bg-slate-50 text-slate-700 px-3 py-1 rounded-xl border border-slate-100 font-bold">{p}</span>
-                    ))}
-                  </div>
-                </div>
+                {parsedData.map((q, idx) => {
+                  const isSelected = selectedIndexes.has(idx);
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`bg-white rounded-3xl border p-6 md:p-8 space-y-6 shadow-sm transition-all duration-300 ${
+                        isSelected ? 'border-slate-200' : 'border-slate-100 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleSelectedIndex(idx)}
+                            className="w-5 h-5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="text-sm font-black text-slate-900">题目 #{idx + 1}</span>
+                        </div>
+                        <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold border border-blue-100">
+                          {q.subject}
+                        </span>
+                      </div>
 
-                <div className="pt-5 border-t border-slate-100">
-                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">1对1 精解解析步骤</h4>
-                   <FormattedMath text={parsedData.solution} className="text-slate-800" />
-                </div>
-                
-                <div className="pt-5 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">本次作答分类 & 错误原因</h4>
-                  <select 
-                    value={errorReason} 
-                    onChange={e => setErrorReason(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800"
-                  >
-                    <option value="概念不清">概念不清</option>
-                    <option value="粗心大意">粗心大意</option>
-                    <option value="思路错误">思路错误</option>
-                    <option value="完全不会">完全不会</option>
-                    <option value="其他">其他</option>
-                  </select>
-                </div>
+                      {/* Question Text */}
+                      <div className="space-y-2">
+                        <FormattedMath text={q.originalText} className="text-slate-900 font-bold" />
+                      </div>
+
+                      {/* Knowledge Points */}
+                      {q.knowledgePoints && q.knowledgePoints.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {q.knowledgePoints.map((p, pIdx) => (
+                            <span key={pIdx} className="text-[10px] bg-slate-50 text-slate-500 px-2.5 py-1 rounded-xl border border-slate-100 font-bold">
+                              # {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Solution */}
+                      {q.solution && (
+                        <div className="pt-4 border-t border-slate-100">
+                          <button
+                            onClick={() => toggleSolutionExpanded(idx)}
+                            className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition outline-none"
+                          >
+                            <span>{expandedSolutions[idx] ? '▼ 收起本题名师精解' : '▶ 展开本题名师精解'}</span>
+                          </button>
+                          {expandedSolutions[idx] && (
+                            <div className="mt-3 p-4 bg-slate-50/50 border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-800">
+                              <FormattedMath text={q.solution} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Step diagnosis specific to this question */}
+                      {q.errorDiagnosis && q.errorDiagnosis.length > 0 && (
+                        <div className="pt-4 border-t border-slate-100 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            <span>📝</span> 本题手写作答 AI 步骤诊断批改
+                          </h4>
+                          <div className="grid grid-cols-1 gap-3">
+                            {q.errorDiagnosis.map((step: any) => {
+                              let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                              let statusIcon = "✅";
+                              let statusText = "正确";
+                              
+                              if (step.status === 'incorrect') {
+                                statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                                statusIcon = "❌";
+                                statusText = "首次出现错误";
+                              } else if (step.status === 'consequential_error') {
+                                statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                                statusIcon = "⚠️";
+                                statusText = "受前面错误波及";
+                              }
+
+                              return (
+                                <div key={step.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1`}>
+                                  <div className="flex items-center justify-between text-xs font-extrabold">
+                                    <span>步骤 {step.stepNumber} {statusIcon}</span>
+                                    <span>{statusText}</span>
+                                  </div>
+                                  <div className="text-sm font-semibold leading-relaxed">
+                                    <FormattedMath text={step.stepContent} />
+                                  </div>
+                                  {step.comment && (
+                                    <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                      诊断说明：{step.comment}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Individual Error Reason Selection */}
+                      <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                        <label className="text-xs font-bold text-slate-450 whitespace-nowrap">归档错误原因：</label>
+                        <select 
+                          value={errorReasons[idx] || '概念不清'} 
+                          onChange={e => updateErrorReason(idx, e.target.value)}
+                          className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-xs font-bold text-slate-700"
+                        >
+                          <option value="概念不清">概念不清</option>
+                          <option value="粗心大意">粗心大意</option>
+                          <option value="思路错误">思路错误</option>
+                          <option value="完全不会">完全不会</option>
+                          <option value="其他">其他</option>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
 
                 <button 
                   onClick={handleSave}
-                  className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-slate-950 transition-colors shadow-lg shadow-slate-900/10 text-sm"
+                  className="w-full bg-slate-900 hover:bg-slate-950 text-white py-4.5 rounded-2xl font-bold transition shadow-lg shadow-slate-900/10 text-sm"
                 >
-                  保存并归档错题
+                  保存并批量归档选中的错题 ({selectedIndexes.size} 道)
                 </button>
              </div>
           )}

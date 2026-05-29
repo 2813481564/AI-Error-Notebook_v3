@@ -3,6 +3,13 @@ export interface SimilarQuestion {
   solution: string;
 }
 
+export interface DiagnosisStep {
+  stepNumber: number;
+  stepContent: string;
+  status: 'correct' | 'incorrect' | 'consequential_error';
+  comment?: string;
+}
+
 export interface ErrorQuestion {
   id: string;
   imageUrl?: string;
@@ -15,6 +22,8 @@ export interface ErrorQuestion {
   similarQuestion?: SimilarQuestion;
   studentId?: string;
   status?: 'pending' | 'audited';
+  studentAnswer?: string;
+  errorDiagnosis?: DiagnosisStep[];
 }
 
 export interface Stats {

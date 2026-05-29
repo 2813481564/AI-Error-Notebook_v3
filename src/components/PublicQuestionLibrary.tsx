@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
 import { Search, BookOpen, Clock, Trash2, CheckSquare, Square, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
@@ -77,7 +77,7 @@ export default function PublicQuestionLibrary({
     if (!confirm(`确定要从公共题库中批量删除选中的 ${selectedIds.size} 道题吗？`)) return;
     setLoading(true);
     try {
-      const idsToDelete = Array.from(selectedIds);
+      const idsToDelete = Array.from(selectedIds) as string[];
       for (const id of idsToDelete) {
         await db.deletePublicQuestion(id);
       }

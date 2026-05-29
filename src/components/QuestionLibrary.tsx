@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, ErrorQuestion } from '../lib/db';
+import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import FormattedMath from './FormattedMath';
@@ -289,6 +289,8 @@ function QuestionDetail({
   const [editedErrorReason, setEditedErrorReason] = useState(question.errorReason);
   const [editedKp, setEditedKp] = useState(question.knowledgePoints.join(', '));
   const [selectedStudent, setSelectedStudent] = useState(question.studentId || '');
+  const [editedStudentAnswer, setEditedStudentAnswer] = useState(question.studentAnswer || '');
+  const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
   const [saving, setSaving] = useState(false);
   const [savingToPublic, setSavingToPublic] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -338,6 +340,7 @@ function QuestionDetail({
           originalText: item.content,
           subject: question.subject,
           knowledgePoints: question.knowledgePoints,
+          errorReason: question.errorReason,
           solution: matchedSolution,
           createdAt: Date.now()
         });
@@ -358,6 +361,8 @@ function QuestionDetail({
     setEditedErrorReason(question.errorReason);
     setEditedKp(question.knowledgePoints.join(', '));
     setSelectedStudent(question.studentId || '');
+    setEditedStudentAnswer(question.studentAnswer || '');
+    setEditedErrorDiagnosis(question.errorDiagnosis || []);
     setIsEditing(false);
   }, [question]);
 
@@ -416,7 +421,9 @@ function QuestionDetail({
         errorReason: editedErrorReason,
         knowledgePoints: editedKp.split(',').map(s => s.trim()).filter(Boolean),
         studentId: selectedStudent || undefined,
-        status: newStatus
+        status: newStatus,
+        studentAnswer: editedStudentAnswer,
+        errorDiagnosis: editedErrorDiagnosis
       };
       await db.saveQuestion(updatedQuestion);
       if (onUpdate) {
@@ -532,6 +539,108 @@ function QuestionDetail({
                  />
                </div>
 
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生完整手写作答文本（OCR提取结果）</label>
+                 <textarea
+                   value={editedStudentAnswer}
+                   onChange={e => setEditedStudentAnswer(e.target.value)}
+                   rows={4}
+                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                   placeholder="学生的完整手写作答过程文本"
+                 />
+               </div>
+
+               <div className="space-y-3 pt-2">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生答题步骤数字化批改诊断 (LaTeX 数学公式请保持格式)</label>
+                 <div className="space-y-3">
+                   {editedErrorDiagnosis.map((step, idx) => (
+                     <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                       <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+                         <span>步骤 #{step.stepNumber || idx + 1}</span>
+                         <button
+                           type="button"
+                           onClick={() => {
+                             const updated = [...editedErrorDiagnosis];
+                             updated.splice(idx, 1);
+                             updated.forEach((s, i) => s.stepNumber = i + 1);
+                             setEditedErrorDiagnosis(updated);
+                           }}
+                           className="text-rose-500 hover:text-rose-700 text-[10px] font-extrabold cursor-pointer"
+                         >
+                           删除此步骤
+                         </button>
+                       </div>
+                       
+                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                         <div className="sm:col-span-2 space-y-1">
+                           <label className="text-[9px] text-slate-400 font-bold uppercase">步骤内容</label>
+                           <input
+                             type="text"
+                             value={step.stepContent}
+                             onChange={(e) => {
+                               const updated = [...editedErrorDiagnosis];
+                               updated[idx].stepContent = e.target.value;
+                               setEditedErrorDiagnosis(updated);
+                             }}
+                             placeholder="步骤内容或公式，如：x + 1 = 2"
+                             className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                           />
+                         </div>
+                         <div className="space-y-1">
+                           <label className="text-[9px] text-slate-400 font-bold uppercase">步骤状态</label>
+                           <select
+                             value={step.status}
+                             onChange={(e) => {
+                               const updated = [...editedErrorDiagnosis];
+                               updated[idx].status = e.target.value as any;
+                               setEditedErrorDiagnosis(updated);
+                             }}
+                             className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700"
+                           >
+                             <option value="correct">✅ 正确</option>
+                             <option value="incorrect">❌ 首次错误</option>
+                             <option value="consequential_error">⚠️ 连带错误</option>
+                           </select>
+                         </div>
+                       </div>
+                       
+                       <div className="space-y-1">
+                         <label className="text-[9px] text-slate-400 font-bold uppercase">步骤评语 / 诊断分析</label>
+                         <input
+                           type="text"
+                           value={step.comment || ''}
+                           onChange={(e) => {
+                             const updated = [...editedErrorDiagnosis];
+                             updated[idx].comment = e.target.value;
+                             setEditedErrorDiagnosis(updated);
+                           }}
+                           placeholder="如：计算错误，符号写错（非必须，建议在错误行填写）"
+                           className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                         />
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+                 
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setEditedErrorDiagnosis([
+                       ...editedErrorDiagnosis,
+                       {
+                         stepNumber: editedErrorDiagnosis.length + 1,
+                         stepContent: '',
+                         status: 'correct',
+                         comment: ''
+                       }
+                     ]);
+                   }}
+                   className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer"
+                 >
+                   + 增加批改步骤
+                 </button>
+               </div>
+
                {/* Push Student Section */}
                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
                  <div>
@@ -596,7 +705,66 @@ function QuestionDetail({
                     ))}
                   </div>
                </div>
- 
+
+               {/* 学生手写作答与诊断批改 */}
+               {(question.studentAnswer || (question.errorDiagnosis && question.errorDiagnosis.length > 0)) && (
+                 <div className="border-t border-slate-100 pt-6 space-y-4">
+                   <div className="flex items-center gap-2 text-rose-600 font-extrabold text-sm">
+                     <span className="w-5 h-5 rounded-lg bg-rose-50 flex items-center justify-center border border-rose-100 text-xs">📝</span>
+                     <h4>学生手写作答与 AI 诊断批改</h4>
+                   </div>
+
+                   {question.errorDiagnosis && question.errorDiagnosis.length > 0 && (
+                     <div className="grid grid-cols-1 gap-3">
+                       {question.errorDiagnosis.map((step) => {
+                         let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                         let statusIcon = "✅";
+                         let statusText = "本步正确";
+                         
+                         if (step.status === 'incorrect') {
+                           statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                           statusIcon = "❌";
+                           statusText = "本步出错";
+                         } else if (step.status === 'consequential_error') {
+                           statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                           statusIcon = "⚠️";
+                           statusText = "受前面错误波及";
+                         }
+
+                         return (
+                           <div key={step.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1`}>
+                             <div className="flex items-center justify-between text-xs font-extrabold">
+                               <span>步骤 {step.stepNumber} {statusIcon}</span>
+                               <span>{statusText}</span>
+                             </div>
+                             <div className="text-sm font-semibold leading-relaxed">
+                               <FormattedMath text={step.stepContent} />
+                             </div>
+                             {step.comment && (
+                               <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                 错因说明：{step.comment}
+                               </div>
+                             )}
+                           </div>
+                         );
+                       })}
+                     </div>
+                   )}
+
+                   {question.studentAnswer && (
+                     <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/30">
+                       <summary className="cursor-pointer bg-slate-100/50 p-4 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs select-none">
+                         查看完整手写作答原始文本提取 (仅供参考)
+                         <ChevronRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
+                       </summary>
+                       <div className="p-4 bg-white text-xs leading-relaxed font-semibold text-slate-500 whitespace-pre-wrap">
+                         {question.studentAnswer}
+                       </div>
+                     </details>
+                   )}
+                 </div>
+               )}
+
                 <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">

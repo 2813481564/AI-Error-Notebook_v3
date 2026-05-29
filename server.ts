@@ -6,11 +6,10 @@ import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-
 dotenv.config();
 
 const app = express();
-const PORT = 3005;
+const PORT = parseInt(process.env.PORT || "3008");
 
 // 初始化 SQLite 数据库
 const db = new Database(path.join(process.cwd(), "questions.db"));
@@ -105,6 +104,18 @@ try {
     db.exec("ALTER TABLE questions ADD COLUMN status TEXT DEFAULT 'pending'");
   }
   db.exec("UPDATE questions SET status = 'audited' WHERE status IS NULL");
+
+  // 迁移逻辑：检测并添加学生手写作答与步骤诊断字段
+  const hasStudentAnswer = tableInfo.some(col => col.name === 'studentAnswer');
+  if (!hasStudentAnswer) {
+    console.log("正在升级 questions 表以支持学生作答提取字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN studentAnswer TEXT");
+  }
+  const hasErrorDiagnosis = tableInfo.some(col => col.name === 'errorDiagnosis');
+  if (!hasErrorDiagnosis) {
+    console.log("正在升级 questions 表以支持步骤错误诊断字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN errorDiagnosis TEXT");
+  }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);
 }
@@ -276,13 +287,14 @@ async function generateContentWithFallback(params: {
   contents: any[];
   config?: any;
   model?: string;
+  systemPrompt?: string;
 }) {
   if (AI_PROVIDER === 'openai') {
     const modelToUse = params.model || process.env.AI_MODEL || 'deepseek-chat';
     console.log(`[AI Request via OpenAI Compat] Using model: ${modelToUse}`);
     
     // 自动将 Gemini contents 格式翻译转换为 OpenAI messages 格式
-    const messages = params.contents.map(c => {
+    const userMessages = params.contents.map(c => {
       const openAiContent: any[] = [];
       if (c.parts) {
         for (const part of c.parts) {
@@ -306,6 +318,11 @@ async function generateContentWithFallback(params: {
       };
     });
 
+    // 如果有 systemPrompt，则在 messages 数组最前面注入 system 角色消息
+    const messages = params.systemPrompt
+      ? [{ role: 'system', content: params.systemPrompt }, ...userMessages]
+      : userMessages;
+
     try {
       const response = await fetch(`${AI_API_BASE_URL}/chat/completions`, {
         method: 'POST',
@@ -316,10 +333,9 @@ async function generateContentWithFallback(params: {
         body: JSON.stringify({
           model: modelToUse,
           messages: messages,
-          temperature: params.config?.temperature ?? 0.7,
-          ...(params.config?.responseMimeType === 'application/json' ? {
-            response_format: { type: 'json_object' }
-          } : {})
+          temperature: params.config?.temperature ?? 0.7
+          // 注意：此处不使用 response_format: json_object，因为它要求顶层必须是 {}，
+          // 与我们需要返回 JSON 数组 [] 的格式冲突，改为在 prompt 中约束格式。
         })
       });
 
@@ -393,27 +409,72 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedReq
     }
 
     const prompt = `
-你是一个AI智能名师。请根据提供的错题或试卷图片：
-1. 提取题目的文字内容 (如果手写，请高精度精准识别)。
-   ⚠️ 核心重要规则：如果图片中包含多道题目（例如一整页试卷、多道独立习题、大题的多个独立问等，比如第1题到第10题），你【千万不能】只提取或分析其中一道题！你必须在 "originalText" 中将识别出来的【所有题目文字】按序号（例：1., 2. 等）全部完整列出，绝不能漏掉任何一题。
-2. 判断所属学科（如数学、物理、化学、英语、语文等）。
-3. 提供详细的解题步骤（必须清晰易懂，可以直接指导学生）。
-   ⚠️ 核心重要规则：如果图片中有多个题目，请在 "solution" 中按段落和章节【依次详细完整解答每一道题】，不要有任何漏答情况。建议使用 Markdown 大标题划分题目，例如：
-   ### 第1题解析
-   【解析过程】...
-   ### 第2题解析
-   【解析过程】...
-   依此类推，确保与 originalText 中的题目一一对应。
-4. 梳理涉及的关键核心知识点（如‘二次函数’，最多三个，如果是多道题可综合最具代表性的主考点）。
+【任务说明】请仔细观察图片，执行以下分析任务：
 
-请返回符合以下结构的严格JSON格式：
-{
-  "originalText": "提取的题目完整文字内容（如果有1-10题，必须全部完整列出，不能忽略或截断）",
-  "subject": "学科名称",
-  "knowledgePoints": ["考点1", "考点2"],
-  "solution": "一比一精细解题步骤（如果是多题试卷，必须分大题章节依次写出每道题目的详细解法，不能漏掉任何一道题的解析和答案）"
-}
+【第一步 - 必须先数题目数量】：
+扫描图片，找出所有带有独立题号的大题（题号通常是阿拉伯数字，如"20."、"21."、"22."）。
+记住这个数量，后续必须创建同等数量的数组元素。
+
+【第二步 - 逐题独立分析】：
+针对第一步识别到的每一道独立大题，分别创建一个对象，填写以下字段：
+- "originalText": 【仅限本题】的完整题干文字（含题号，如"20. 在平面..."）。严禁把其他题号的题干混入此字段。
+- "subject": 本题学科（数学/物理/化学/英语/语文等）。
+- "knowledgePoints": 本题核心考点，最多3个。
+- "solution": 【仅针对本题】的详细解题步骤，含LaTeX公式。
+- "hasStudentAnswer": 本题区域内是否有学生手写作答痕迹（true/false）。
+- "studentAnswer": 【仅本题】学生手写的原始文本（无则空字符串）。
+- "errorDiagnosis": 若本题有学生作答，将【本题学生的解答步骤】逐行数字化。步骤序号从1开始重新计数。每步包含：
+  * "stepNumber": 本题内的步骤序号（每道题从1开始重置）。
+  * "stepContent": 该步骤内容（数学公式用$...$包围）。
+  * "status": "correct" / "incorrect" / "consequential_error"。
+  * "comment": 仅在错误步骤时填写说明。
+
+【第三步 - 组装JSON数组】：
+将所有题目对象按题号顺序组装成JSON数组输出。数组元素数量必须严格等于第一步数到的题目数量。
+
+输出格式（示例为图片中有3道独立大题 第20、21、22题时）：
+[
+  {
+    "originalText": "20. 第20题完整题干...",
+    "subject": "数学",
+    "knowledgePoints": ["两点间距离公式"],
+    "solution": "第20题解题过程...",
+    "hasStudentAnswer": true,
+    "studentAnswer": "学生对第20题的手写解答",
+    "errorDiagnosis": [
+      { "stepNumber": 1, "stepContent": "$AB=\\sqrt{...}$", "status": "correct", "comment": "" }
+    ]
+  },
+  {
+    "originalText": "21. 第21题完整题干...",
+    "subject": "数学",
+    "knowledgePoints": ["三角形重心性质"],
+    "solution": "第21题解题过程...",
+    "hasStudentAnswer": true,
+    "studentAnswer": "学生对第21题的手写解答",
+    "errorDiagnosis": [
+      { "stepNumber": 1, "stepContent": "G是重心，$AG=\\frac{2}{3}AE$", "status": "correct", "comment": "" }
+    ]
+  },
+  {
+    "originalText": "22. 第22题完整题干...",
+    "subject": "数学",
+    "knowledgePoints": ["平行线画法与面积平分"],
+    "solution": "第22题解题过程...",
+    "hasStudentAnswer": false,
+    "studentAnswer": "",
+    "errorDiagnosis": []
+  }
+]
 `;
+    // System prompt: 严格约束模型必须输出 JSON 数组，每道题独立成一个对象
+    const systemPrompt = `你是一个严谨的 AI 智能名师助手。你的输出格式有且只有一种：一个合法的 JSON 数组（以 [ 开头，以 ] 结尾）。
+你必须遵守以下铁律：
+1. 【绝对禁止】将图片中多道独立的题目（如第20题、第21题、第22题）合并为一个数组元素返回。
+2. 图片中有几道独立的题目（以题号区分，例如 20、21、22），就必须返回几个独立的数组元素对象。
+3. 每个数组元素对象只能包含其对应题目的内容，不能混入其他题目的题干、解析或步骤。
+4. 你的整个回复内容只能是纯 JSON 数组文本，不得包含任何 Markdown 标记（如 \`\`\`json）、解释文字或其他内容。`;
+
     // We send base64 data to Gemini using the fallback-safe wrapper
     const response = await generateContentWithFallback({
         contents: [
@@ -431,20 +492,24 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedReq
             }
         ],
         config: {
-            responseMimeType: 'application/json',
-            temperature: 0.2
-        }
+            temperature: 0.1
+        },
+        systemPrompt
     });
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
     
-    let parsedText = text;
-    if (parsedText.startsWith('```json')) {
-      parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
-    }
+    // 清洗输出：移除可能残留的 Markdown 包裹标记，提取纯 JSON
+    let parsedText = text.trim();
+    // 移除 ```json ... ``` 包裹
+    parsedText = parsedText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    
     const data = JSON.parse(parsedText);
-    res.json(data);
+    
+    // 确保响应总是数组格式（兜底：如果模型仍返回单对象，包装成数组）
+    const result = Array.isArray(data) ? data : [data];
+    res.json(result);
 
   } catch (error: any) {
     console.error("AI Analysis Error:", error);
@@ -1008,7 +1073,9 @@ app.get("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
       errorReason: row.errorReason || "",
       solution: row.solution || "",
       createdAt: row.createdAt,
-      similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined
+      similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined,
+      studentAnswer: row.studentAnswer || "",
+      errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : []
     }));
     
     res.json(questions);
@@ -1044,8 +1111,8 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
     
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     stmt.run(
@@ -1060,7 +1127,9 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
       question.errorReason || "",
       question.solution || "",
       question.createdAt || Date.now(),
-      question.similarQuestion ? JSON.stringify(question.similarQuestion) : null
+      question.similarQuestion ? JSON.stringify(question.similarQuestion) : null,
+      question.studentAnswer || "",
+      question.errorDiagnosis ? JSON.stringify(question.errorDiagnosis) : "[]"
     );
     
     res.json({ success: true });
