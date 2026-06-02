@@ -212,6 +212,12 @@ export default function QuestionLibrary({
                           </span>
                         )
                       )}
+                      {!isStudent && q.studentId && q.status === 'pending' && (
+                        <span className="bg-violet-50 text-violet-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-violet-200/50">👤 {q.studentId}</span>
+                      )}
+                      {!isStudent && q.paperName && (
+                        <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200/80">📋 {q.paperName}</span>
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
                       <Clock className="w-3 h-3" />
@@ -979,6 +985,20 @@ function ReadOnlyDetail({
     // 原有单题展示逻辑（向下兼容）
     return (
       <div className="space-y-6">
+        {!isStudent && (question.studentId || question.paperName) && (
+          <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+            {question.studentId && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-2.5 py-1 rounded-lg">
+                👤 关联学生：{question.studentId}
+              </span>
+            )}
+            {question.paperName && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                📋 所属试卷：{question.paperName}
+              </span>
+            )}
+          </div>
+        )}
         <div>
           <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
           <div className="mt-4 flex flex-wrap gap-1.5">
@@ -1081,6 +1101,20 @@ function ReadOnlyDetail({
     // 多题合并整卷展示逻辑（按单题卡片隔离展示）
     return (
       <div className="space-y-8">
+        {!isStudent && (question.studentId || question.paperName) && (
+          <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+            {question.studentId && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-2.5 py-1 rounded-lg">
+                👤 关联学生：{question.studentId}
+              </span>
+            )}
+            {question.paperName && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                📋 所属试卷：{question.paperName}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
           <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
             <span>📄</span> 本卷共包含 {parsedQs.length} 道题目
