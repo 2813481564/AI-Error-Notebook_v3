@@ -678,9 +678,17 @@ function QuestionDetail({
                  </div>
                </div>
              </div>
-           ) : (
-             <>
-               <div>
+            ) : (
+              <ReadOnlyDetail 
+                question={question} 
+                isStudent={isStudent} 
+                openSaveModal={openSaveModal} 
+                savingToPublic={savingToPublic} 
+              />
+            )}
+            {false && (
+              <>
+                <div>
                   <div className="flex flex-wrap items-center gap-2.5 mb-4">
                     <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold border border-blue-100">{question.subject}</span>
                     <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border border-rose-100">
@@ -949,6 +957,275 @@ function BrainCircuitIcon({ className }: { className?: string }) {
       <path d="M18.5 13a4.5 4.5 0 0 1-3 3" />
     </svg>
   );
+}
+
+function ReadOnlyDetail({
+  question,
+  isStudent,
+  openSaveModal,
+  savingToPublic
+}: {
+  question: any;
+  isStudent: boolean;
+  openSaveModal: (type: 'original' | 'variant') => void;
+  savingToPublic: boolean;
+}) {
+  const parsedQs = parseIndividualQuestions(question.originalText);
+  const parsedSols = parseIndividualSolutions(question.solution);
+  const parsedStudentAnswers = parseIndividualStudentAnswers(question.studentAnswer || '');
+  const parsedStdAnswers = parseIndividualStandardAnswers(question.standardAnswer || '');
+
+  if (parsedQs.length <= 1) {
+    // 原有单题展示逻辑（向下兼容）
+    return (
+      <div className="space-y-6">
+        <div>
+          <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {question.knowledgePoints.map((p: string) => (
+              <span key={p} className="text-xs bg-slate-50 text-slate-705 px-3 py-1 rounded-lg border border-slate-100 font-bold"># {p}</span>
+            ))}
+          </div>
+        </div>
+
+        {question.standardAnswer && (
+          <div className="border-t border-slate-100 pt-6 space-y-3">
+            <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-sm">
+              <span className="w-5 h-5 rounded-lg bg-indigo-50 flex items-center justify-center border border-indigo-100 text-xs">🔑</span>
+              <h4>本题标准参考答案</h4>
+            </div>
+            <div className="p-4 bg-indigo-50/20 border border-indigo-100/50 rounded-2xl text-sm leading-relaxed text-indigo-950 font-medium">
+              <FormattedMath text={question.standardAnswer} />
+            </div>
+          </div>
+        )}
+
+        {(question.studentAnswer || (question.errorDiagnosis && question.errorDiagnosis.length > 0)) && (
+          <div className="border-t border-slate-100 pt-6 space-y-4">
+            <div className="flex items-center gap-2 text-rose-600 font-extrabold text-sm">
+              <span className="w-5 h-5 rounded-lg bg-rose-50 flex items-center justify-center border border-rose-100 text-xs">📝</span>
+              <h4>学生手写作答与 AI 诊断批改</h4>
+            </div>
+
+            {question.errorDiagnosis && question.errorDiagnosis.length > 0 && (
+              <div className="grid grid-cols-1 gap-3">
+                {question.errorDiagnosis.map((step: any) => {
+                  let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                  let statusIcon = "✅";
+                  let statusText = "本步正确";
+                  
+                  if (step.status === 'incorrect') {
+                    statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                    statusIcon = "❌";
+                    statusText = "本步出错";
+                  } else if (step.status === 'consequential_error') {
+                    statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                    statusIcon = "⚠️";
+                    statusText = "受前面错误波及";
+                  }
+
+                  return (
+                    <div key={step.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1`}>
+                      <div className="flex items-center justify-between text-xs font-extrabold">
+                        <span>步骤 {step.stepNumber} {statusIcon}</span>
+                        <span>{statusText}</span>
+                      </div>
+                      <div className="text-sm font-semibold leading-relaxed">
+                        <FormattedMath text={step.stepContent} />
+                      </div>
+                      {step.comment && (
+                        <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                          错因说明：{step.comment}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {question.studentAnswer && (
+              <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/30">
+                <summary className="cursor-pointer bg-slate-100/50 p-4 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs select-none">
+                  查看完整手写作答原始文本提取 (仅供参考)
+                  <ChevronRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
+                </summary>
+                <div className="p-4 bg-white text-xs leading-relaxed font-semibold text-slate-500 whitespace-pre-wrap">
+                  {question.studentAnswer}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">
+              <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
+            </h4>
+            {!isStudent && (
+              <button
+                onClick={() => openSaveModal('original')}
+                disabled={savingToPublic}
+                className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-105 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>📥 保存原题到公共题库</span>
+              </button>
+            )}
+          </div>
+          <FormattedMath text={question.solution} className="text-slate-805" />
+        </div>
+      </div>
+    );
+  } else {
+    // 多题合并整卷展示逻辑（按单题卡片隔离展示）
+    return (
+      <div className="space-y-8">
+        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
+          <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+            <span>📄</span> 本卷共包含 {parsedQs.length} 道题目
+          </h3>
+          {!isStudent && (
+            <button
+              onClick={() => openSaveModal('original')}
+              disabled={savingToPublic}
+              className="text-[11px] font-bold text-blue-600 bg-white border border-blue-200 hover:bg-blue-50 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+            >
+              <span>📥 批量保存题目到公共题库</span>
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          {parsedQs.map((qItem, iIdx) => {
+            const stdAns = parsedStdAnswers[iIdx]?.content || '';
+            const stuAns = parsedStudentAnswers[iIdx]?.content || '';
+            const solText = parsedSols[iIdx]?.content || '';
+
+            // 过滤出当前题目的步骤诊断
+            const questionPrefix = `(第${iIdx + 1}题)`;
+            const filteredSteps = (question.errorDiagnosis || []).filter((step: any) => {
+              const hasPrefix = step.stepContent.startsWith(questionPrefix);
+              if (hasPrefix) return true;
+              // 兜底：如果第一题且步骤无任何前缀，也归给第一题
+              if (iIdx === 0 && !step.stepContent.includes('(第') && !step.stepContent.includes('题)')) return true;
+              return false;
+            }).map((step: any, sIdx: number) => {
+              const content = step.stepContent.startsWith(questionPrefix)
+                ? step.stepContent.replace(questionPrefix, '').trim()
+                : step.stepContent;
+              return { ...step, stepContent: content, displayStepNumber: sIdx + 1 };
+            });
+
+            return (
+              <div key={qItem.id} className="bg-slate-50/40 border border-slate-200/80 rounded-3xl p-6 space-y-5 shadow-sm hover:border-slate-300 transition-colors">
+                {/* 题号头部 */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
+                  <span className="text-xs font-black text-slate-900 bg-slate-200 px-3 py-1 rounded-lg">
+                    第 {qItem.number} 题
+                  </span>
+                </div>
+
+                {/* 题干 */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-slate-800 font-extrabold text-xs">
+                    <span className="w-5 h-5 rounded-lg bg-blue-50 flex items-center justify-center border border-blue-100 text-[10px]">📖</span>
+                    <h4>本题题干</h4>
+                  </div>
+                  <FormattedMath text={qItem.content} className="text-sm text-slate-905 font-bold leading-relaxed" />
+                </div>
+
+                {/* 标准答案 */}
+                {stdAns && (
+                  <div className="border-t border-slate-100 pt-4 space-y-2">
+                    <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-xs">
+                      <span className="w-5 h-5 rounded-lg bg-indigo-50 flex items-center justify-center border border-indigo-100 text-[10px]">🔑</span>
+                      <h4>本题标准参考答案</h4>
+                    </div>
+                    <div className="p-3.5 bg-indigo-50/20 border border-indigo-100/50 rounded-2xl text-xs leading-relaxed text-indigo-950 font-medium font-mono">
+                      <FormattedMath text={stdAns} />
+                    </div>
+                  </div>
+                )}
+
+                {/* 学生作答与诊断步骤 */}
+                {(stuAns || filteredSteps.length > 0) && (
+                  <div className="border-t border-slate-100 pt-4 space-y-3">
+                    <div className="flex items-center gap-2 text-rose-600 font-extrabold text-xs">
+                      <span className="w-5 h-5 rounded-lg bg-rose-50 flex items-center justify-center border border-rose-100 text-[10px]">📝</span>
+                      <h4>学生作答与 AI 诊断批改</h4>
+                    </div>
+
+                    {filteredSteps.length > 0 && (
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {filteredSteps.map((step: any) => {
+                          let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                          let statusIcon = "✅";
+                          let statusText = "本步正确";
+                          
+                          if (step.status === 'incorrect') {
+                            statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                            statusIcon = "❌";
+                            statusText = "本步出错";
+                          } else if (step.status === 'consequential_error') {
+                            statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                            statusIcon = "⚠️";
+                            statusText = "受前面错误波及";
+                          }
+
+                          return (
+                            <div key={step.stepNumber} className={`p-3.5 border rounded-2xl ${statusColor} space-y-1`}>
+                              <div className="flex items-center justify-between text-[11px] font-extrabold">
+                                <span>步骤 {step.displayStepNumber} {statusIcon}</span>
+                                <span>{statusText}</span>
+                              </div>
+                              <div className="text-xs font-semibold leading-relaxed">
+                                <FormattedMath text={step.stepContent} />
+                              </div>
+                              {step.comment && (
+                                <div className="text-[10px] mt-1 pt-1 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                  错因说明：{step.comment}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {stuAns && (
+                      <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/30">
+                        <summary className="cursor-pointer bg-slate-100/50 p-3 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-[11px] select-none">
+                          查看本题手写作答文本
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" />
+                        </summary>
+                        <div className="p-3 bg-white text-[11px] leading-relaxed font-semibold text-slate-500 whitespace-pre-wrap">
+                          {stuAns}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
+
+                {/* 名师解析 */}
+                {solText && (
+                  <div className="border-t border-slate-100 pt-4 space-y-2">
+                    <div className="flex items-center gap-2 text-blue-600 font-extrabold text-xs">
+                      <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+                      <h4>AI 智能辅导名师精解步骤</h4>
+                    </div>
+                    <div className="text-xs leading-relaxed text-slate-805">
+                      <FormattedMath text={solText} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 }
 
 export function parseIndividualQuestions(text: string): { id: string; number: string; content: string }[] {

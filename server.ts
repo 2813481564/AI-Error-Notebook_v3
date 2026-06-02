@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import https from "https";
 dotenv.config();
 
 const app = express();
@@ -62,7 +63,10 @@ db.exec(`
     errorReason TEXT,
     solution TEXT,
     createdAt INTEGER NOT NULL,
-    similarQuestion TEXT
+    similarQuestion TEXT,
+    paperName TEXT,
+    standardAnswer TEXT,
+    score INTEGER
   );
   
   CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
@@ -105,6 +109,13 @@ try {
   }
   db.exec("UPDATE questions SET status = 'audited' WHERE status IS NULL");
 
+  // 迁移逻辑：检测并添加试卷/作业名称字段
+  const hasPaperName = tableInfo.some(col => col.name === 'paperName');
+  if (!hasPaperName) {
+    console.log("正在升级 questions 表以支持试卷/作业批次名称字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN paperName TEXT");
+  }
+
   // 迁移逻辑：检测并添加学生手写作答与步骤诊断字段
   const hasStudentAnswer = tableInfo.some(col => col.name === 'studentAnswer');
   if (!hasStudentAnswer) {
@@ -115,6 +126,18 @@ try {
   if (!hasErrorDiagnosis) {
     console.log("正在升级 questions 表以支持步骤错误诊断字段...");
     db.exec("ALTER TABLE questions ADD COLUMN errorDiagnosis TEXT");
+  }
+
+  // 迁移逻辑：检测并添加标准答案与得分字段
+  const hasStandardAnswer = tableInfo.some(col => col.name === 'standardAnswer');
+  if (!hasStandardAnswer) {
+    console.log("正在升级 questions 表以支持标准答案字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN standardAnswer TEXT");
+  }
+  const hasScore = tableInfo.some(col => col.name === 'score');
+  if (!hasScore) {
+    console.log("正在升级 questions 表以支持得分字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN score INTEGER");
   }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);
@@ -128,7 +151,7 @@ try {
     console.log("检测到旧版数据库结构，正在升级 users 表以支持多用户等级与限流...");
     db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'");
   }
-  
+
   // 迁移普通用户为学生角色，VIP/SVIP 迁移为老师角色
   try {
     db.exec("UPDATE users SET role = 'student' WHERE role = 'normal'");
@@ -146,7 +169,7 @@ try {
   if (!hasAiUsed) {
     db.exec("ALTER TABLE users ADD COLUMN aiUsedToday INTEGER NOT NULL DEFAULT 0");
   }
-  
+
   // 新增身份证与手机字段检测迁移
   const hasIdCard = tableInfo.some(col => col.name === 'idCardLast6');
   if (!hasIdCard) {
@@ -158,7 +181,7 @@ try {
     console.log("正在升级 users 表以支持手机号后4位字段...");
     db.exec("ALTER TABLE users ADD COLUMN phoneLast4 TEXT");
   }
-  
+
   console.log("users 表升级检查完成！");
 } catch (err) {
   console.error("users 数据库迁移检查失败:", err);
@@ -217,7 +240,7 @@ const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, next: ex
   if (!username) {
     return res.status(401).json({ error: "未登录，请先登录" });
   }
-  
+
   if (username === 'admin') {
     return next();
   }
@@ -282,17 +305,98 @@ const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini';
 const AI_API_BASE_URL = process.env.AI_API_BASE_URL || '';
 const AI_API_KEY = process.env.AI_API_KEY || '';
 
+// Helper to extract JSON string from raw LLM response text
+function extractJsonString(str: string): string {
+  const firstArray = str.indexOf('[');
+  const firstObject = str.indexOf('{');
+
+  let startIdx = -1;
+  let endIdx = -1;
+
+  if (firstArray !== -1 && (firstObject === -1 || firstArray < firstObject)) {
+    startIdx = firstArray;
+    endIdx = str.lastIndexOf(']');
+  } else if (firstObject !== -1) {
+    startIdx = firstObject;
+    endIdx = str.lastIndexOf('}');
+  }
+
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    return str.substring(startIdx, endIdx + 1);
+  }
+
+  return str;
+}
+
+// Helper to escape LaTeX backslashes inside JSON string values so JSON.parse won't crash
+function sanitizeJsonString(rawStr: string): string {
+  let result = '';
+  let inString = false;
+  let i = 0;
+  
+  while (i < rawStr.length) {
+    const char = rawStr[i];
+    
+    if (!inString) {
+      result += char;
+      if (char === '"') {
+        inString = true;
+      }
+      i++;
+    } else {
+      if (char === '"') {
+        result += char;
+        inString = false;
+        i++;
+      } else if (char === '\\') {
+        let backslashCount = 0;
+        while (i < rawStr.length && rawStr[i] === '\\') {
+          backslashCount++;
+          i++;
+        }
+        
+        const nextChar = rawStr[i] || '';
+        
+        let isLatexN = false;
+        if (nextChar === 'n') {
+          const nextNextChar = rawStr[i + 1] || '';
+          if (/[a-zA-Z]/.test(nextNextChar)) {
+            isLatexN = true;
+          }
+        }
+        
+        if (nextChar === '"') {
+          const literalCount = backslashCount - 1;
+          result += '\\'.repeat(literalCount * 2) + '\\"';
+          i++;
+        } else if (nextChar === 'n' && !isLatexN) {
+          const literalCount = backslashCount - 1;
+          result += '\\'.repeat(literalCount * 2) + '\\n';
+          i++;
+        } else {
+          result += '\\'.repeat(backslashCount * 2);
+        }
+      } else {
+        result += char;
+        i++;
+      }
+    }
+  }
+  return result;
+}
+
 // Robust helper function with automatic fallback to gemma-4-26b-a4b-it or OpenAI provider compatible output
 async function generateContentWithFallback(params: {
   contents: any[];
   config?: any;
   model?: string;
   systemPrompt?: string;
+  thinkingMode?: 'enabled' | 'disabled';
 }) {
   if (AI_PROVIDER === 'openai') {
     const modelToUse = params.model || process.env.AI_MODEL || 'deepseek-chat';
-    console.log(`[AI Request via OpenAI Compat] Using model: ${modelToUse}`);
-    
+    console.log(`[AI Request via OpenAI Compat] Using model: ${modelToUse}, thinkingMode: ${params.thinkingMode || 'disabled'}`);
+
     // 自动将 Gemini contents 格式翻译转换为 OpenAI messages 格式
     const userMessages = params.contents.map(c => {
       const openAiContent: any[] = [];
@@ -323,34 +427,71 @@ async function generateContentWithFallback(params: {
       ? [{ role: 'system', content: params.systemPrompt }, ...userMessages]
       : userMessages;
 
-    try {
-      const response = await fetch(`${AI_API_BASE_URL}/chat/completions`, {
+    console.log("[AI API Payload messages]:", JSON.stringify(messages, (key, value) => {
+      if (key === 'url' && typeof value === 'string') {
+        return value.substring(0, 100) + '...';
+      }
+      return value;
+    }, 2));
+
+    // 使用 Node.js 原生 https 模块，彻底绕开 undici 的 headersTimeout 限制
+    const urlObj = new URL(`${AI_API_BASE_URL}/chat/completions`);
+
+    const reqData: any = {
+      model: modelToUse,
+      messages: messages,
+      temperature: params.config?.temperature ?? 0.7
+    };
+
+    if (modelToUse === 'glm-5.1') {
+      reqData.thinking = {
+        type: params.thinkingMode || 'disabled'
+      };
+      if (params.thinkingMode === 'enabled') {
+        reqData.temperature = 1.0;
+      } else {
+        reqData.temperature = 0.1;
+      }
+    }
+
+    const reqBody = JSON.stringify(reqData);
+
+    const responseText = await new Promise<string>((resolve, reject) => {
+      const reqOptions: import('https').RequestOptions = {
+        hostname: urlObj.hostname,
+        port: Number(urlObj.port) || 443,
+        path: urlObj.pathname + urlObj.search,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AI_API_KEY}`
+          'Authorization': `Bearer ${AI_API_KEY}`,
+          'Content-Length': Buffer.byteLength(reqBody)
         },
-        body: JSON.stringify({
-          model: modelToUse,
-          messages: messages,
-          temperature: params.config?.temperature ?? 0.7
-          // 注意：此处不使用 response_format: json_object，因为它要求顶层必须是 {}，
-          // 与我们需要返回 JSON 数组 [] 的格式冲突，改为在 prompt 中约束格式。
-        })
+        timeout: 1200000
+      };
+
+      const req = https.request(reqOptions, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve(data));
       });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（600s），请重试')); });
+      req.write(reqBody);
+      req.end();
+    });
 
-      const json = await response.json() as any;
-      if (!response.ok) {
-        throw new Error(json.error?.message || `OpenAI API Error: status code ${response.status}`);
+    try {
+      const json = JSON.parse(responseText) as any;
+      if (!json.choices) {
+        throw new Error(json.error?.message || `API 错误: ${responseText.substring(0, 200)}`);
       }
-
       const text = json.choices?.[0]?.message?.content;
-      if (!text) throw new Error("Empty response from OpenAI compatible API");
-      
+      if (!text) throw new Error("Empty response from AI API");
       return { text };
-    } catch (error: any) {
-      console.error("[AI OpenAI Error] request failed:", error);
-      throw error;
+    } catch (parseError: any) {
+      console.error("[AI OpenAI Parse Error]", parseError.message, responseText.substring(0, 300));
+      throw parseError;
     }
   }
 
@@ -366,17 +507,17 @@ async function generateContentWithFallback(params: {
     });
   } catch (error: any) {
     const errorStr = (error.message || error.toString() || "").toLowerCase();
-    const isRetriableError = errorStr.includes("429") || 
-                         errorStr.includes("quota") || 
-                         errorStr.includes("limit") || 
-                         errorStr.includes("resource_exhausted") || 
-                         errorStr.includes("rate_limit") ||
-                         errorStr.includes("socket") ||
-                         errorStr.includes("fetch failed") ||
-                         errorStr.includes("503") ||
-                         errorStr.includes("unavailable") ||
-                         errorStr.includes("high demand") ||
-                         (error.status && (error.status === 503 || error.status === 429));
+    const isRetriableError = errorStr.includes("429") ||
+      errorStr.includes("quota") ||
+      errorStr.includes("limit") ||
+      errorStr.includes("resource_exhausted") ||
+      errorStr.includes("rate_limit") ||
+      errorStr.includes("socket") ||
+      errorStr.includes("fetch failed") ||
+      errorStr.includes("503") ||
+      errorStr.includes("unavailable") ||
+      errorStr.includes("high demand") ||
+      (error.status && (error.status === 503 || error.status === 429));
 
     if (isRetriableError && modelToUse !== 'gemma-4-26b-a4b-it') {
       console.warn(`[AI Warning] Model ${modelToUse} failed due to network or quota limit: ${error.message || error.toString()}. Automatically retrying with fallback 'gemma-4-26b-a4b-it'...`);
@@ -403,9 +544,9 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedReq
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
     }
 
-    const { imageBase64, mimeType } = req.body;
+    const { imageBase64, mimeType, answerImageBase64, answerMimeType, answerText } = req.body;
     if (!imageBase64) {
-       return res.status(400).json({ error: "Missing imageBase64" });
+      return res.status(400).json({ error: "Missing imageBase64" });
     }
 
     const prompt = `
@@ -477,43 +618,280 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedReq
 
     // We send base64 data to Gemini using the fallback-safe wrapper
     const response = await generateContentWithFallback({
-        contents: [
+      contents: [
+        {
+          role: 'user',
+          parts: [
             {
-                role: 'user',
-                parts: [
-                    {
-                        inlineData: {
-                            data: imageBase64.split(',')[1] || imageBase64,
-                            mimeType: mimeType || 'image/jpeg'
-                        }
-                    },
-                    { text: prompt }
-                ]
-            }
-        ],
-        config: {
-            temperature: 0.1
-        },
-        systemPrompt
+              inlineData: {
+                data: imageBase64.split(',')[1] || imageBase64,
+                mimeType: mimeType || 'image/jpeg'
+              }
+            },
+            ...(answerImageBase64 ? [{
+              inlineData: {
+                data: answerImageBase64.split(',')[1] || answerImageBase64,
+                mimeType: answerMimeType || 'image/jpeg'
+              }
+            }] : []),
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1
+      },
+      systemPrompt
     });
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
-    
-    // 清洗输出：移除可能残留的 Markdown 包裹标记，提取纯 JSON
-    let parsedText = text.trim();
-    // 移除 ```json ... ``` 包裹
-    parsedText = parsedText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    
-    const data = JSON.parse(parsedText);
-    
-    // 确保响应总是数组格式（兜底：如果模型仍返回单对象，包装成数组）
+
+    // 清洗输出：高精度提取并解析 JSON
+    const parsedText = extractJsonString(text);
+    const data = JSON.parse(sanitizeJsonString(parsedText));
     const result = Array.isArray(data) ? data : [data];
     res.json(result);
 
   } catch (error: any) {
     console.error("AI Analysis Error:", error);
     res.status(500).json({ error: error.message || "Failed to analyze image" });
+  }
+});
+
+// API Route for extracting text from an image (printed question & student handwriting)
+app.post("/api/extract", requireAuth, checkAiLimit, async (req: AuthenticatedRequest, res) => {
+  let text = 'not_sent_yet';
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
+    }
+
+    const { imageBase64, mimeType, answerImageBase64, answerMimeType, answerText } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: "Missing imageBase64" });
+    }
+
+    let prompt = `
+...识别我提供的图片中的所有独立大题或子题（如"20."、"21."、"22."等）。
+我提供了一张【学生试卷/作业图片】（第一张图）。
+`;
+    if (answerImageBase64) {
+      prompt += `另外，我提供了一张对应的【标准答案参考图片】（第二张图）。请务必对照两张图，将同一道题的题干、学生手写作答以及参考的标准答案进行一一匹配提取。\n`;
+    }
+    if (answerText) {
+      prompt += `另外，我提供了一段参考答案文本如下：\n【完整参考答案文本开始】\n${answerText}\n【完整参考答案文本结束】\n请结合此参考文本，将其中的各题答案切分并匹配到对应题目的标准答案字段中。\n`;
+    }
+    prompt += `
+【具体输出字段要求】：
+对于每一道独立的题目，请严格按照以下文本格式输出（不同题目之间用 ===题目分割=== 进行隔开，不要包含 Markdown 代码块标记如 \`\`\`）：
+
+===题目分割===
+学科: [学科名称，如数学/物理/化学等]
+题干: [本题的高精度完整题干印刷体文字，包含题号，绝对不能写“略”]
+学生作答: [本题区域内学生手写作答出的答案或步骤，若无则留空]
+标准答案: [根据上传的【标准答案参考图片】或【参考答案文本】匹配得到的本题标准参考答案，包含推导过程和最终正确答案，若无则留空]
+
+【注意事项】：
+1. 不要输出任何解释性前言或后缀（如“以下是识别内容：”），直接以第一个 ===题目分割=== 开始。
+2. 公式必须用标准的 $ 或 $ 包围输出为 LaTeX 格式。
+`;
+
+    const systemPrompt = `你是一个只输出结构化纯文本的 OCR 助手。你的整个回复必须严格按照 ===题目分割=== 的格式输出各字段，不要包含 Markdown 代码块标记（如 \`\`\`）或任何额外的多余废话。`;
+
+    const response = await generateContentWithFallback({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                data: imageBase64.split(',')[1] || imageBase64,
+                mimeType: mimeType || 'image/jpeg'
+              }
+            },
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1
+      },
+      model: process.env.AI_VISION_MODEL || 'glm-5v-turbo',
+      systemPrompt
+    });
+
+    text = response.text || '';
+    if (!text) throw new Error("Empty response from AI");
+
+    const result: any[] = [];
+    // 按照题目分割拆分
+    const parts = text.split(/===+题目分割===+/);
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (!trimmedPart) continue;
+
+      // 解析学科
+      const subjectMatch = trimmedPart.match(/学科:\s*(.+)/);
+      const subject = subjectMatch ? subjectMatch[1].trim() : "数学";
+
+      // 解析题干、学生作答与标准答案
+      const qIndex = trimmedPart.indexOf("题干:");
+      const aIndex = trimmedPart.indexOf("学生作答:");
+      const sIndex = trimmedPart.indexOf("标准答案:");
+
+      let originalText = "";
+      let studentAnswer = "";
+      let standardAnswer = "";
+
+      if (qIndex !== -1) {
+        if (aIndex !== -1) {
+          originalText = trimmedPart.substring(qIndex + 3, aIndex).trim();
+          if (sIndex !== -1) {
+            studentAnswer = trimmedPart.substring(aIndex + 5, sIndex).trim();
+            standardAnswer = trimmedPart.substring(sIndex + 5).trim();
+          } else {
+            studentAnswer = trimmedPart.substring(aIndex + 5).trim();
+          }
+        } else {
+          if (sIndex !== -1) {
+            originalText = trimmedPart.substring(qIndex + 3, sIndex).trim();
+            standardAnswer = trimmedPart.substring(sIndex + 5).trim();
+          } else {
+            originalText = trimmedPart.substring(qIndex + 3).trim();
+          }
+        }
+      } else {
+        // 如果没有题干标记，但有学科，尝试把其余内容作为题干
+        originalText = trimmedPart.replace(/学科:\s*.+/, "").trim();
+      }
+
+      if (originalText) {
+        result.push({
+          subject: subject.substring(0, 10), // 限制长度以防意外
+          originalText,
+          studentAnswer,
+          standardAnswer
+        });
+      }
+    }
+
+    if (result.length === 0) {
+      result.push({
+        subject: "数学",
+        originalText: text,
+        studentAnswer: "",
+        standardAnswer: ""
+      });
+    }
+    res.json(result);
+
+  } catch (error: any) {
+    console.error("AI Extraction text:", text);
+    console.error("AI Extraction Error:", error);
+    res.status(500).json({ error: error.message || "Failed to extract image content" });
+  }
+});
+
+// API Route for diagnosing verified question text and student answer
+app.post("/api/diagnose", requireAuth, checkAiLimit, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user || user.role === 'student') {
+      return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 诊断功能" });
+    }
+
+    const { subject, originalText, studentAnswer, standardAnswer, thinkingMode } = req.body;
+    if (!originalText) {
+      return res.status(400).json({ error: "Missing originalText" });
+    }
+
+    let standardAnswerSection = '';
+    if (standardAnswer) {
+      standardAnswerSection = `- 老师提供的参考标准答案: ${standardAnswer}\n`;
+    }
+    const prompt = `
+你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
+
+【题目信息】
+- 学科: ${subject || '未指定'}
+- 题干: ${originalText}
+${standardAnswerSection}
+- 学生作答内容: ${studentAnswer || '（无学生作答）'}
+
+【任务要求】：
+1. **核心考点** ("knowledgePoints"): 分析该题考察的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
+2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $ 符号包围以保证 LaTeX 完美渲染。
+3. **学生作答步骤级诊断** ("errorDiagnosis"):
+   - 如果 "学生作答内容" 为空，则 "errorDiagnosis" 必须返回空数组 []。
+   - If "学生作答内容" has content, digitize it step-by-step (step number starting from 1). For each step:
+     * "stepNumber": step sequence.
+     * "stepContent": digitized content (wrapped in $).
+     * "status": "correct", "incorrect" or "consequential_error".
+     * "comment": comment description (empty for correct).
+4. **学生本题所得评分** ("score"):
+   - 根据学生的解答步骤与提供的【老师提供的参考标准答案】（如果提供了）的比对程度，评估学生本题的最终得分，只能是 0 到 100 之间的整数（如果学生完全未作答，或者 "学生作答内容" 缺失，则返回 0）。
+
+请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
+{
+  "knowledgePoints": ["核心考点1", "核心考点2"],
+  "solution": "标准详细解答步骤内容...",
+  "score": 85,
+  "errorDiagnosis": [
+    {
+      "stepNumber": 1,
+      "stepContent": "步骤1内容",
+      "status": "correct",
+      "comment": ""
+    }
+  ]
+}
+`;
+
+    const systemPrompt = `你是一个严谨的 AI 智能名师批改助手。你的输出格式有且只有一种：一个合法的 JSON 对象（以 { 开头，以 } 结尾）。
+你必须遵守以下铁律：
+1. 你的整个回复内容只能是纯 JSON 文本，不得包含任何 Markdown 标记（如 \`\`\`json\`\`\`）、解释文字或其他非 JSON 内容。
+2. 确保 JSON 的格式、逗号、双引号完全正确，以便程序能直接解析。`;
+
+    const response = await generateContentWithFallback({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.2
+      },
+      systemPrompt,
+      thinkingMode: thinkingMode || 'disabled'
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
+
+    let resultObj = null;
+    try {
+      const parsedText = extractJsonString(text);
+      if (!parsedText) throw new Error("No JSON found in response");
+      resultObj = JSON.parse(sanitizeJsonString(parsedText));
+    } catch (e) {
+      console.warn("Failed to parse AI diagnosis response as JSON. Falling back to default format.", e);
+      resultObj = {
+        knowledgePoints: ["需手动分析"],
+        solution: text,
+        score: 0,
+        errorDiagnosis: []
+      };
+    }
+    res.json(resultObj);
+
+  } catch (error: any) {
+    console.error("AI Diagnose Error:", error);
+    res.status(500).json({ error: error.message || "Failed to diagnose question" });
   }
 });
 
@@ -527,7 +905,7 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req: AuthenticatedReq
     }
 
     const { originalText, subject, knowledgePoints } = req.body;
-    
+
     const prompt = `
 请作为AI导师，根据以下信息出一道相似的练习题，帮助学生巩固查漏补缺：
 - 学科: ${subject}
@@ -543,23 +921,23 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req: AuthenticatedReq
 
     // We generate similar content using the fallback-safe wrapper
     const response = await generateContentWithFallback({
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    { text: prompt }
-                ]
-            }
-        ],
-        config: {
-            responseMimeType: 'application/json',
-            temperature: 0.7
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt }
+          ]
         }
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.7
+      }
     });
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
-    
+
     let parsedText = text;
     if (parsedText.startsWith('```json')) {
       parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
@@ -613,24 +991,24 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
 `;
 
     const response = await generateContentWithFallback({
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    { text: prompt }
-                ]
-            }
-        ],
-        config: {
-            temperature: 0.3
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt }
+          ]
         }
+      ],
+      config: {
+        temperature: 0.3
+      }
     });
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
-    
+
     let parsedText = text.trim();
-    
+
     // 正则寻找最外层包裹的 JSON 数组结构
     const jsonMatch = parsedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
     if (jsonMatch) {
@@ -640,7 +1018,7 @@ ${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalTe
         parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
       }
     }
-    
+
     const data = JSON.parse(parsedText);
     res.json(data);
 
@@ -657,7 +1035,7 @@ app.post("/api/auth/send-code", async (req, res) => {
     if (!email) {
       return res.status(400).json({ error: "邮箱不能为空" });
     }
-    
+
     // 校验是否为合法 QQ 邮箱
     const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
     if (!qqEmailRegex.test(email)) {
@@ -683,8 +1061,8 @@ app.post("/api/auth/send-code", async (req, res) => {
     // 检查环境变量是否配置了邮箱服务
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS || process.env.SMTP_PASS === "your-smtp-auth-code") {
       console.log(`[开发测试模式] 验证码发送至: ${email}，验证码为: ${code}`);
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: "验证码已生成（开发测试模式，验证码已打印在控制台）",
         devCode: code
       });
@@ -732,13 +1110,13 @@ app.post("/api/auth/register", (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ error: "密码长度不能少于 6 位" });
     }
-    
+
     // 限制只能通过 QQ 邮箱注册
     const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
     if (!qqEmailRegex.test(cleanUsername)) {
       return res.status(400).json({ error: "注册账号必须为有效的 QQ 邮箱（如: 123456@qq.com）" });
     }
-    
+
     // 校验验证码
     const codeRecord = db.prepare("SELECT code, createdAt FROM verification_codes WHERE email = ?").get(cleanUsername) as { code: string, createdAt: number } | undefined;
     if (!codeRecord) {
@@ -760,15 +1138,15 @@ app.post("/api/auth/register", (req, res) => {
     if (checkStmt.get(cleanUsername)) {
       return res.status(400).json({ error: "该用户名已被注册" });
     }
-    
+
     const hashedPassword = hashPassword(password);
     const insertUser = db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'student')");
     insertUser.run(cleanUsername, hashedPassword);
-    
+
     const token = crypto.randomUUID();
     const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
     insertSession.run(token, cleanUsername, Date.now());
-    
+
     res.json({ token, username: cleanUsername, role: 'student' });
   } catch (error: any) {
     console.error("Register Error:", error);
@@ -795,7 +1173,7 @@ app.post("/api/auth/login", (req, res) => {
         if (!user) {
           return res.status(400).json({ error: "姓名或身份证后6位错误" });
         }
-        
+
         const token = crypto.randomUUID();
         db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
         return res.json({ token, username: user.username, role: user.role });
@@ -807,7 +1185,7 @@ app.post("/api/auth/login", (req, res) => {
         if (!user) {
           return res.status(400).json({ error: "姓名或手机号后4位错误" });
         }
-        
+
         const token = crypto.randomUUID();
         db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
         return res.json({ token, username: user.username, role: user.role });
@@ -827,7 +1205,7 @@ app.post("/api/auth/login", (req, res) => {
       if (user.role === 'student') {
         return res.status(400).json({ error: "此账号为学生角色，请选择学生登录" });
       }
-      
+
       const token = crypto.randomUUID();
       db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
       return res.json({ token, username: user.username, role: user.role });
@@ -992,7 +1370,7 @@ app.put("/api/admin/users/:username", requireAdmin, (req, res) => {
       if (userObj && userObj.role === 'student') {
         const cleanIdCard = idCardLast6 === undefined ? undefined : idCardLast6?.trim();
         const cleanPhone = phoneLast4 === undefined ? undefined : phoneLast4?.trim();
-        
+
         if (cleanIdCard !== undefined) {
           db.prepare("UPDATE users SET idCardLast6 = ? WHERE username = ?").run(cleanIdCard || null, cleanNewUsername);
         }
@@ -1060,7 +1438,7 @@ app.get("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
       const stmt = db.prepare("SELECT * FROM questions ORDER BY createdAt DESC");
       rows = stmt.all() as any[];
     }
-    
+
     const questions = rows.map(row => ({
       id: row.id,
       userId: row.userId,
@@ -1075,9 +1453,12 @@ app.get("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
       createdAt: row.createdAt,
       similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined,
       studentAnswer: row.studentAnswer || "",
-      errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : []
+      errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : [],
+      paperName: row.paperName || undefined,
+      standardAnswer: row.standardAnswer || undefined,
+      score: row.score !== null && row.score !== undefined ? row.score : undefined
     }));
-    
+
     res.json(questions);
   } catch (error: any) {
     console.error("Get Questions Error:", error);
@@ -1098,7 +1479,7 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
     if (!user || user.role === 'student') {
       return res.status(403).json({ error: "权限不足，学生角色无法录入或编辑错题" });
     }
-    
+
     const checkStmt = db.prepare("SELECT userId, studentId, status FROM questions WHERE id = ?");
     const existing = checkStmt.get(question.id) as { userId: string, studentId: string | null, status: string } | undefined;
     if (existing && existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
@@ -1108,13 +1489,13 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
     const targetUserId = existing ? existing.userId : req.userId;
     const targetStudentId = question.studentId !== undefined ? question.studentId : (existing ? existing.studentId : null);
     const targetStatus = question.status !== undefined ? question.status : (existing ? existing.status : 'pending');
-    
+
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run(
       question.id,
       targetUserId,
@@ -1129,9 +1510,12 @@ app.post("/api/questions", requireAuth, (req: AuthenticatedRequest, res) => {
       question.createdAt || Date.now(),
       question.similarQuestion ? JSON.stringify(question.similarQuestion) : null,
       question.studentAnswer || "",
-      question.errorDiagnosis ? JSON.stringify(question.errorDiagnosis) : "[]"
+      question.errorDiagnosis ? JSON.stringify(question.errorDiagnosis) : "[]",
+      question.paperName || null,
+      question.standardAnswer || null,
+      question.score !== undefined ? question.score : null
     );
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error("Save Question Error:", error);
@@ -1149,7 +1533,7 @@ app.delete("/api/questions/:id", requireAuth, (req: AuthenticatedRequest, res) =
     if (!user || user.role === 'student') {
       return res.status(403).json({ error: "权限不足，学生角色无法删除错题" });
     }
-    
+
     const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
     const existing = checkStmt.get(id) as { userId: string } | undefined;
     if (!existing) {
@@ -1158,14 +1542,14 @@ app.delete("/api/questions/:id", requireAuth, (req: AuthenticatedRequest, res) =
     if (existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
       return res.status(403).json({ error: "您没有权限删除该错题" });
     }
-    
+
     const stmt = db.prepare("DELETE FROM questions WHERE id = ?");
     const result = stmt.run(id);
-    
+
     if (result.changes === 0) {
       return res.status(400).json({ error: "删除失败" });
     }
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error("Delete Question Error:", error);

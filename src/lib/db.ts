@@ -24,6 +24,9 @@ export interface ErrorQuestion {
   status?: 'pending' | 'audited';
   studentAnswer?: string;
   errorDiagnosis?: DiagnosisStep[];
+  paperName?: string;
+  standardAnswer?: string;
+  score?: number;
 }
 
 export interface Stats {
