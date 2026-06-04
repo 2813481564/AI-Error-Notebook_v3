@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2 } from 'lucide-react';
 import { ErrorQuestion } from '../lib/db';
 import FormattedMath from './FormattedMath';
+import GeometryRenderer from './GeometryRenderer';
+import type { GeometryData } from '../types/geometry';
 
 export default function TestPaper({ 
   questions, 
@@ -102,6 +104,7 @@ export default function TestPaper({
         text: q.originalText,
         solution: q.solution,
         errorReason: q.errorReason,
+        geometry: undefined
       }))
     : variants.map((v, idx) => ({
         id: `variant-${idx}`,
@@ -109,6 +112,7 @@ export default function TestPaper({
         text: v.variantText,
         solution: v.solution,
         errorReason: 'AI 变式题',
+        geometry: v.geometry
       }));
 
   return (
@@ -320,6 +324,13 @@ export default function TestPaper({
                   {paperMode === 'original' ? `# 错题 ID: ${q.id.slice(0, 8)}` : '# AI 命制变式题'}
                 </span>
               </div>
+
+              {/* Geometry Area */}
+              {q.geometry && q.geometry.type !== 'none' && (
+                <div className="py-2">
+                  <GeometryRenderer geometry={q.geometry} />
+                </div>
+              )}
 
               {/* Question Text */}
               <FormattedMath 

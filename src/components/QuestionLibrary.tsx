@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import FormattedMath from './FormattedMath';
+import GeometryRenderer from './GeometryRenderer';
+import type { GeometryData } from '../types/geometry';
 
 export default function QuestionLibrary({ 
   onNavigate,
@@ -282,7 +284,7 @@ function QuestionDetail({
   onUpdate?: (updated: ErrorQuestion) => void
 }) {
   const [similarTabActive, setSimilarTabActive] = useState(false);
-  const [similarData, setSimilarData] = useState<{questionText: string, solution: string} | null>(question.similarQuestion || null);
+  const [similarData, setSimilarData] = useState<{questionText: string, solution: string, geometry?: GeometryData} | null>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
   
   const userRole = localStorage.getItem('errorbook_role') || 'student';
@@ -1372,3 +1374,4 @@ export function parseIndividualStandardAnswers(text: string): { number: string; 
   }
   return result;
 }
+

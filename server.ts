@@ -550,63 +550,57 @@ app.post("/api/analyze", requireAuth, checkAiLimit, async (req: AuthenticatedReq
     }
 
     const prompt = `
-【任务说明】请仔细观察图片，执行以下分析任务：
+你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出一道【相似度约80%】的同类练习题。
 
-【第一步 - 必须先数题目数量】：
-扫描图片，找出所有带有独立题号的大题（题号通常是阿拉伯数字，如"20."、"21."、"22."）。
-记住这个数量，后续必须创建同等数量的数组元素。
+【原题信息】
+- 学科: ${subject}
+- 题目内容: ${originalText}
+- 核心知识点: ${knowledgePoints?.join(', ')}
 
-【第二步 - 逐题独立分析】：
-针对第一步识别到的每一道独立大题，分别创建一个对象，填写以下字段：
-- "originalText": 【仅限本题】的完整题干文字（含题号，如"20. 在平面..."）。严禁把其他题号的题干混入此字段。
-- "subject": 本题学科（数学/物理/化学/英语/语文等）。
-- "knowledgePoints": 本题核心考点，最多3个。
-- "solution": 【仅针对本题】的详细解题步骤，含LaTeX公式。
-- "hasStudentAnswer": 本题区域内是否有学生手写作答痕迹（true/false）。
-- "studentAnswer": 【仅本题】学生手写的原始文本（无则空字符串）。
-- "errorDiagnosis": 若本题有学生作答，将【本题学生的解答步骤】逐行数字化。步骤序号从1开始重新计数。每步包含：
-  * "stepNumber": 本题内的步骤序号（每道题从1开始重置）。
-  * "stepContent": 该步骤内容（数学公式用$...$包围）。
-  * "status": "correct" / "incorrect" / "consequential_error"。
-  * "comment": 仅在错误步骤时填写说明。
+【命题要求】
+1. 核心知识点与原题完全相同。
+2. 题型、步骤数量、公式类型与原题保持一致。
+3. 修改具体数值/已知条件/情境背景，使题目全新（约20%差异）。
+4. 知识点/图形/公式均不超出高中范围。
+5. 数学公式必须用标准 $ 或 $ 包围。
 
-【第三步 - 组装JSON数组】：
-将所有题目对象按题号顺序组装成JSON数组输出。数组元素数量必须严格等于第一步数到的题目数量。
+【几何图形数据规范（必须填写 geometry 字段）】
+根据题目类型填写 geometry.type：
 
-输出格式（示例为图片中有3道独立大题 第20、21、22题时）：
-[
-  {
-    "originalText": "20. 第20题完整题干...",
-    "subject": "数学",
-    "knowledgePoints": ["两点间距离公式"],
-    "solution": "第20题解题过程...",
-    "hasStudentAnswer": true,
-    "studentAnswer": "学生对第20题的手写解答",
-    "errorDiagnosis": [
-      { "stepNumber": 1, "stepContent": "$AB=\\sqrt{...}$", "status": "correct", "comment": "" }
+A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
+   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
+
+B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
+   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
+   shapes 坐标直接使用题目中的数学坐标值。
+
+C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
+   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上，合理分布在画面中。
+
+D) 纯计算/代数题，无需图形: type="none", shapes=[]
+
+shapes 元素格式：
+polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
+line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
+circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
+point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
+label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
+
+请严格按以下 JSON 格式返回，不要包含 Markdown 代码块标记：
+{
+  "questionText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
+  "solution": "详细解题步骤（含LaTeX公式，每步用1. 2. 3.标注）",
+  "geometry": {
+    "type": "coordinate",
+    "xRange": [-6, 2],
+    "yRange": [-4, 2],
+    "shapes": [
+      {"type":"polygon","points":[[-4,-1],[-3,-3],[-1,-2]],"fill":"#eff6ff","stroke":"#374151"},
+      {"type":"point","x":-4,"y":-1,"r":3,"fill":"#374151"},
+      {"type":"label","text":"A","x":-4.4,"y":-0.7,"color":"#1e293b","anchor":"middle"}
     ]
-  },
-  {
-    "originalText": "21. 第21题完整题干...",
-    "subject": "数学",
-    "knowledgePoints": ["三角形重心性质"],
-    "solution": "第21题解题过程...",
-    "hasStudentAnswer": true,
-    "studentAnswer": "学生对第21题的手写解答",
-    "errorDiagnosis": [
-      { "stepNumber": 1, "stepContent": "G是重心，$AG=\\frac{2}{3}AE$", "status": "correct", "comment": "" }
-    ]
-  },
-  {
-    "originalText": "22. 第22题完整题干...",
-    "subject": "数学",
-    "knowledgePoints": ["平行线画法与面积平分"],
-    "solution": "第22题解题过程...",
-    "hasStudentAnswer": false,
-    "studentAnswer": "",
-    "errorDiagnosis": []
   }
-]
+}
 `;
     // System prompt: 严格约束模型必须输出 JSON 数组，每道题独立成一个对象
     const systemPrompt = `你是一个严谨的 AI 智能名师助手。你的输出格式有且只有一种：一个合法的 JSON 数组（以 [ 开头，以 ] 结尾）。
@@ -821,8 +815,8 @@ ${standardAnswerSection}
 - 学生作答内容: ${studentAnswer || '（无学生作答）'}
 
 【任务要求】：
-1. **核心考点** ("knowledgePoints"): 分析该题考察的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
-2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $ 符号包围以保证 LaTeX 完美渲染。
+1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
+2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
 3. **学生作答步骤级诊断** ("errorDiagnosis"):
    - 如果 "学生作答内容" 为空，则 "errorDiagnosis" 必须返回空数组 []。
    - If "学生作答内容" has content, digitize it step-by-step (step number starting from 1). For each step:
@@ -907,15 +901,56 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req: AuthenticatedReq
     const { originalText, subject, knowledgePoints } = req.body;
 
     const prompt = `
-请作为AI导师，根据以下信息出一道相似的练习题，帮助学生巩固查漏补缺：
+你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出一道【相似度约80%】的同类练习题。
+
+【原题信息】
 - 学科: ${subject}
 - 题目内容: ${originalText}
 - 核心知识点: ${knowledgePoints?.join(', ')}
 
-请返回严格的JSON格式：
+【命题要求】
+1. 核心知识点与原题完全相同。
+2. 题型、步骤数量、公式类型与原题保持一致。
+3. 修改具体数值/已知条件/情境背景，使题目全新（约20%差异）。
+4. 知识点/图形/公式均不超出高中范围。
+5. 数学公式必须用标准 $ 或 $ 包围。
+
+【几何图形数据规范（必须填写 geometry 字段）】
+根据题目类型填写 geometry.type：
+
+A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
+   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
+
+B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
+   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
+   shapes 坐标直接使用题目中的数学坐标值。
+
+C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
+   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上，合理分布在画面中。
+
+D) 纯计算/代数题，无需图形: type="none", shapes=[]
+
+shapes 元素格式：
+polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
+line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
+circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
+point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
+label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
+
+请严格按以下 JSON 格式返回，不要包含 Markdown 代码块标记：
 {
-  "questionText": "新题目的完整文字",
-  "solution": "新题目的详细解题步骤"
+  "questionText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
+  "solution": "详细解题步骤（含LaTeX公式，每步用1. 2. 3.标注）",
+  "geometry": {
+    "type": "coordinate",
+    "xRange": [-6, 2],
+    "yRange": [-4, 2],
+    "shapes": [
+      {"type":"polygon","points":[[-4,-1],[-3,-3],[-1,-2]],"fill":"#eff6ff","stroke":"#374151"},
+      {"type":"point","x":-4,"y":-1,"r":3,"fill":"#374151"},
+      {"type":"label","text":"A","x":-4.4,"y":-0.7,"color":"#1e293b","anchor":"middle"}
+    ]
+  }
 }
 `;
 
@@ -930,19 +965,29 @@ app.post("/api/similar", requireAuth, checkAiLimit, async (req: AuthenticatedReq
         }
       ],
       config: {
-        responseMimeType: 'application/json',
         temperature: 0.7
+        // 注意：不能设置 responseMimeType: 'application/json'
+        // 因为当 questionText 中嵌入 SVG 代码时，JSON 模式会让 AI 转义 SVG 的单引号，导致图形损坏
       }
     });
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
 
-    let parsedText = text;
-    if (parsedText.startsWith('```json')) {
-      parsedText = parsedText.replace(/```json/i, '').replace(/```/g, '').trim();
+    // 使用健壮的 JSON 提取与净化工具（与其他接口保持一致）
+    // SVG 嵌入 JSON 字符串时可能带来转义问题，sanitizeJsonString 可以处理大部分情况
+    let data: any;
+    try {
+      const extracted = extractJsonString(text);
+      data = JSON.parse(sanitizeJsonString(extracted));
+    } catch {
+      // 兜底：尝试移除 Markdown 代码块标记后再解析
+      let fallback = text.trim();
+      if (fallback.startsWith('```')) {
+        fallback = fallback.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/,'').trim();
+      }
+      data = JSON.parse(fallback);
     }
-    const data = JSON.parse(parsedText);
     res.json(data);
 
   } catch (error: any) {
@@ -973,23 +1018,46 @@ app.post("/api/paper/variants", requireAuth, checkAiLimit, async (req: Authentic
 1. 考察的核心知识点和难度水平必须与原题完全保持一致。
 2. 改变题目的情境背景、具体数值或者提问角度，确保题目是全新的。
 3. 对变式题目提供标准、严谨、逻辑清晰的详细名师解题步骤。
-4. ⚠️非常重要：变式题干与解答步骤务必保持精简（解题步骤只列出核心关键推导，不要废话），每个题目的解题步骤控制在 120 字以内，以防网络超时。
+4. 数学公式必须用标准 $ 或 $$ 包围。
+
+【几何图形数据规范（仅当题目涉及几何图形时填写 geometry 字段）】
+根据题目类型填写 geometry.type：
+A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
+   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
+B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
+   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
+   shapes 坐标直接使用题目中的数学坐标值。
+C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
+   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上。
+D) 纯计算/代数题，无需图形: type="none", shapes=[]
+
+shapes 元素格式：
+polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
+line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
+circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
+point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
+label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
 
 输入错题列表：
-${JSON.stringify(questions.map((q, idx) => ({ index: idx + 1, text: q.originalText, subject: q.subject, knowledgePoints: q.knowledgePoints })))}
+${JSON.stringify(questions.map((q: any, idx: number) => ({ index: idx + 1, text: q.originalText, subject: q.subject, knowledgePoints: q.knowledgePoints })))}
 
-请务必返回以下格式的严格 JSON 数组，不要在最外层包含任何 Markdown 格式的 \`\`\`json 标记，必须是一个纯粹的合法 JSON 数组：
+请务必返回以下格式的严格 JSON 数组，不要包含任何 Markdown 格式的 \`\`\`json 标记：
 [
   {
     "index": 1,
     "subject": "题目科目",
     "originalText": "原题题干文本",
-    "variantText": "命制的 1:1 变式题干文本（如果需要 LaTeX 数学公式，请使用标准的 $ 或 $$ 符号包围，以保证前端数学公式渲染完美）",
-    "solution": "变式题名师详细标准解题步骤（解题分析加推导步骤）"
+    "variantText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
+    "solution": "详细解题步骤（含LaTeX公式）",
+    "geometry": {
+      "type": "coordinate",
+      "xRange": [-6, 2],
+      "yRange": [-4, 2],
+      "shapes": []
+    }
   }
 ]
 `;
-
     const response = await generateContentWithFallback({
       contents: [
         {
@@ -1661,3 +1729,5 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+

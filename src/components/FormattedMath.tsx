@@ -19,7 +19,6 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
         if (segment.startsWith('$$') && segment.endsWith('$$')) {
           const rawMath = segment.slice(2, -2).trim();
           try {
-            // Unescape occasionally double-escaped backend slashes like \\times or \\div
             const sanitizedMath = rawMath
               .replace(/\\\\/g, '\\')
               .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
@@ -29,8 +28,8 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
               throwOnError: false,
             });
             return (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 className="overflow-x-auto py-4 my-3 bg-slate-50 border border-slate-150/80 rounded-2xl px-5 text-slate-950 flex justify-center scrollbar-thin font-semibold shadow-inner"
                 dangerouslySetInnerHTML={{ __html: html }}
                 id={`math-block-${index}`}
@@ -51,6 +50,7 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
     </div>
   );
 }
+
 
 function NormalSegment({ text }: { text: string; key?: any }) {
   // Split this text segment into separate lines
