@@ -116,7 +116,7 @@ function CoordAxes({ geo, t }: { geo: GeometryData; t: TFn }) {
 }
 
 /** 渲染单个图形元素 */
-function Shape({ shape, t }: { shape: ShapeType; t: TFn }) {
+const Shape: React.FC<{ shape: ShapeType; t: TFn }> = ({ shape, t }) => {
   const stroke = (shape as any).stroke ?? '#374151';
   const strokeWidth = (shape as any).strokeWidth ?? 1.5;
 

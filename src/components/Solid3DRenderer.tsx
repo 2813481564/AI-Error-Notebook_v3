@@ -1,3 +1,4 @@
+import React from 'react';
 import type { GeometryData, Solid3DShape, CylinderSolid, ConeSolid, SphereSolid, CuboidSolid } from '../types/geometry';
 const SW = 800; // SVG 宽
 const SH = 320; // SVG 高
@@ -13,7 +14,7 @@ function RenderCylinder({ s }: { s: CylinderSolid }) {
   // 切割面（水平椭圆），从顶部向下偏移
   const cuts = s.cuts ?? [];
   // 收集需要渲染在最顶层的切割线（顶面切线与前面竖线）
-  const frontCutLines: JSX.Element[] = [];
+  const frontCutLines: React.JSX.Element[] = [];
 
   return (
     <g>
@@ -42,7 +43,7 @@ function RenderCylinder({ s }: { s: CylinderSolid }) {
               strokeDasharray="5,3"
             />
           );
-        } else if (typeof cut === 'object' && (cut.type === 'vertical' || ('angle' in cut && cut.type !== 'horizontal'))) {
+        } else if (typeof cut === 'object' && cut.type === 'vertical') {
           // 纵向切割面
           const angle = cut.angle ?? (Math.PI / 6 + i * (Math.PI / 4));
           let xA = cx - rx * Math.cos(angle);
@@ -228,7 +229,7 @@ function RenderCuboid({ s }: { s: CuboidSolid }) {
 }
 
 // ======================== 单个 3D 图元分发渲染 ========================
-function Solid3DShape({ shape }: { shape: Solid3DShape }) {
+const Solid3DShape: React.FC<{ shape: Solid3DShape }> = ({ shape }) => {
   if (shape.type === 'cylinder') return <RenderCylinder s={shape} />;
   if (shape.type === 'cone') return <RenderCone s={shape} />;
   if (shape.type === 'sphere') return <RenderSphere s={shape} />;

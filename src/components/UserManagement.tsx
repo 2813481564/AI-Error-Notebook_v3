@@ -392,7 +392,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                             {user.role === 'student' && (
                               <div className="flex flex-col gap-1 items-start">
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                                  学生 (只读题库)
+                                  普通用户 (标准额度)
                                 </span>
                                 {(user.idCardLast6 || user.phoneLast4) && (
                                   <div className="text-[10px] text-slate-400 font-semibold pl-1 space-y-0.5">
@@ -609,12 +609,12 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                 <select
                   value={editRole}
                   onChange={e => setEditRole(e.target.value as any)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all cursor-pointer"
                 >
-                  <option value="student">学生 (只读题库, 30次/日)</option>
-                  <option value="vip">VIP 会员 (100次/日)</option>
-                  <option value="svip">SVIP 会员 (300次/日)</option>
-                  <option value="teacher">老师 (录入/出题, 5000次/日)</option>
+                  <option value="student">普通用户 (标准额度, 30次 AI / 日)</option>
+                  <option value="vip">VIP 会员 (100次 AI / 日)</option>
+                  <option value="svip">SVIP 会员 (300次 AI / 日)</option>
+                  <option value="teacher">老师 / 特权用户 (5000次 AI / 日)</option>
                 </select>
               </div>
 
@@ -720,22 +720,22 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                 <select
                   value={addRole}
                   onChange={e => setAddRole(e.target.value as any)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all cursor-pointer"
                 >
-                  <option value="student">学生 (免密登录, 只读题库)</option>
-                  <option value="vip">VIP 会员 (邮箱登录, 100次/日)</option>
-                  <option value="svip">SVIP 会员 (邮箱登录, 300次/日)</option>
-                  <option value="teacher">老师 (邮箱密码登录, 录入/出题)</option>
+                  <option value="student">普通用户 (免密临时学生, 30次/日)</option>
+                  <option value="vip">VIP 会员 (邮箱密码账号, 100次/日)</option>
+                  <option value="svip">SVIP 会员 (邮箱密码账号, 300次/日)</option>
+                  <option value="teacher">特权/老师账号 (邮箱密码账号, 5000次/日)</option>
                 </select>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">
-                  {addRole === 'teacher' ? '邮箱账号' : '真实姓名'}
+                  {addRole === 'student' ? '学生姓名 / 免密账号' : '登录邮箱 / 账号'}
                 </label>
                 <input 
                   type="text"
-                  placeholder={addRole === 'teacher' ? "请输入老师邮箱（例如: abc@qq.com）" : "请输入学生姓名"}
+                  placeholder={addRole === 'student' ? "请输入真实姓名" : "请输入有效的 QQ 邮箱或账号"}
                   value={addUsername}
                   onChange={e => setAddUsername(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"

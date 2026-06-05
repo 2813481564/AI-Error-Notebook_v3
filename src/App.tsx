@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2 } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -37,6 +37,7 @@ export default function App() {
   const [regSuccess, setRegSuccess] = useState<string | null>(null);
   const [sendCodeLoading, setSendCodeLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   // 会员信息状态
   const [userInfo, setUserInfo] = useState<{
@@ -81,24 +82,9 @@ export default function App() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authUsername.trim()) {
-      setAuthError('姓名或账号不能为空');
+    if (!authUsername.trim() || !authPassword.trim()) {
+      setAuthError('请完整输入账号/邮箱和密码');
       return;
-    }
-    if (loginRole === 'student') {
-      if (loginType === 'idCard' && !idCardLast6.trim()) {
-        setAuthError('身份证后6位不能为空');
-        return;
-      }
-      if (loginType === 'phone' && !phoneLast4.trim()) {
-        setAuthError('手机号后4位不能为空');
-        return;
-      }
-    } else {
-      if (!authPassword.trim()) {
-        setAuthError('密码不能为空');
-        return;
-      }
     }
 
     setAuthLoading(true);
@@ -109,11 +95,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           username: authUsername.trim(), 
-          password: loginRole === 'teacher' ? authPassword.trim() : undefined,
-          loginRole,
-          loginType: loginRole === 'student' ? loginType : undefined,
-          idCardLast6: (loginRole === 'student' && loginType === 'idCard') ? idCardLast6.trim() : undefined,
-          phoneLast4: (loginRole === 'student' && loginType === 'phone') ? phoneLast4.trim() : undefined
+          password: authPassword.trim(),
+          loginRole: 'teacher'
         })
       });
       const data = await res.json();
@@ -217,7 +200,6 @@ export default function App() {
       setToken(data.token);
       setUsername(data.username);
       setRole(data.role || 'student');
-      
       // 重置注册框状态
       setIsRegisterMode(false);
       setRegEmail('');
@@ -230,131 +212,252 @@ export default function App() {
     }
   };
 
-  // 全局登录/注册拦截
   if (!token) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-tr from-slate-900 via-blue-900 to-indigo-950 p-4 font-sans text-slate-800">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-600/20 via-transparent to-transparent pointer-events-none"></div>
-        <div className="w-full max-w-md bg-white/95 backdrop-blur-lg rounded-3xl border border-white/20 p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
+      <div className="min-h-screen w-full flex bg-[#faf9f6] font-sans text-slate-700 overflow-y-auto">
+        
+        {/* Left Intro Pane (Hidden on Mobile) */}
+        <div className="hidden lg:flex w-[55%] flex-col justify-between p-16 bg-gradient-to-tr from-[#fbf9f5] via-[#f8f5ee] to-[#ebe5d7] border-r border-[#e9e5dd] relative overflow-hidden select-none">
+          <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-gradient-to-br from-[#c4a578]/10 to-transparent blur-[120px] pointer-events-none"></div>
           
-          {/* Decorative Top Accent */}
-          <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 to-indigo-600 absolute top-0 left-0"></div>
-          
-          <div className="flex flex-col items-center mb-6">
-            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4 animate-bounce duration-1000">
-              <span className="text-white font-extrabold text-sm tracking-widest">AI</span>
+          {/* Header Logo */}
+          <div className="flex items-center gap-3.5 z-10">
+            <div className="w-11 h-11 bg-gradient-to-br from-[#d4b588] to-[#c4a578] rounded-2xl flex items-center justify-center shadow-lg shadow-[#c4a578]/25 text-white font-extrabold text-lg">
+              AI
             </div>
-            <h2 className="text-2xl font-black text-slate-955 tracking-tight text-center">智能错题本</h2>
-            <p className="text-xs text-slate-500 mt-1.5 font-medium text-center">
-              {isRegisterMode ? '自主注册新账户，尊享专属 AI 服务' : '登录以访问您个人的物理错题库'}
-            </p>
+            <div className="flex flex-col">
+              <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-1.5">
+                爱错题
+                <span className="text-[10px] font-black bg-[#c4a578]/10 text-[#c4a578] px-2 py-0.5 rounded-lg border border-[#c4a578]/20">AI 错题本</span>
+              </h2>
+            </div>
           </div>
 
-          {isRegisterMode ? (
-            // ================= 注册表单 =================
-            <form onSubmit={handleRegister} className="space-y-4">
-              {authError && (
-                <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-                  {authError}
-                </div>
-              )}
-              {regSuccess && (
-                <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className="leading-snug">{regSuccess}</span>
-                </div>
-              )}
+          {/* Slogans & Features */}
+          <div className="my-auto max-w-lg z-10">
+            <div className="space-y-3 mb-10">
+              <h1 className="text-3xl font-extrabold text-slate-850 tracking-tight leading-tight">
+                拍照即录入，爱错题智能分析
+              </h1>
+              <p className="text-slate-450 text-sm font-semibold tracking-wide">
+                让每一道错题都变成掌握的起点
+              </p>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">QQ 邮箱</label>
-                <div className="flex gap-2">
+            {/* Feature Cards */}
+            <div className="space-y-4">
+              {/* Card 1 */}
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-[14px]">拍照识别</h4>
+                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">拍照或上传题目照片，AI 自动切题、提取并解析</p>
+                </div>
+              </div>
+
+              {/* Card 2 */}
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-[14px]">AI 智能解析</h4>
+                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">提供详细的解题步骤、多维错因归纳与关联知识点</p>
+                </div>
+              </div>
+
+              {/* Card 3 */}
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-[14px]">智能组卷</h4>
+                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">自由挑选错题一键生成巩固试卷，导出高品质 PDF</p>
+                </div>
+              </div>
+
+              {/* Card 4 */}
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+                  <Globe className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-[14px]">公共题库</h4>
+                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">精选共享海量题目，和大家一起讨论解题思路</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Checklists */}
+            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[11px] font-bold text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" />
+                支持数学公式与几何图形
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" />
+                多错题本分类管理
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" />
+                掌握度智能追踪
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" />
+                全平台数据同步
+              </div>
+            </div>
+          </div>
+
+          {/* Footer note */}
+          <div className="text-xs text-slate-400 font-bold tracking-wide flex items-center gap-1.5 z-10">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#c4a578] animate-pulse"></span>
+            已帮助数千名学生高效管理错题
+          </div>
+        </div>
+
+        {/* Right Form Pane */}
+        <div className="flex-1 flex flex-col justify-center items-center p-8 bg-[#faf9f6] md:bg-white">
+          <div className="w-full max-w-[360px] space-y-6">
+            
+            {/* Logo and Slogan */}
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-[#c4a578] rounded-2xl flex items-center justify-center shadow-lg shadow-[#c4a578]/25 text-white font-extrabold text-2xl mb-4 select-none">
+                AI
+              </div>
+              <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-1 select-none">
+                爱错题 <span className="text-xs font-semibold text-slate-400 font-mono">AI 错题本</span>
+              </h2>
+              <p className="text-xs text-slate-450 mt-1.5 font-bold tracking-wide select-none">
+                {isRegisterMode ? '欢迎注册使用爱错题' : '欢迎回到爱错题'}
+              </p>
+            </div>
+
+            {/* Switch Tabs */}
+            <div className="flex bg-[#f3f1ec] p-1 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegisterMode(false);
+                  setAuthError(null);
+                  setRegSuccess(null);
+                }}
+                className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  !isRegisterMode
+                    ? 'bg-[#c4a578] text-white shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                登录
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegisterMode(true);
+                  setAuthError(null);
+                  setRegSuccess(null);
+                }}
+                className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isRegisterMode
+                    ? 'bg-[#c4a578] text-white shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                注册
+              </button>
+            </div>
+
+            {/* Forms Container */}
+            {isRegisterMode ? (
+              // ================= 注册表单 =================
+              <form onSubmit={handleRegister} className="space-y-4">
+                {authError && (
+                  <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+                    {authError}
+                  </div>
+                )}
+                {regSuccess && (
+                  <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="leading-snug">{regSuccess}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    QQ 邮箱
+                  </label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="email"
+                      placeholder="请输入您的 QQ 邮箱地址"
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                      className="flex-1 p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendCode}
+                      disabled={sendCodeLoading || countdown > 0}
+                      className="bg-[#c4a578] hover:bg-[#b29368] text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">邮箱验证码</label>
                   <input 
-                    type="email"
-                    placeholder="如: user@qq.com"
-                    value={regEmail}
-                    onChange={e => setRegEmail(e.target.value)}
-                    className="flex-1 p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-850 transition-all placeholder-slate-400"
+                    type="text"
+                    placeholder="请输入 6 位验证码"
+                    value={regCode}
+                    onChange={e => setRegCode(e.target.value)}
+                    className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={handleSendCode}
-                    disabled={sendCodeLoading || countdown > 0}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                  >
-                    {countdown > 0 ? `${countdown}s` : '获取验证码'}
-                  </button>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">邮箱验证码</label>
-                <input 
-                  type="text"
-                  placeholder="请输入 6 位验证码"
-                  value={regCode}
-                  onChange={e => setRegCode(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-850 transition-all placeholder-slate-400"
-                  required
-                />
-              </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    设置密码
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? "text" : "password"}
+                      placeholder="设置您的账号密码（至少 6 位）"
+                      value={regPassword}
+                      onChange={e => setRegPassword(e.target.value)}
+                      className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">设置密码</label>
-                <input 
-                  type="password"
-                  placeholder="设置您的账号密码（至少 6 位）"
-                  value={regPassword}
-                  onChange={e => setRegPassword(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-850 transition-all placeholder-slate-400"
-                  required
-                />
-              </div>
-
-              <button 
-                type="submit"
-                disabled={authLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
-              >
-                {authLoading ? '正在注册...' : '立即注册'}
-              </button>
-            </form>
-          ) : (
-            // ================= 登录表单 =================
-            <>
-              {/* 角色选择 Tab */}
-              <div className="flex bg-slate-100 p-1 rounded-2xl mb-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginRole('student');
-                    setAuthError(null);
-                  }}
-                  className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    loginRole === 'student'
-                      ? 'bg-white text-blue-600 shadow-sm font-black'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                <button 
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-[#c4a578] hover:bg-[#b29368] text-white py-3 rounded-xl font-bold transition shadow-lg shadow-[#c4a578]/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
                 >
-                  学生登录
+                  {authLoading ? '正在注册...' : '立即注册'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginRole('teacher');
-                    setAuthError(null);
-                  }}
-                  className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    loginRole === 'teacher'
-                      ? 'bg-white text-blue-600 shadow-sm font-black'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  老师 / 管理员登录
-                </button>
-              </div>
-
+              </form>
+            ) : (
+              // ================= 登录表单 =================
               <form onSubmit={handleAuth} className="space-y-4">
                 {authError && (
                   <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
@@ -363,134 +466,81 @@ export default function App() {
                   </div>
                 )}
 
-                {loginRole === 'student' ? (
-                  <>
-                    {/* 学生验证方式切换 */}
-                    <div className="flex gap-4 mb-2 pl-1 justify-center">
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="loginType"
-                          checked={loginType === 'idCard'}
-                          onChange={() => setLoginType('idCard')}
-                          className="text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span>姓名 + 身份证后6位</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="loginType"
-                          checked={loginType === 'phone'}
-                          onChange={() => setLoginType('phone')}
-                          className="text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span>姓名 + 手机号后4位</span>
-                      </label>
-                    </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    账号 / 注册邮箱
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="请输入邮箱或管理员账号（如: admin）"
+                    value={authUsername}
+                    onChange={e => setAuthUsername(e.target.value)}
+                    className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
+                    required
+                  />
+                </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">学生姓名</label>
-                      <input 
-                        type="text"
-                        placeholder="请输入真实姓名"
-                        value={authUsername}
-                        onChange={e => setAuthUsername(e.target.value)}
-                        className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                        required
-                      />
-                    </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    密码
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? "text" : "password"}
+                      placeholder="请输入密码"
+                      value={authPassword}
+                      onChange={e => setAuthPassword(e.target.value)}
+                      className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
 
-                    {loginType === 'idCard' ? (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">身份证后6位</label>
-                        <input 
-                          type="text"
-                          placeholder="请输入身份证最后6位（含英文字母）"
-                          value={idCardLast6}
-                          onChange={e => setIdCardLast6(e.target.value)}
-                          className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                          maxLength={6}
-                          required
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">手机号后4位</label>
-                        <input 
-                          type="text"
-                          placeholder="请输入绑定的手机号后4位"
-                          value={phoneLast4}
-                          onChange={e => setPhoneLast4(e.target.value)}
-                          className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                          maxLength={4}
-                          required
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">账号 / 邮箱</label>
-                      <input 
-                        type="text"
-                        placeholder="邮箱或管理员账号（如: admin）"
-                        value={authUsername}
-                        onChange={e => setAuthUsername(e.target.value)}
-                        className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">密码</label>
-                      <input 
-                        type="password"
-                        placeholder="请输入登录密码"
-                        value={authPassword}
-                        onChange={e => setAuthPassword(e.target.value)}
-                        className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                        required
-                      />
-                    </div>
-                  </>
-                )}
+                <div className="flex justify-between items-center text-xs pt-1 select-none">
+                  <span />
+                  <button
+                    type="button"
+                    onClick={() => alert("密码重置功能升级中，请联系平台管理员 admin 协助重置密码！")}
+                    className="text-slate-400 hover:text-[#c4a578] font-bold transition-colors cursor-pointer"
+                  >
+                    忘记密码？
+                  </button>
+                </div>
 
                 <button 
                   type="submit"
                   disabled={authLoading}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  className="w-full bg-[#c4a578] hover:bg-[#b29368] text-white py-3 rounded-xl font-bold transition shadow-lg shadow-[#c4a578]/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
                 >
                   {authLoading ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      正在处理...
+                      正在登录...
                     </>
                   ) : (
                     '安全登录'
                   )}
                 </button>
               </form>
-            </>
-          )}
+            )}
 
-          {/* 注册/登录模式切换链接 */}
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegisterMode(!isRegisterMode);
-                setAuthError(null);
-                setRegSuccess(null);
-              }}
-              className="text-xs text-blue-600 hover:text-blue-700 font-bold transition-all cursor-pointer"
-            >
-              {isRegisterMode ? '已有账号？立即登录' : '没有账号？注册新用户'}
-            </button>
+            {/* Brand Footer */}
+            <div className="text-center text-[10px] text-slate-350 font-extrabold tracking-widest pt-4 select-none">
+              ai-cuoti.com
+            </div>
+
           </div>
-
         </div>
+
       </div>
     );
   }

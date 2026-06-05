@@ -22,5 +22,17 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "src/**/*",
+    "server.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "server_original.ts",
+    "server_original_utf8.ts",
+    "test_gemma_real.cjs",
+    "test_sdk.cjs"
+  ]
 }

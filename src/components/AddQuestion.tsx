@@ -325,7 +325,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           if (!q.standardAnswer) return '';
           return `### 第${idx + 1}题标准答案\n${q.standardAnswer.trim()}`;
         }).filter(Boolean).join('\n\n');
-        const mergedKp = Array.from(new Set(selectedQuestions.flatMap(q => q.knowledgePoints || [])));
+        const mergedKp: string[] = Array.from(new Set(selectedQuestions.flatMap(q => (q.knowledgePoints || []) as string[])));
         const mergedErrorReason = Array.from(new Set(selectedQuestions.map(q => {
           const itemIdx = parsedData.indexOf(q);
           return errorReasons[itemIdx] || '概念不清';
