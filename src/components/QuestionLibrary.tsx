@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -846,6 +846,11 @@ function QuestionDetail({
                          </button>
                        )}
                      </div>
+                     {similarData.geometry && similarData.geometry.type !== 'none' && (
+                       <div className="py-2">
+                         <GeometryRenderer geometry={similarData.geometry} />
+                       </div>
+                     )}
                     <FormattedMath text={similarData.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
                     
                     <details className="group border border-slate-200 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-slate-50/50">

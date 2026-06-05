@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2 } from 'lucide-react';
+import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2, RefreshCw } from 'lucide-react';
 import { ErrorQuestion } from '../lib/db';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
@@ -22,6 +22,7 @@ export default function TestPaper({
   const [variants, setVariants] = useState<any[]>([]);
   const [generating, setGenerating] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
 
   const handlePrint = () => {
     window.print();
@@ -93,6 +94,59 @@ export default function TestPaper({
       clearInterval(stepInterval);
       setGenerating(false);
       setLoadingStep(0);
+    }
+  };
+
+  // 重新生成单道变式题
+  const regenerateSingleVariant = async (index: number) => {
+    if (regeneratingIndex !== null) return;
+    setRegeneratingIndex(index);
+
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/paper/variant/regenerate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ 
+          originalQuestion: questions[index],
+          currentVariant: variants[index]
+        })
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem('errorbook_token');
+        localStorage.removeItem('errorbook_username');
+        window.location.reload();
+        throw new Error('登录已过期，请重新登录');
+      }
+
+      if (!res.ok) {
+        let errorMsg = '重新生成失败';
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (_) {
+          errorMsg = `请求失败，服务器返回状态: ${res.status}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const newVariant = await res.json();
+      
+      setVariants(prev => {
+        const next = [...prev];
+        next[index] = newVariant;
+        return next;
+      });
+
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'AI 重新生成失败，请重试');
+    } finally {
+      setRegeneratingIndex(null);
     }
   };
 
@@ -320,8 +374,23 @@ export default function TestPaper({
                   第 {index + 1} 题. 
                   <span className="no-print ml-2 bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{q.subject}</span>
                 </span>
-                <span className="no-print text-slate-400 font-bold">
+                <span className="no-print text-slate-400 font-bold flex items-center gap-3">
                   {paperMode === 'original' ? `# 错题 ID: ${q.id.slice(0, 8)}` : '# AI 命制变式题'}
+                  {paperMode === 'variant' && (
+                    <button
+                      onClick={() => regenerateSingleVariant(index)}
+                      disabled={regeneratingIndex === index}
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-700 disabled:text-slate-400 transition-colors cursor-pointer"
+                      title="对这道题不满意？让 AI 自动查找瑕疵并重新生成"
+                    >
+                      {regeneratingIndex === index ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      <span>{regeneratingIndex === index ? '正在自检纠错...' : '重新生成此题'}</span>
+                    </button>
+                  )}
                 </span>
               </div>
 

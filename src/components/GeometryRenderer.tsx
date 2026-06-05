@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { GeometryData, ShapeType } from '../types/geometry';
+import Solid3DRenderer from './Solid3DRenderer';
 
 const W = 300;
 const H = 240;
@@ -247,6 +248,11 @@ export default function GeometryRenderer({ geometry }: { geometry: GeometryData 
   }, [geometry]);
 
   if (!localGeo || localGeo.type === 'none') return null;
+
+  // 三维立体几何：转发给专用渲染器
+  if (localGeo.type === 'solid_3d') {
+    return <Solid3DRenderer geometry={localGeo} />;
+  }
 
   const t = makeTransform(localGeo);
   const invT = makeInverseTransform(localGeo);
