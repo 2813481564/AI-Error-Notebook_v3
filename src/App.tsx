@@ -214,21 +214,21 @@ export default function App() {
 
   if (!token) {
     return (
-      <div className="min-h-screen w-full flex bg-[#faf9f6] font-sans text-slate-700 overflow-y-auto">
+      <div className="min-h-screen w-full flex bg-slate-50 font-sans text-slate-700 overflow-y-auto">
         
         {/* Left Intro Pane (Hidden on Mobile) */}
-        <div className="hidden lg:flex w-[55%] flex-col justify-between p-16 bg-gradient-to-tr from-[#fbf9f5] via-[#f8f5ee] to-[#ebe5d7] border-r border-[#e9e5dd] relative overflow-hidden select-none">
-          <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-gradient-to-br from-[#c4a578]/10 to-transparent blur-[120px] pointer-events-none"></div>
+        <div className="hidden lg:flex w-[55%] flex-col justify-between p-16 bg-gradient-to-tr from-slate-50 via-blue-50/20 to-blue-50 border-r border-slate-200 relative overflow-hidden select-none">
+          <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-gradient-to-br from-blue-500/10 to-transparent blur-[120px] pointer-events-none"></div>
           
           {/* Header Logo */}
           <div className="flex items-center gap-3.5 z-10">
-            <div className="w-11 h-11 bg-gradient-to-br from-[#d4b588] to-[#c4a578] rounded-2xl flex items-center justify-center shadow-lg shadow-[#c4a578]/25 text-white font-extrabold text-lg">
+            <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25 text-white font-extrabold text-lg">
               AI
             </div>
             <div className="flex flex-col">
               <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-1.5">
                 爱错题
-                <span className="text-[10px] font-black bg-[#c4a578]/10 text-[#c4a578] px-2 py-0.5 rounded-lg border border-[#c4a578]/20">AI 错题本</span>
+                <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg border border-blue-100">AI 错题本</span>
               </h2>
             </div>
           </div>
@@ -247,8 +247,8 @@ export default function App() {
             {/* Feature Cards */}
             <div className="space-y-4">
               {/* Card 1 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
                   <Camera className="w-5 h-5" />
                 </div>
                 <div>
@@ -258,8 +258,8 @@ export default function App() {
               </div>
 
               {/* Card 2 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
@@ -269,8 +269,8 @@ export default function App() {
               </div>
 
               {/* Card 3 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -280,8 +280,8 @@ export default function App() {
               </div>
 
               {/* Card 4 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-[#c4a578]/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-[#c4a578]/10 rounded-xl text-[#c4a578] shrink-0">
+              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
+                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
                   <Globe className="w-5 h-5" />
                 </div>
                 <div>
@@ -314,18 +314,18 @@ export default function App() {
 
           {/* Footer note */}
           <div className="text-xs text-slate-400 font-bold tracking-wide flex items-center gap-1.5 z-10">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#c4a578] animate-pulse"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-650 animate-pulse"></span>
             已帮助数千名学生高效管理错题
           </div>
         </div>
 
         {/* Right Form Pane */}
-        <div className="flex-1 flex flex-col justify-center items-center p-8 bg-[#faf9f6] md:bg-white">
+        <div className="flex-1 flex flex-col justify-center items-center p-8 bg-slate-50 md:bg-white">
           <div className="w-full max-w-[360px] space-y-6">
             
             {/* Logo and Slogan */}
             <div className="flex flex-col items-center">
-              <div className="w-16 h-16 bg-[#c4a578] rounded-2xl flex items-center justify-center shadow-lg shadow-[#c4a578]/25 text-white font-extrabold text-2xl mb-4 select-none">
+              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/25 text-white font-extrabold text-2xl mb-4 select-none">
                 AI
               </div>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-1 select-none">
@@ -337,7 +337,7 @@ export default function App() {
             </div>
 
             {/* Switch Tabs */}
-            <div className="flex bg-[#f3f1ec] p-1 rounded-2xl">
+            <div className="flex bg-slate-100 p-1 rounded-2xl">
               <button
                 type="button"
                 onClick={() => {
@@ -347,7 +347,7 @@ export default function App() {
                 }}
                 className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   !isRegisterMode
-                    ? 'bg-[#c4a578] text-white shadow-sm font-black'
+                    ? 'bg-blue-600 text-white shadow-sm font-black'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -362,7 +362,7 @@ export default function App() {
                 }}
                 className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   isRegisterMode
-                    ? 'bg-[#c4a578] text-white shadow-sm font-black'
+                    ? 'bg-blue-600 text-white shadow-sm font-black'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -398,14 +398,14 @@ export default function App() {
                       placeholder="请输入您的 QQ 邮箱地址"
                       value={regEmail}
                       onChange={e => setRegEmail(e.target.value)}
-                      className="flex-1 p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
+                      className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
                       required
                     />
                     <button
                       type="button"
                       onClick={handleSendCode}
                       disabled={sendCodeLoading || countdown > 0}
-                      className="bg-[#c4a578] hover:bg-[#b29368] text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       {countdown > 0 ? `${countdown}s` : '获取验证码'}
                     </button>
@@ -419,7 +419,7 @@ export default function App() {
                     placeholder="请输入 6 位验证码"
                     value={regCode}
                     onChange={e => setRegCode(e.target.value)}
-                    className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
                     required
                   />
                 </div>
@@ -435,7 +435,7 @@ export default function App() {
                       placeholder="设置您的账号密码（至少 6 位）"
                       value={regPassword}
                       onChange={e => setRegPassword(e.target.value)}
-                      className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
                       required
                     />
                     <button
@@ -451,7 +451,7 @@ export default function App() {
                 <button 
                   type="submit"
                   disabled={authLoading}
-                  className="w-full bg-[#c4a578] hover:bg-[#b29368] text-white py-3 rounded-xl font-bold transition shadow-lg shadow-[#c4a578]/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
                 >
                   {authLoading ? '正在注册...' : '立即注册'}
                 </button>
@@ -476,7 +476,7 @@ export default function App() {
                     placeholder="请输入邮箱或管理员账号（如: admin）"
                     value={authUsername}
                     onChange={e => setAuthUsername(e.target.value)}
-                    className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
                     required
                   />
                 </div>
@@ -492,7 +492,7 @@ export default function App() {
                       placeholder="请输入密码"
                       value={authPassword}
                       onChange={e => setAuthPassword(e.target.value)}
-                      className="w-full p-3 bg-[#f5f3ef] border border-[#e9e5dd] rounded-xl focus:ring-2 focus:ring-[#c4a578] focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
                       required
                     />
                     <button
@@ -510,7 +510,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => alert("密码重置功能升级中，请联系平台管理员 admin 协助重置密码！")}
-                    className="text-slate-400 hover:text-[#c4a578] font-bold transition-colors cursor-pointer"
+                    className="text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
                   >
                     忘记密码？
                   </button>
@@ -519,7 +519,7 @@ export default function App() {
                 <button 
                   type="submit"
                   disabled={authLoading}
-                  className="w-full bg-[#c4a578] hover:bg-[#b29368] text-white py-3 rounded-xl font-bold transition shadow-lg shadow-[#c4a578]/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
                 >
                   {authLoading ? (
                     <>
