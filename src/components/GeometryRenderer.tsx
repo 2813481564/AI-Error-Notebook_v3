@@ -116,7 +116,7 @@ function CoordAxes({ geo, t }: { geo: GeometryData; t: TFn }) {
 }
 
 /** 渲染单个图形元素 */
-const Shape: React.FC<{ shape: ShapeType; t: TFn }> = ({ shape, t }) => {
+const SingleGeometryShape: React.FC<{ shape: ShapeType; t: TFn }> = ({ shape, t }) => {
   const stroke = (shape as any).stroke ?? '#374151';
   const strokeWidth = (shape as any).strokeWidth ?? 1.5;
 
@@ -363,7 +363,7 @@ export default function GeometryRenderer({ geometry }: { geometry: GeometryData 
         )}
 
         {(localGeo.shapes ?? []).map((shape, i) => (
-          <Shape key={i} shape={shape} t={t} />
+          <SingleGeometryShape key={i} shape={shape} t={t} />
         ))}
 
         {/* 交互控制点层（打印时隐藏） */}

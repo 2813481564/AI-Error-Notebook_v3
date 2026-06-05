@@ -229,7 +229,7 @@ function RenderCuboid({ s }: { s: CuboidSolid }) {
 }
 
 // ======================== 单个 3D 图元分发渲染 ========================
-const Solid3DShape: React.FC<{ shape: Solid3DShape }> = ({ shape }) => {
+const Solid3DShapeComponent: React.FC<{ shape: Solid3DShape }> = ({ shape }) => {
   if (shape.type === 'cylinder') return <RenderCylinder s={shape} />;
   if (shape.type === 'cone') return <RenderCone s={shape} />;
   if (shape.type === 'sphere') return <RenderSphere s={shape} />;
@@ -286,7 +286,7 @@ export default function Solid3DRenderer({ geometry }: { geometry: GeometryData }
       >
         <rect width={SW} height={SH} fill="white" />
         {solids.map((shape, i) => (
-          <Solid3DShape key={i} shape={shape} />
+          <Solid3DShapeComponent key={i} shape={shape} />
         ))}
       </svg>
     </div>

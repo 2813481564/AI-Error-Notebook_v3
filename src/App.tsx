@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
