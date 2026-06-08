@@ -10,12 +10,11 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 全局试卷与学生关联状态
-  const [selectedStudent, setSelectedStudent] = useState<string>('');
-  const [paperName, setPaperName] = useState<string>('');
-  const [students, setStudents] = useState<string[]>([]);
+  // 错题本相关状态
+  const [notebooks, setNotebooks] = useState<{ id: string; name: string }[]>([]);
+  const [selectedNotebook, setSelectedNotebook] = useState<string>('');
 
-  // 标准答案相关的状态
+  // 标准答案相关的状态（此处仅作向下兼容定义，不再渲染UI输入项）
   const [answerImageStr, setAnswerImageStr] = useState<string | null>(null);
   const [answerMimeType, setAnswerMimeType] = useState<string>('image/jpeg');
   const [answerText, setAnswerText] = useState<string>('');
@@ -31,9 +30,31 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   // 是否开启 AI 深度推理慢思考
   const [aiThinkingMode, setAiThinkingMode] = useState<boolean>(false);
 
+  const handleCreateNotebook = async () => {
+    const name = prompt('请输入新错题本名称：');
+    if (!name || !name.trim()) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/notebooks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '创建失败');
+      setNotebooks(prev => [...prev, data]);
+      setSelectedNotebook(data.id);
+    } catch (err: any) {
+      alert(err.message || '操作失败');
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('errorbook_token');
-    fetch('/api/students', {
+    fetch('/api/notebooks', {
       headers: {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
@@ -41,7 +62,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setStudents(data.map((u: any) => u.username));
+          setNotebooks(data);
         }
       })
       .catch(console.error);
@@ -217,9 +238,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           createdAt: Date.now(),
           studentAnswer: item.studentAnswer,
           errorDiagnosis: data.errorDiagnosis || [],
-          studentId: selectedStudent || undefined,
-          paperName: paperName || undefined,
-          standardAnswer: item.standardAnswer || undefined,
+          notebookId: selectedNotebook || undefined,
           score: data.score !== undefined ? data.score : undefined
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'success' }));
@@ -236,9 +255,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           createdAt: Date.now(),
           studentAnswer: item.studentAnswer,
           errorDiagnosis: [],
-          studentId: selectedStudent || undefined,
-          paperName: paperName || undefined,
-          standardAnswer: item.standardAnswer || undefined,
+          notebookId: selectedNotebook || undefined,
           score: 0
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'error' }));
@@ -360,9 +377,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           createdAt: Date.now(),
           studentAnswer: mergedStudentAnswer,
           errorDiagnosis: mergedDiagnosis,
-          studentId: selectedStudent || undefined,
-          paperName: paperName || undefined,
-          standardAnswer: mergedStandardAnswer || undefined,
+          notebookId: selectedNotebook || undefined,
           score: mergedScore,
           status: 'pending' // 初始状态为待审核
         };
@@ -429,98 +444,34 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           {/* 错题属性与关联设置 */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-6">
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span>📋</span> 错题归类与属性设置
+              <span>📓</span> 归属错题本与诊断设置
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">指派关联学生 (QQ邮箱)</label>
+            
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">选择错题本</label>
+              <div className="flex gap-2 items-center">
                 <select
-                  value={selectedStudent}
-                  onChange={e => setSelectedStudent(e.target.value)}
-                  className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700"
+                  value={selectedNotebook}
+                  onChange={e => setSelectedNotebook(e.target.value)}
+                  className="flex-1 p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700"
                 >
-                  <option value="">-- 请选择关联学生（选填，录入后会自动推送到该生错题本） --</option>
-                  {students.map(s => (
-                    <option key={s} value={s}>{s}</option>
+                  <option value="">-- 请选择归属错题本 (选填，留空归入未分类) --</option>
+                  {notebooks.map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name}</option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">试卷/作业名称 (选填)</label>
-                <input
-                  type="text"
-                  value={paperName}
-                  onChange={e => setPaperName(e.target.value)}
-                  placeholder="例如：2026春期中几何测试"
-                  className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-semibold text-slate-800"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 标准答案（选填） */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-6">
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span>🔑</span> 标准答案参考设置 (选填)
-            </h3>
-            <p className="text-[10px] text-slate-400 font-medium">提供标准答案能极大提升 AI 步骤批改及分步阅卷的精准度。支持上传答案图片或直接输入答案文本。</p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-              {/* 答案图片上传 */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">标准答案图片</label>
-                {!answerImageStr ? (
-                  <div
-                    onClick={() => answerFileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/50"
-                  >
-                    <Upload className="w-6 h-6 text-slate-400 mb-2" />
-                    <span className="text-xs font-bold text-slate-650">上传标准答案图片</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      ref={answerFileInputRef}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setAnswerMimeType(file.type);
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          setAnswerImageStr(event.target?.result as string);
-                        };
-                        reader.readAsDataURL(file);
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="border border-slate-200 p-2.5 rounded-2xl relative flex flex-col items-center bg-slate-50">
-                    <img src={answerImageStr} alt="Answer" className="max-h-36 object-contain rounded-lg" />
-                    <button
-                      onClick={() => setAnswerImageStr(null)}
-                      className="mt-2 text-[10px] bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1 rounded-lg font-bold transition"
-                    >
-                      清除图片
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 答案文本输入 */}
-              <div className="space-y-2 h-full flex flex-col">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">标准答案文本 (可选)</label>
-                <textarea
-                  rows={4}
-                  value={answerText}
-                  onChange={e => setAnswerText(e.target.value)}
-                  placeholder="在此处输入各题参考标准答案文本，AI 将结合此文本进行切分与批改..."
-                  className="w-full flex-1 p-3.5 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                />
+                <button
+                  type="button"
+                  onClick={handleCreateNotebook}
+                  className="px-4 py-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-xl text-xs font-black transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <span>+ 新建错题本</span>
+                </button>
               </div>
             </div>
 
             {/* 深度思考选项开关 */}
-            <div className="flex items-center gap-2 mt-4 pt-3.5 border-t border-slate-100">
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
               <input
                 type="checkbox"
                 id="aiThinkingMode"
@@ -529,7 +480,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 className="w-4 h-4 text-blue-600 bg-white border-slate-350 rounded focus:ring-blue-500 cursor-pointer"
               />
               <label htmlFor="aiThinkingMode" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                🧠 开启 AI 深度思考诊断模式
+                🧠 开启 AI 深度思考诊断模式 (提供慢思考，生成更精准的分析)
               </label>
             </div>
           </div>
@@ -706,26 +657,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       onChange={e => handleUpdateExtracted(idx, 'studentAnswer', e.target.value)}
                       className="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
                       placeholder="如：解：第1步...（若学生未作答可置空）"
-                    />
-                  </div>
-
-                  {/* Standard Answer Textarea */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500">本题标准参考答案 (AI 根据标准答案进行自动批改评分，留空则常规批改)：</label>
-
-                    {eq.standardAnswer && (
-                      <div className="w-full p-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl text-sm leading-relaxed text-indigo-900">
-                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide block mb-1">标准答案公式渲染预览</span>
-                        <FormattedMath text={eq.standardAnswer} />
-                      </div>
-                    )}
-
-                    <textarea
-                      rows={3}
-                      value={eq.standardAnswer || ''}
-                      onChange={e => handleUpdateExtracted(idx, 'standardAnswer', e.target.value)}
-                      className="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
-                      placeholder="输入本题的标准参考解析或最终答案步骤..."
                     />
                   </div>
                 </div>

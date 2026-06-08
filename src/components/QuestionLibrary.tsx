@@ -16,36 +16,101 @@ export default function QuestionLibrary({
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
   const [filterSubject, setFilterSubject] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [students, setStudents] = useState<string[]>([]);
+  const [filterNotebook, setFilterNotebook] = useState<string>('all');
+  const [notebooks, setNotebooks] = useState<{ id: string; name: string }[]>([]);
+  const [showNotebookModal, setShowNotebookModal] = useState<boolean>(false);
   
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
-  const userRole = localStorage.getItem('errorbook_role') || 'student';
-  const isStudent = userRole === 'student';
+  const userRole = localStorage.getItem('errorbook_role') || 'user';
+  const isAdmin = userRole === 'admin';
+  const isStudent = !isAdmin;
 
   useEffect(() => {
     loadQuestions();
+    loadNotebooks();
   }, []);
 
-  useEffect(() => {
-    if (!isStudent) {
-      const token = localStorage.getItem('errorbook_token');
-      fetch('/api/students', {
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      })
+  const loadNotebooks = () => {
+    const token = localStorage.getItem('errorbook_token');
+    fetch('/api/notebooks', {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setStudents(data.map((u: any) => u.username));
+          setNotebooks(data);
         }
       })
       .catch(console.error);
+  };
+
+  const handleCreateNotebook = async (name: string) => {
+    if (!name || !name.trim()) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/notebooks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '创建失败');
+      setNotebooks(prev => [data.notebook, ...prev]);
+    } catch (err: any) {
+      alert(err.message);
     }
-  }, [isStudent]);
+  };
+
+  const handleRenameNotebook = async (id: string, currentName: string) => {
+    const name = prompt('请输入新名称：', currentName);
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch(`/api/notebooks/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '修改失败');
+      setNotebooks(prev => prev.map(n => n.id === id ? { ...n, name: name.trim() } : n));
+      loadQuestions(); // 重新加载错题列表以刷新绑定的错题本名称
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteNotebook = async (id: string) => {
+    if (!confirm('确定要删除此错题本吗？删除错题本不会删除其中的错题，题目将自动归为“未分类”。')) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch(`/api/notebooks/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '删除失败');
+      setNotebooks(prev => prev.filter(n => n.id !== id));
+      if (filterNotebook === id) {
+        setFilterNotebook('all');
+      }
+      loadQuestions(); // 刷新错题归类数据
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const loadQuestions = () => {
     db.getAllQuestions().then(data => {
@@ -90,7 +155,8 @@ export default function QuestionLibrary({
   if (selectedQuestion) {
     return <QuestionDetail 
       question={selectedQuestion} 
-      students={students}
+      notebooks={notebooks}
+      isAdmin={isAdmin}
       onBack={() => setSelectedQuestion(null)} 
       onDelete={() => handleDelete(selectedQuestion.id)}
       onUpdate={(updated) => {
@@ -103,7 +169,11 @@ export default function QuestionLibrary({
   const subjects = Array.from(new Set(questions.map(q => q.subject)));
   const filtered = questions.filter(q => {
     if (filterSubject !== 'all' && q.subject !== filterSubject) return false;
-    if (!isStudent && filterStatus !== 'all' && q.status !== filterStatus) return false;
+    if (filterNotebook === 'unclassified') {
+      if (q.notebookId) return false;
+    } else if (filterNotebook !== 'all' && q.notebookId !== filterNotebook) {
+      return false;
+    }
     if (search && !q.originalText.includes(search) && !q.knowledgePoints.some(p => p.includes(search))) return false;
     return true;
   });
@@ -114,16 +184,14 @@ export default function QuestionLibrary({
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-2">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-black text-slate-950 tracking-tight">错题库管理</h2>
-          <p className="text-sm text-slate-500 font-medium">按学科、知识点、错误原因智能归档</p>
+          <p className="text-sm text-slate-500 font-medium">按学科、错题本、知识点智能归档</p>
         </div>
-        {!isStudent && (
-          <button 
-            onClick={() => onNavigate('add')} 
-            className="text-xs font-bold text-white bg-blue-600 px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10"
-          >
-             + 录入新错题
-          </button>
-        )}
+        <button 
+          onClick={() => onNavigate('add')} 
+          className="text-xs font-bold text-white bg-blue-600 px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
+        >
+           + 录入新错题
+        </button>
       </div>
 
       {/* Selected Items floating indicator bar */}
@@ -176,18 +244,24 @@ export default function QuestionLibrary({
            <option value="all">所有学科分类</option>
            {subjects.map(s => <option key={s} value={s}>{s}</option>)}
          </select>
-         {!isStudent && (
-           <select 
-             value={filterStatus}
-             onChange={e => setFilterStatus(e.target.value)}
-             className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
-           >
-             <option value="all">所有审核状态</option>
-             <option value="pending">待审核</option>
-             <option value="audited">已审核通过</option>
-           </select>
-         )}
-      </div>
+          <select 
+            value={filterNotebook}
+            onChange={e => setFilterNotebook(e.target.value)}
+            className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
+          >
+            <option value="all">所有错题本</option>
+            <option value="unclassified">未分类错题</option>
+            {notebooks.map(nb => (
+              <option key={nb.id} value={nb.id}>{nb.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowNotebookModal(true)}
+            className="py-3 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-700 text-sm font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            ⚙️ 管理错题本
+          </button>
+       </div>
 
       {/* List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -205,20 +279,10 @@ export default function QuestionLibrary({
                   <div className="flex items-center justify-between mb-3.5 pr-8">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
-                      {!isStudent && (
-                        q.status === 'pending' ? (
-                          <span className="bg-amber-50 text-amber-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-amber-200/50">待审核</span>
-                        ) : (
-                          <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-emerald-200/50">
-                            {q.studentId ? `已推送: ${q.studentId.split('@')[0]}` : '已审核 (未推送)'}
-                          </span>
-                        )
-                      )}
-                      {!isStudent && q.studentId && q.status === 'pending' && (
-                        <span className="bg-violet-50 text-violet-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-violet-200/50">👤 {q.studentId}</span>
-                      )}
-                      {!isStudent && q.paperName && (
-                        <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200/80">📋 {q.paperName}</span>
+                      {q.notebookName ? (
+                        <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
+                      ) : (
+                        <span className="bg-slate-50 text-slate-500 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">未分类</span>
                       )}
                     </div>
                     <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
@@ -266,19 +330,96 @@ export default function QuestionLibrary({
           </div>
         )}
       </div>
+
+      {/* 错题本管理 Modal */}
+      {showNotebookModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-1.5 animate-pulse">
+                <span>📓</span> 管理错题本
+              </h3>
+              <button 
+                onClick={() => setShowNotebookModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 新建错题本 */}
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                placeholder="输入新错题本名称" 
+                id="newNbInput"
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const el = e.currentTarget;
+                    handleCreateNotebook(el.value);
+                    el.value = '';
+                  }
+                }}
+              />
+              <button 
+                onClick={() => {
+                  const el = document.getElementById('newNbInput') as HTMLInputElement;
+                  if (el) {
+                    handleCreateNotebook(el.value);
+                    el.value = '';
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                添加
+              </button>
+            </div>
+
+            {/* 错题本列表 */}
+            <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+              {notebooks.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400 font-medium">暂无错题本，可在上方输入名称并点击添加</div>
+              ) : (
+                notebooks.map(nb => (
+                  <div key={nb.id} className="flex justify-between items-center p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-150 transition">
+                    <span className="text-xs font-bold text-slate-700 truncate max-w-[200px]">{nb.name}</span>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button 
+                        onClick={() => handleRenameNotebook(nb.id, nb.name)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                      >
+                        重命名
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteNotebook(nb.id)}
+                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function QuestionDetail({ 
   question, 
-  students,
+  notebooks,
+  isAdmin,
   onBack, 
   onDelete,
   onUpdate
 }: { 
   question: ErrorQuestion, 
-  students: string[],
+  notebooks: { id: string; name: string }[],
+  isAdmin: boolean,
   onBack: () => void, 
   onDelete: () => void,
   onUpdate?: (updated: ErrorQuestion) => void
@@ -287,8 +428,7 @@ function QuestionDetail({
   const [similarData, setSimilarData] = useState<{questionText: string, solution: string, geometry?: GeometryData} | null>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
   
-  const userRole = localStorage.getItem('errorbook_role') || 'student';
-  const isStudent = userRole === 'student';
+  const isStudent = !isAdmin;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(question.originalText);
@@ -296,7 +436,7 @@ function QuestionDetail({
   const [editedSolution, setEditedSolution] = useState(question.solution);
   const [editedErrorReason, setEditedErrorReason] = useState(question.errorReason);
   const [editedKp, setEditedKp] = useState(question.knowledgePoints.join(', '));
-  const [selectedStudent, setSelectedStudent] = useState(question.studentId || '');
+  const [selectedNotebook, setSelectedNotebook] = useState(question.notebookId || '');
   const [editedStudentAnswer, setEditedStudentAnswer] = useState(question.studentAnswer || '');
   const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
   const [saving, setSaving] = useState(false);
@@ -368,7 +508,7 @@ function QuestionDetail({
     setEditedSolution(question.solution);
     setEditedErrorReason(question.errorReason);
     setEditedKp(question.knowledgePoints.join(', '));
-    setSelectedStudent(question.studentId || '');
+    setSelectedNotebook(question.notebookId || '');
     setEditedStudentAnswer(question.studentAnswer || '');
     setEditedErrorDiagnosis(question.errorDiagnosis || []);
     setIsEditing(false);
@@ -421,6 +561,7 @@ function QuestionDetail({
   const handleSaveAndPush = async (newStatus: 'pending' | 'audited') => {
     setSaving(true);
     try {
+      const selectedNbObj = notebooks.find(n => n.id === selectedNotebook);
       const updatedQuestion: ErrorQuestion = {
         ...question,
         originalText: editedText,
@@ -428,7 +569,8 @@ function QuestionDetail({
         solution: editedSolution,
         errorReason: editedErrorReason,
         knowledgePoints: editedKp.split(',').map(s => s.trim()).filter(Boolean),
-        studentId: selectedStudent || undefined,
+        notebookId: selectedNotebook || undefined,
+        notebookName: selectedNbObj ? selectedNbObj.name : undefined,
         status: newStatus,
         studentAnswer: editedStudentAnswer,
         errorDiagnosis: editedErrorDiagnosis
@@ -438,7 +580,7 @@ function QuestionDetail({
         onUpdate(updatedQuestion);
       }
       setIsEditing(false);
-      alert(newStatus === 'audited' ? '审核通过并成功推送给学生！' : '修改保存成功！');
+      alert('修改保存成功！');
     } catch (err: any) {
       alert(err.message || '操作失败');
     } finally {
@@ -630,6 +772,43 @@ function QuestionDetail({
                    ))}
                  </div>
                  
+                 {/* 修改所属错题本分类 */}
+                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                   <div>
+                     <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                       <span>📓</span> 调整归属错题本
+                     </h4>
+                     <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
+                   </div>
+                   <select
+                     value={selectedNotebook}
+                     onChange={e => setSelectedNotebook(e.target.value)}
+                     className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
+                   >
+                     <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
+                     {notebooks.map(nb => (
+                       <option key={nb.id} value={nb.id}>{nb.name}</option>
+                     ))}
+                   </select>
+                   
+                   <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                     <button
+                       onClick={() => handleSaveAndPush('audited')}
+                       disabled={saving}
+                       className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
+                     >
+                       {saving ? '正在保存...' : '审核通过并推送'}
+                     </button>
+                     <button
+                       onClick={() => handleSaveAndPush('pending')}
+                       disabled={saving}
+                       className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
+                     >
+                       仅保存修改
+                     </button>
+                   </div>
+                 </div>
+                 
                  <button
                    type="button"
                    onClick={() => {
@@ -647,43 +826,6 @@ function QuestionDetail({
                  >
                    + 增加批改步骤
                  </button>
-               </div>
-
-               {/* Push Student Section */}
-               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                 <div>
-                   <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                     <TargetIcon className="w-4 h-4 text-blue-600" /> 指派推送学生 (QQ邮箱)
-                   </h4>
-                   <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">推送后，指定学生在登录其账号时将看到此已审核通过的错题。</p>
-                 </div>
-                 <select
-                   value={selectedStudent}
-                   onChange={e => setSelectedStudent(e.target.value)}
-                   className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
-                 >
-                   <option value="">-- 请选择接收该错题的学生 (QQ邮箱) --</option>
-                   {students.map(s => (
-                     <option key={s} value={s}>{s}</option>
-                   ))}
-                 </select>
-                 
-                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                   <button
-                     onClick={() => handleSaveAndPush('audited')}
-                     disabled={saving || !selectedStudent}
-                     className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                   >
-                     {saving ? '正在提交...' : '审核通过并推送'}
-                   </button>
-                   <button
-                     onClick={() => handleSaveAndPush('pending')}
-                     disabled={saving}
-                     className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
-                   >
-                     仅保存修改
-                   </button>
-                 </div>
                </div>
              </div>
             ) : (
@@ -992,20 +1134,11 @@ function ReadOnlyDetail({
     // 原有单题展示逻辑（向下兼容）
     return (
       <div className="space-y-6">
-        {!isStudent && (question.studentId || question.paperName) && (
-          <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-            {question.studentId && (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-2.5 py-1 rounded-lg">
-                👤 关联学生：{question.studentId}
-              </span>
-            )}
-            {question.paperName && (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
-                📋 所属试卷：{question.paperName}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-750 bg-indigo-50 border border-indigo-200/60 px-2.5 py-1 rounded-lg">
+            📓 所属错题本：{question.notebookName || '未分类'}
+          </span>
+        </div>
         <div>
           <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
           <div className="mt-4 flex flex-wrap gap-1.5">
@@ -1015,17 +1148,7 @@ function ReadOnlyDetail({
           </div>
         </div>
 
-        {question.standardAnswer && (
-          <div className="border-t border-slate-100 pt-6 space-y-3">
-            <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-sm">
-              <span className="w-5 h-5 rounded-lg bg-indigo-50 flex items-center justify-center border border-indigo-100 text-xs">🔑</span>
-              <h4>本题标准参考答案</h4>
-            </div>
-            <div className="p-4 bg-indigo-50/20 border border-indigo-100/50 rounded-2xl text-sm leading-relaxed text-indigo-950 font-medium">
-              <FormattedMath text={question.standardAnswer} />
-            </div>
-          </div>
-        )}
+
 
         {(question.studentAnswer || (question.errorDiagnosis && question.errorDiagnosis.length > 0)) && (
           <div className="border-t border-slate-100 pt-6 space-y-4">
@@ -1108,20 +1231,11 @@ function ReadOnlyDetail({
     // 多题合并整卷展示逻辑（按单题卡片隔离展示）
     return (
       <div className="space-y-8">
-        {!isStudent && (question.studentId || question.paperName) && (
-          <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-            {question.studentId && (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/60 px-2.5 py-1 rounded-lg">
-                👤 关联学生：{question.studentId}
-              </span>
-            )}
-            {question.paperName && (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
-                📋 所属试卷：{question.paperName}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-750 bg-indigo-50 border border-indigo-200/60 px-2.5 py-1 rounded-lg">
+            📓 所属错题本：{question.notebookName || '未分类'}
+          </span>
+        </div>
         <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
           <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
             <span>📄</span> 本卷共包含 {parsedQs.length} 道题目
@@ -1176,18 +1290,7 @@ function ReadOnlyDetail({
                   <FormattedMath text={qItem.content} className="text-sm text-slate-905 font-bold leading-relaxed" />
                 </div>
 
-                {/* 标准答案 */}
-                {stdAns && (
-                  <div className="border-t border-slate-100 pt-4 space-y-2">
-                    <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-xs">
-                      <span className="w-5 h-5 rounded-lg bg-indigo-50 flex items-center justify-center border border-indigo-100 text-[10px]">🔑</span>
-                      <h4>本题标准参考答案</h4>
-                    </div>
-                    <div className="p-3.5 bg-indigo-50/20 border border-indigo-100/50 rounded-2xl text-xs leading-relaxed text-indigo-950 font-medium font-mono">
-                      <FormattedMath text={stdAns} />
-                    </div>
-                  </div>
-                )}
+
 
                 {/* 学生作答与诊断步骤 */}
                 {(stuAns || filteredSteps.length > 0) && (

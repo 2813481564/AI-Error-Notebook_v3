@@ -34,6 +34,11 @@ router.get("/questions", requireAuth, qCtrl.getQuestions);
 router.post("/questions", requireAuth, qCtrl.saveQuestion);
 router.delete("/questions/:id", requireAuth, qCtrl.deleteQuestion);
 
+router.get("/notebooks", requireAuth, qCtrl.getNotebooks);
+router.post("/notebooks", requireAuth, qCtrl.createNotebook);
+router.put("/notebooks/:id", requireAuth, qCtrl.updateNotebook);
+router.delete("/notebooks/:id", requireAuth, qCtrl.deleteNotebook);
+
 router.get("/public-questions", requireAuth, qCtrl.getPublicQuestions);
 // 公共题库添加和删除限制为老师/管理员角色（在控制器内单独做校验或添加专门的 requireTeacherOrAdmin 拦截）
 // 为了与原版逻辑一致，使用 requireAuth，在控制器内部或在此做鉴权，这里我们写在控制器内部校验或直接通过中间件控制

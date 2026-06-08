@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Edit2, Trash2, X, ShieldAlert, Award, Key } from 'lucide-react';
+import { Users, Edit2, Trash2, X, ShieldAlert, Award, Key, Calendar, Zap } from 'lucide-react';
 
 interface UserItem {
   username: string;
-  role: 'student' | 'vip' | 'svip' | 'teacher' | 'admin';
+  role: 'user' | 'vip' | 'svip' | 'admin';
   lastAiResetDate: string | null;
   aiUsedToday: number;
   questionCount: number;
   idCardLast6?: string | null;
   phoneLast4?: string | null;
+  vipExpireAt?: string | null;
+  customAiLimit?: number | null;
 }
 
 export default function UserManagement({ onNavigate }: { onNavigate: (view: any) => void }) {
@@ -26,11 +28,15 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   const [generateDays, setGenerateDays] = useState(30);
   const [generateRole, setGenerateRole] = useState<'vip' | 'svip'>('vip');
   const [generateCount, setGenerateCount] = useState(10);
+
+  // 编辑表单字段
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editRole, setEditRole] = useState<'student' | 'vip' | 'svip' | 'teacher'>('student');
+  const [editRole, setEditRole] = useState<'user' | 'vip' | 'svip' | 'admin'>('user');
   const [editIdCard, setEditIdCard] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editVipExpireAt, setEditVipExpireAt] = useState('');
+  const [editCustomAiLimit, setEditCustomAiLimit] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,7 +44,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   const [showAddModal, setShowAddModal] = useState(false);
   const [addUsername, setAddUsername] = useState('');
   const [addPassword, setAddPassword] = useState('');
-  const [addRole, setAddRole] = useState<'student' | 'vip' | 'svip' | 'teacher'>('student');
+  const [addRole, setAddRole] = useState<'user' | 'vip' | 'svip'>('user');
   const [addIdCard, setAddIdCard] = useState('');
   const [addPhone, setAddPhone] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
@@ -151,21 +157,25 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
     fetchUsers();
   }, []);
 
-  const getLimitByRole = (role: string) => {
-    if (role === 'teacher') return 5000;
-    if (role === 'admin') return Infinity;
-    if (role === 'vip') return 100;
-    if (role === 'svip') return 300;
-    return 30;
+  const getLimit = (user: UserItem) => {
+    if (user.customAiLimit !== null && user.customAiLimit !== undefined) {
+      return user.customAiLimit;
+    }
+    if (user.role === 'admin') return Infinity;
+    if (user.role === 'vip') return 100;
+    if (user.role === 'svip') return 300;
+    return 30; // user 默认 30 次
   };
 
   const handleEditClick = (user: UserItem) => {
     setEditingUser(user);
     setEditUsername(user.username);
-    setEditRole((user.role === 'admin' ? 'student' : user.role) as any);
+    setEditRole(user.role);
     setEditPassword('');
     setEditIdCard(user.idCardLast6 || '');
     setEditPhone(user.phoneLast4 || '');
+    setEditVipExpireAt(user.vipExpireAt || '');
+    setEditCustomAiLimit(user.customAiLimit !== null && user.customAiLimit !== undefined ? String(user.customAiLimit) : '');
     setEditError(null);
   };
 
@@ -187,8 +197,10 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
           newUsername: editUsername,
           password: editPassword || undefined,
           role: editRole,
-          idCardLast6: editRole === 'student' ? editIdCard : undefined,
-          phoneLast4: editRole === 'student' ? editPhone : undefined
+          vipExpireAt: editVipExpireAt || null,
+          customAiLimit: editCustomAiLimit === '' ? null : parseInt(editCustomAiLimit),
+          idCardLast6: editRole === 'user' ? editIdCard : undefined,
+          phoneLast4: editRole === 'user' ? editPhone : undefined
         })
       });
 
@@ -225,9 +237,9 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
         body: JSON.stringify({
           role: addRole,
           username: addUsername,
-          password: addRole !== 'student' ? addPassword : undefined,
-          idCardLast6: addRole === 'student' ? addIdCard : undefined,
-          phoneLast4: addRole === 'student' ? addPhone : undefined
+          password: (addRole === 'user' && (addIdCard || addPhone)) ? undefined : addPassword,
+          idCardLast6: addRole === 'user' ? addIdCard : undefined,
+          phoneLast4: addRole === 'user' ? addPhone : undefined
         })
       });
 
@@ -243,7 +255,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
       setAddPassword('');
       setAddIdCard('');
       setAddPhone('');
-      setAddRole('student');
+      setAddRole('user');
       setShowAddModal(false);
       fetchUsers();
     } catch (err: any) {
@@ -282,7 +294,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -290,8 +302,8 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-sans">平台系统管理中心</h2>
-            <p className="text-xs text-slate-500 font-medium">配置用户角色特权与额度、批量管理激活兑换码</p>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">平台系统管理中心</h2>
+            <p className="text-xs text-slate-500 font-medium">配置用户角色特权与额度、到期时间，批量管理激活码</p>
           </div>
         </div>
         
@@ -356,7 +368,8 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   <thead>
                     <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
                       <th className="py-4 px-6">用户名</th>
-                      <th className="py-4 px-6">等级与特权</th>
+                      <th className="py-4 px-6">会员角色等级</th>
+                      <th className="py-4 px-6">到期时间 / 专属限额</th>
                       <th className="py-4 px-6">今日已用 AI 次数</th>
                       <th className="py-4 px-6 text-center">累计错题数</th>
                       <th className="py-4 px-6 text-right">操作</th>
@@ -364,35 +377,29 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
                     {users.map((user) => {
-                      const limit = getLimitByRole(user.role);
-                      const usagePercent = Math.min(100, Math.round((user.aiUsedToday / limit) * 100));
+                      const limit = getLimit(user);
+                      const usagePercent = limit === Infinity ? 0 : Math.min(100, Math.round((user.aiUsedToday / limit) * 100));
                       
                       return (
                         <tr key={user.username} className="hover:bg-slate-50/40 transition-colors">
                           <td className="py-4 px-6 font-bold text-slate-900">{user.username}</td>
                           <td className="py-4 px-6">
-                            {user.role === 'teacher' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200/50 shadow-sm shadow-purple-500/5">
-                                <Award className="w-3.5 h-3.5 text-purple-500 animate-pulse" />
-                                老师 (5000次/日)
-                              </span>
-                            )}
                             {user.role === 'vip' && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/50 shadow-sm shadow-blue-500/5">
-                                <Award className="w-3.5 h-3.5 text-blue-550" />
-                                VIP 会员 (100次/日)
+                                <Award className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                                VIP 黄金会员
                               </span>
                             )}
                             {user.role === 'svip' && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-yellow-50 text-yellow-750 border border-yellow-250/50 shadow-sm shadow-yellow-500/5">
                                 <Award className="w-3.5 h-3.5 text-yellow-500 animate-bounce" />
-                                SVIP 会员 (300次/日)
+                                SVIP 钻石会员
                               </span>
                             )}
-                            {user.role === 'student' && (
+                            {user.role === 'user' && (
                               <div className="flex flex-col gap-1 items-start">
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                                  普通用户 (标准额度)
+                                  {(user.idCardLast6 || user.phoneLast4) ? '免密普通用户' : '普通注册用户'}
                                 </span>
                                 {(user.idCardLast6 || user.phoneLast4) && (
                                   <div className="text-[10px] text-slate-400 font-semibold pl-1 space-y-0.5">
@@ -403,30 +410,50 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                               </div>
                             )}
                             {user.role === 'admin' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200/50 shadow-sm shadow-amber-500/5">
-                                <Award className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200/50 shadow-sm shadow-rose-500/5">
+                                <Award className="w-3.5 h-3.5 text-rose-500" />
                                 管理员
                               </span>
                             )}
                           </td>
+                          <td className="py-4 px-6 text-xs text-slate-600">
+                            <div className="space-y-1">
+                              {user.role === 'admin' ? (
+                                <span className="text-slate-400 font-bold">永久有效</span>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>{user.vipExpireAt ? `到期: ${user.vipExpireAt}` : '普通限时/无到期日'}</span>
+                                </div>
+                              )}
+                              {user.customAiLimit !== null && user.customAiLimit !== undefined && (
+                                <div className="flex items-center gap-1 text-indigo-650 font-bold">
+                                  <Zap className="w-3.5 h-3.5" />
+                                  <span>专属限额: {user.customAiLimit}次/日</span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                           <td className="py-4 px-6 min-w-[200px]">
                             <div className="space-y-1.5 max-w-[160px]">
                               <div className="flex justify-between text-[11px] font-bold text-slate-400">
-                                <span>{user.aiUsedToday} / {limit}次</span>
-                                <span>{usagePercent}%</span>
+                                <span>{user.aiUsedToday} / {limit === Infinity ? '无限' : `${limit}次`}</span>
+                                {limit !== Infinity && <span>{usagePercent}%</span>}
                               </div>
-                              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div 
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    usagePercent >= 90 
-                                      ? 'bg-rose-500' 
-                                      : usagePercent >= 70 
-                                        ? 'bg-amber-500' 
-                                        : 'bg-blue-600'
-                                  }`}
-                                  style={{ width: `${usagePercent}%` }}
-                                ></div>
-                              </div>
+                              {limit !== Infinity && (
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      usagePercent >= 90 
+                                        ? 'bg-rose-500' 
+                                        : usagePercent >= 70 
+                                          ? 'bg-amber-500' 
+                                          : 'bg-blue-600'
+                                    }`}
+                                    style={{ width: `${usagePercent}%` }}
+                                  ></div>
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="py-4 px-6 text-center text-slate-900 font-bold">{user.questionCount}</td>
@@ -520,7 +547,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
               {codes.length > 0 && (
                 <button
                   onClick={handleExportCSV}
-                  className="px-3 py-1.5 bg-emerald-655 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
                 >
                   导出 Excel (CSV)
                 </button>
@@ -611,10 +638,10 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   onChange={e => setEditRole(e.target.value as any)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all cursor-pointer"
                 >
-                  <option value="student">普通用户 (标准额度, 30次 AI / 日)</option>
+                  <option value="user">普通用户 (30次 AI / 日)</option>
                   <option value="vip">VIP 会员 (100次 AI / 日)</option>
                   <option value="svip">SVIP 会员 (300次 AI / 日)</option>
-                  <option value="teacher">老师 / 特权用户 (5000次 AI / 日)</option>
+                  <option value="admin">管理员 (无限制)</option>
                 </select>
               </div>
 
@@ -629,24 +656,43 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                 />
               </div>
 
-              {editRole !== 'student' ? (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                    <Key className="w-3 h-3" />
-                    修改密码
-                  </label>
-                  <input 
-                    type="password"
-                    placeholder="不修改请留空"
-                    value={editPassword}
-                    onChange={e => setEditPassword(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                  />
-                </div>
-              ) : (
+              {editRole !== 'admin' && (
                 <>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-slate-400" />
+                      会员到期时间
+                    </label>
+                    <input 
+                      type="date"
+                      value={editVipExpireAt}
+                      onChange={e => setEditVipExpireAt(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all"
+                    />
+                    <p className="text-[9px] text-slate-400 pl-1">留空或清除则代表无到期日限制</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-indigo-500" />
+                      专属每日 AI 限额
+                    </label>
+                    <input 
+                      type="number"
+                      placeholder="使用全局默认额度限制"
+                      value={editCustomAiLimit}
+                      onChange={e => setEditCustomAiLimit(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                    />
+                    <p className="text-[9px] text-slate-400 pl-1">设置具体数字后将覆盖该用户原本角色的默认频次限制</p>
+                  </div>
+                </>
+              )}
+
+              {editRole === 'user' ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位 (免密凭证)</label>
                     <input 
                       type="text"
                       placeholder="例如: 12345X"
@@ -656,7 +702,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位 (免密凭证)</label>
                     <input 
                       type="text"
                       placeholder="例如: 6789"
@@ -666,6 +712,20 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                     />
                   </div>
                 </>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                    <Key className="w-3 h-3" />
+                    修改账户密码
+                  </label>
+                  <input 
+                    type="password"
+                    placeholder="不修改请留空"
+                    value={editPassword}
+                    onChange={e => setEditPassword(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                  />
+                </div>
               )}
 
               <div className="flex gap-3 mt-6">
@@ -722,20 +782,19 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   onChange={e => setAddRole(e.target.value as any)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-bold text-slate-800 transition-all cursor-pointer"
                 >
-                  <option value="student">普通用户 (免密临时学生, 30次/日)</option>
-                  <option value="vip">VIP 会员 (邮箱密码账号, 100次/日)</option>
-                  <option value="svip">SVIP 会员 (邮箱密码账号, 300次/日)</option>
-                  <option value="teacher">特权/老师账号 (邮箱密码账号, 5000次/日)</option>
+                  <option value="user">普通用户 (user)</option>
+                  <option value="vip">VIP 会员 (vip)</option>
+                  <option value="svip">SVIP 会员 (svip)</option>
                 </select>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">
-                  {addRole === 'student' ? '学生姓名 / 免密账号' : '登录邮箱 / 账号'}
+                  {addRole === 'user' ? '用户姓名 / QQ邮箱' : '登录邮箱 / 账号'}
                 </label>
                 <input 
                   type="text"
-                  placeholder={addRole === 'student' ? "请输入真实姓名" : "请输入有效的 QQ 邮箱或账号"}
+                  placeholder={addRole === 'user' ? "免密模式输入姓名，有密模式输入QQ邮箱" : "请输入有效的 QQ 邮箱或账号"}
                   value={addUsername}
                   onChange={e => setAddUsername(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
@@ -743,7 +802,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                 />
               </div>
 
-              {addRole !== 'student' ? (
+              {addRole === 'user' && (addIdCard || addPhone) ? null : (
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1">
                     <Key className="w-3 h-3" />
@@ -755,13 +814,18 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                     value={addPassword}
                     onChange={e => setAddPassword(e.target.value)}
                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
-                    required
+                    required={!(addRole === 'user' && (addIdCard || addPhone))}
                   />
                 </div>
-              ) : (
+              )}
+
+              {addRole === 'user' && (
                 <>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-dashed border-slate-200 text-[10px] text-slate-500 font-medium">
+                    提示：如果您只想创建一个临时免密账号，请在此录入其身份证或手机号中的任一项，无需设置密码。若不填写这两个字段，则将按邮箱+密码方式创建。
+                  </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">身份证后6位 (选填，免密用)</label>
                     <input 
                       type="text"
                       placeholder="请输入身份证后6位"
@@ -771,7 +835,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">手机号后4位 (选填，免密用)</label>
                     <input 
                       type="text"
                       placeholder="请输入手机号后4位"

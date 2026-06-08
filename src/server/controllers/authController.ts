@@ -120,14 +120,14 @@ export const register = (req: express.Request, res: express.Response) => {
     }
 
     const hashedPassword = hashPassword(password);
-    const insertUser = db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'student')");
+    const insertUser = db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'user')");
     insertUser.run(cleanUsername, hashedPassword);
 
     const token = crypto.randomUUID();
     const insertSession = db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)");
     insertSession.run(token, cleanUsername, Date.now());
 
-    res.json({ token, username: cleanUsername, role: 'student' });
+    res.json({ token, username: cleanUsername, role: 'user' });
   } catch (error: any) {
     console.error("Register Error:", error);
     res.status(500).json({ error: error.message || "注册失败" });
@@ -149,7 +149,7 @@ export const login = (req: express.Request, res: express.Response) => {
         if (!idCardLast6 || idCardLast6.trim() === "") {
           return res.status(400).json({ error: "身份证后6位不能为空" });
         }
-        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND idCardLast6 = ? AND role = 'student'").get(cleanUsername, idCardLast6.trim()) as { username: string, role: string } | undefined;
+        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND idCardLast6 = ? AND role = 'user'").get(cleanUsername, idCardLast6.trim()) as { username: string, role: string } | undefined;
         if (!user) {
           return res.status(400).json({ error: "姓名或身份证后6位错误" });
         }
@@ -161,7 +161,7 @@ export const login = (req: express.Request, res: express.Response) => {
         if (!phoneLast4 || phoneLast4.trim() === "") {
           return res.status(400).json({ error: "手机号后4位不能为空" });
         }
-        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND phoneLast4 = ? AND role = 'student'").get(cleanUsername, phoneLast4.trim()) as { username: string, role: string } | undefined;
+        const user = db.prepare("SELECT username, role FROM users WHERE username = ? AND phoneLast4 = ? AND role = 'user'").get(cleanUsername, phoneLast4.trim()) as { username: string, role: string } | undefined;
         if (!user) {
           return res.status(400).json({ error: "姓名或手机号后4位错误" });
         }
@@ -182,8 +182,8 @@ export const login = (req: express.Request, res: express.Response) => {
       if (!user || user.password !== hashedPassword) {
         return res.status(400).json({ error: "用户名或密码错误" });
       }
-      if (user.role === 'student' && user.password === hashPassword("student_no_password")) {
-        return res.status(400).json({ error: "此账号为免密学生角色，请选择学生登录方式" });
+      if (user.role === 'user' && user.password === hashPassword("student_no_password")) {
+        return res.status(400).json({ error: "此账号为免密登录普通角色，请选择免密登录方式" });
       }
 
       const token = crypto.randomUUID();

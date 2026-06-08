@@ -11,11 +11,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'student',
+    role TEXT NOT NULL DEFAULT 'user',
     lastAiResetDate TEXT,
     aiUsedToday INTEGER NOT NULL DEFAULT 0,
     idCardLast6 TEXT,
-    phoneLast4 TEXT
+    phoneLast4 TEXT,
+    vipExpireAt TEXT,
+    customAiLimit INTEGER DEFAULT NULL
   );
   
   CREATE TABLE IF NOT EXISTS sessions (
@@ -76,6 +78,15 @@ db.exec(`
     status TEXT DEFAULT 'pending',
     createdAt INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS notebooks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    userId TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notebooks_userId ON notebooks(userId);
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -133,6 +144,13 @@ try {
     console.log("正在升级 questions 表以支持得分字段...");
     db.exec("ALTER TABLE questions ADD COLUMN score INTEGER");
   }
+
+  const hasNotebookId = tableInfo.some(col => col.name === 'notebookId');
+  if (!hasNotebookId) {
+    console.log("正在升级 questions 表以支持 notebookId 字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN notebookId TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_questions_notebookId ON questions(notebookId)");
+  }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);
 }
@@ -143,13 +161,12 @@ try {
   const hasRole = tableInfo.some(col => col.name === 'role');
   if (!hasRole) {
     console.log("检测到旧版数据库结构，正在升级 users 表以支持多用户等级与限流...");
-    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'");
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
   }
 
   try {
-    db.exec("UPDATE users SET role = 'student' WHERE role = 'normal'");
-    db.exec("UPDATE users SET role = 'teacher' WHERE role IN ('vip', 'svip')");
-    console.log("用户角色成功升级迁移 (normal->student, vip/svip->teacher)！");
+    db.exec("UPDATE users SET role = 'user' WHERE role IN ('student', 'teacher', 'normal')");
+    console.log("用户角色成功重构迁移 (student/teacher/normal -> user)！");
   } catch (migrateErr) {
     console.error("角色迁移升级失败:", migrateErr);
   }
@@ -178,6 +195,12 @@ try {
   if (!hasVipExpireAt) {
     console.log("正在升级 users 表以支持 vipExpireAt 字段...");
     db.exec("ALTER TABLE users ADD COLUMN vipExpireAt TEXT");
+  }
+
+  const hasCustomLimit = tableInfo.some(col => col.name === 'customAiLimit');
+  if (!hasCustomLimit) {
+    console.log("正在升级 users 表以支持 customAiLimit 自定义额度字段...");
+    db.exec("ALTER TABLE users ADD COLUMN customAiLimit INTEGER DEFAULT NULL");
   }
 
   console.log("users 表升级检查完成！");

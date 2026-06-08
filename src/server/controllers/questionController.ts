@@ -15,13 +15,24 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       return res.status(404).json({ error: "用户不存在" });
     }
 
-    if (user.role === 'admin' || user.role === 'teacher') {
-      // 教师或管理员可以查看系统所有错题
-      const stmt = db.prepare("SELECT * FROM questions ORDER BY createdAt DESC");
+    if (user.role === 'admin') {
+      // 管理员可以查看系统所有错题
+      const stmt = db.prepare(`
+        SELECT q.*, n.name as notebookName 
+        FROM questions q
+        LEFT JOIN notebooks n ON q.notebookId = n.id
+        ORDER BY q.createdAt DESC
+      `);
       rows = stmt.all() as any[];
     } else {
-      // 普通学生/VIP/SVIP 只能查看自己录入的（userId = 自己）或者被指派给自己的（studentId = 自己）
-      const stmt = db.prepare("SELECT * FROM questions WHERE userId = ? OR studentId = ? ORDER BY createdAt DESC");
+      // 普通用户只能查看自己录入的（userId = 自己）或者被指派给自己的（studentId = 自己）
+      const stmt = db.prepare(`
+        SELECT q.*, n.name as notebookName 
+        FROM questions q
+        LEFT JOIN notebooks n ON q.notebookId = n.id
+        WHERE q.userId = ? OR q.studentId = ?
+        ORDER BY q.createdAt DESC
+      `);
       rows = stmt.all(req.userId, req.userId) as any[];
     }
 
@@ -42,7 +53,9 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : [],
       paperName: row.paperName || undefined,
       standardAnswer: row.standardAnswer || undefined,
-      score: row.score !== null && row.score !== undefined ? row.score : undefined
+      score: row.score !== null && row.score !== undefined ? row.score : undefined,
+      notebookId: row.notebookId || undefined,
+      notebookName: row.notebookName || undefined
     }));
 
     res.json(questions);
@@ -66,29 +79,24 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       return res.status(403).json({ error: "用户不存在" });
     }
 
-    // 免密学生限制权限，必须由老师录入
-    if (user.role === 'student' && user.password === hashPassword("student_no_password")) {
-      return res.status(403).json({ error: "权限不足，免密学生角色无法录入或编辑错题" });
-    }
-
     const checkStmt = db.prepare("SELECT userId, studentId, status FROM questions WHERE id = ?");
     const existing = checkStmt.get(question.id) as { userId: string, studentId: string | null, status: string } | undefined;
     
-    // 如果错题已存在且不属于当前用户，非管理员和教师不可修改
-    if (existing && existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
+    // 如果错题已存在且不属于当前用户，非管理员不可修改
+    if (existing && existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限修改该错题" });
     }
 
     const targetUserId = existing ? existing.userId : req.userId;
     const targetStudentId = question.studentId !== undefined ? question.studentId : (existing ? existing.studentId : null);
-    // 自注册学生录入默认为 audited (自审)，老师录入可保留 pending/audited
-    const defaultStatus = (user.role !== 'admin' && user.role !== 'teacher') ? 'audited' : 'pending';
+    // 自注册普通用户录入默认为 audited (自审)，管理员录入默认 pending
+    const defaultStatus = user.role !== 'admin' ? 'audited' : 'pending';
     const targetStatus = question.status !== undefined ? question.status : (existing ? existing.status : defaultStatus);
 
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score, notebookId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -108,7 +116,8 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       question.errorDiagnosis ? JSON.stringify(question.errorDiagnosis) : "[]",
       question.paperName || null,
       question.standardAnswer || null,
-      question.score !== undefined ? question.score : null
+      question.score !== undefined ? question.score : null,
+      question.notebookId || null
     );
 
     res.json({ success: true });
@@ -129,19 +138,14 @@ export const deleteQuestion = (req: AuthenticatedRequest, res: express.Response)
       return res.status(403).json({ error: "用户不存在" });
     }
 
-    // 免密学生限制权限
-    if (user.role === 'student' && user.password === hashPassword("student_no_password")) {
-      return res.status(403).json({ error: "权限不足，免密学生角色无法删除错题" });
-    }
-
     const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
     const existing = checkStmt.get(id) as { userId: string } | undefined;
     if (!existing) {
       return res.status(404).json({ error: "错题不存在" });
     }
     
-    // 非管理员/教师 且 非作者，不能删除
-    if (existing.userId !== req.userId && user.role !== 'admin' && user.role !== 'teacher') {
+    // 非管理员 且 非作者，不能删除
+    if (existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限删除该错题" });
     }
 
@@ -258,6 +262,8 @@ export const adminGetUsers = (req: express.Request, res: express.Response) => {
         u.aiUsedToday,
         u.idCardLast6,
         u.phoneLast4,
+        u.vipExpireAt,
+        u.customAiLimit,
         COUNT(q.id) as questionCount
       FROM users u
       LEFT JOIN questions q ON u.username = q.userId
@@ -277,7 +283,7 @@ export const adminGetUsers = (req: express.Request, res: express.Response) => {
 export const adminCreateUser = (req: express.Request, res: express.Response) => {
   try {
     const { role, username, password, idCardLast6, phoneLast4 } = req.body;
-    if (!role || !['student', 'teacher'].includes(role)) {
+    if (!role || !['user', 'vip', 'svip'].includes(role)) {
       return res.status(400).json({ error: "非法的用户角色等级" });
     }
     if (!username || username.trim() === "") {
@@ -293,12 +299,10 @@ export const adminCreateUser = (req: express.Request, res: express.Response) => 
       return res.status(400).json({ error: "该用户名/账号已存在" });
     }
 
-    if (role === 'student') {
+    if (role === 'user' && (idCardLast6?.trim() || phoneLast4?.trim())) {
+      // 创建免密普通用户
       const cleanIdCard = idCardLast6?.trim();
       const cleanPhone = phoneLast4?.trim();
-      if (!cleanIdCard && !cleanPhone) {
-        return res.status(400).json({ error: "身份证后6位和手机号后4位必须至少填写一项" });
-      }
       if (cleanIdCard && cleanIdCard.length !== 6) {
         return res.status(400).json({ error: "身份证后6位必须是6位" });
       }
@@ -308,24 +312,25 @@ export const adminCreateUser = (req: express.Request, res: express.Response) => 
       const hashedPassword = hashPassword("student_no_password");
       db.prepare(`
         INSERT INTO users (username, password, role, idCardLast6, phoneLast4)
-        VALUES (?, ?, 'student', ?, ?)
+        VALUES (?, ?, 'user', ?, ?)
       `).run(cleanUsername, hashedPassword, cleanIdCard || null, cleanPhone || null);
-    } else if (role === 'teacher') {
+    } else {
+      // 创建有密用户 (包括 user, vip, svip)
       if (!password || password.trim() === "") {
-        return res.status(400).json({ error: "老师登录密码不能为空" });
+        return res.status(400).json({ error: "登录密码不能为空" });
       }
       if (password.length < 6) {
         return res.status(400).json({ error: "密码长度不能少于 6 位" });
       }
       const emailRegex = /^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$/;
       if (!emailRegex.test(cleanUsername)) {
-        return res.status(400).json({ error: "老师账号必须为合法的邮箱格式" });
+        return res.status(400).json({ error: "账号必须为合法的邮箱格式" });
       }
       const hashedPassword = hashPassword(password);
       db.prepare(`
         INSERT INTO users (username, password, role)
-        VALUES (?, ?, 'teacher')
-      `).run(cleanUsername, hashedPassword);
+        VALUES (?, ?, ?)
+      `).run(cleanUsername, hashedPassword, role);
     }
 
     res.json({ success: true });
@@ -339,7 +344,7 @@ export const adminCreateUser = (req: express.Request, res: express.Response) => 
 export const adminUpdateUser = (req: express.Request, res: express.Response) => {
   try {
     const oldUsername = req.params.username;
-    const { newUsername, password, role, idCardLast6, phoneLast4 } = req.body;
+    const { newUsername, password, role, idCardLast6, phoneLast4, vipExpireAt, customAiLimit } = req.body;
 
     if (!newUsername || newUsername.trim() === "") {
       return res.status(400).json({ error: "用户名不能为空" });
@@ -349,7 +354,7 @@ export const adminUpdateUser = (req: express.Request, res: express.Response) => 
       return res.status(400).json({ error: "用户名长度不能少于 2 位" });
     }
 
-    if (role && !['student', 'teacher', 'admin'].includes(role)) {
+    if (role && !['user', 'vip', 'svip', 'admin'].includes(role)) {
       return res.status(400).json({ error: "非法的用户角色等级" });
     }
 
@@ -376,8 +381,17 @@ export const adminUpdateUser = (req: express.Request, res: express.Response) => 
         db.prepare("UPDATE users SET role = ? WHERE username = ?").run(role, cleanNewUsername);
       }
 
+      if (vipExpireAt !== undefined) {
+        db.prepare("UPDATE users SET vipExpireAt = ? WHERE username = ?").run(vipExpireAt || null, cleanNewUsername);
+      }
+
+      if (customAiLimit !== undefined) {
+        const limitVal = customAiLimit === null || customAiLimit === '' || customAiLimit === undefined ? null : parseInt(customAiLimit);
+        db.prepare("UPDATE users SET customAiLimit = ? WHERE username = ?").run(limitVal, cleanNewUsername);
+      }
+
       const userObj = db.prepare("SELECT role FROM users WHERE username = ?").get(cleanNewUsername) as { role: string } | undefined;
-      if (userObj && userObj.role === 'student') {
+      if (userObj && userObj.role === 'user') {
         const cleanIdCard = idCardLast6 === undefined ? undefined : idCardLast6?.trim();
         const cleanPhone = phoneLast4 === undefined ? undefined : phoneLast4?.trim();
 
@@ -407,6 +421,7 @@ export const adminDeleteUser = (req: express.Request, res: express.Response) => 
     }
 
     const deleteTransaction = db.transaction(() => {
+      db.prepare("DELETE FROM notebooks WHERE userId = ?").run(username);
       db.prepare("DELETE FROM questions WHERE userId = ?").run(username);
       db.prepare("DELETE FROM sessions WHERE username = ?").run(username);
       db.prepare("DELETE FROM users WHERE username = ?").run(username);
@@ -417,5 +432,72 @@ export const adminDeleteUser = (req: express.Request, res: express.Response) => 
   } catch (error: any) {
     console.error("Admin Delete User Error:", error);
     res.status(500).json({ error: error.message || "删除用户失败" });
+  }
+};
+
+// ================= 错题本管理 =================
+
+// 12. 获取错题本列表
+export const getNotebooks = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const stmt = db.prepare("SELECT * FROM notebooks WHERE userId = ? ORDER BY createdAt DESC");
+    const rows = stmt.all(req.userId);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Get Notebooks Error:", error);
+    res.status(500).json({ error: error.message || "获取错题本失败" });
+  }
+};
+
+// 13. 创建错题本
+export const createNotebook = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { name } = req.body;
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "错题本名称不能为空" });
+    }
+    const id = "nb_" + Math.random().toString(36).substring(2, 9);
+    const stmt = db.prepare("INSERT INTO notebooks (id, name, userId, createdAt) VALUES (?, ?, ?, ?)");
+    stmt.run(id, name.trim(), req.userId, Date.now());
+    res.json({ success: true, notebook: { id, name: name.trim() } });
+  } catch (error: any) {
+    console.error("Create Notebook Error:", error);
+    res.status(500).json({ error: error.message || "创建错题本失败" });
+  }
+};
+
+// 14. 更新错题本名称
+export const updateNotebook = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "错题本名称不能为空" });
+    }
+    const stmt = db.prepare("UPDATE notebooks SET name = ? WHERE id = ? AND userId = ?");
+    const result = stmt.run(name.trim(), id, req.userId);
+    if (result.changes === 0) {
+      return res.status(400).json({ error: "更新失败，错题本不存在或不属于您" });
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Update Notebook Error:", error);
+    res.status(500).json({ error: error.message || "更新错题本失败" });
+  }
+};
+
+// 15. 删除错题本
+export const deleteNotebook = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const deleteTx = db.transaction(() => {
+      db.prepare("UPDATE questions SET notebookId = NULL WHERE notebookId = ? AND userId = ?").run(id, req.userId);
+      db.prepare("DELETE FROM notebooks WHERE id = ? AND userId = ?").run(id, req.userId);
+    });
+    deleteTx();
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Delete Notebook Error:", error);
+    res.status(500).json({ error: error.message || "删除错题本失败" });
   }
 };

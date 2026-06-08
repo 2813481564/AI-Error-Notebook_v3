@@ -27,6 +27,8 @@ export interface ErrorQuestion {
   paperName?: string;
   standardAnswer?: string;
   score?: number;
+  notebookId?: string;
+  notebookName?: string;
 }
 
 export interface Stats {

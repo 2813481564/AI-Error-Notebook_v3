@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gift, CreditCard, CheckCircle2, ShieldAlert, Award, Star } from 'lucide-react';
+import { Gift, CreditCard, CheckCircle2, ShieldAlert, Award, Star, Calendar, Zap } from 'lucide-react';
 
 interface VipCenterProps {
   token: string | null;
@@ -103,7 +103,7 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
       if (!res.ok) {
         throw new Error(data.error || '支付确认失败');
       }
-      alert('支付成功！您的会员已成功延长。');
+      alert('模拟支付成功！您的会员已成功延长。');
       setShowPayModal(false);
       onRefresh();
     } catch (err: any) {
@@ -120,7 +120,7 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       
       {/* 头部面板 */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
@@ -154,8 +154,8 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
         </div>
       </div>
 
-      {/* 两栏布局 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 三栏布局 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* 兑换激活码卡片 */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
@@ -200,11 +200,11 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
             </form>
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 text-slate-400 text-[10px] leading-relaxed">
-            * 兑换码通常由线下服务商或管理员发放。每个激活码仅可使用一次，使用后立即生效并增加对应的会员天数。
+            * 兑换码通常由服务商或管理员发放。每个激活码仅可使用一次，使用后立即生效并增加对应的会员天数。
           </div>
         </div>
 
-        {/* 购买说明卡片 */}
+        {/* 扫码演示支付卡片 */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2.5 mb-4">
@@ -212,35 +212,87 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
                 <CreditCard className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">自助升级通道</h3>
-                <p className="text-xs text-slate-500">模拟虚拟在线支付，秒级自动升级</p>
+                <h3 className="font-bold text-slate-900">扫码演示支付</h3>
+                <p className="text-xs text-slate-500">模拟虚拟收银台测试通道</p>
               </div>
             </div>
             
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              支持快速测试多终端多用户 AI 高频额度请求。下方为合同约定的虚拟支付演示模块（内置自动升级）：
+              用于技术演示及后期接口联调的<b>模拟通道</b>。在此付款不会扣除真实费用，可秒级自动升级：
             </p>
 
             <div className="space-y-2">
               {plans.map((plan, idx) => (
                 <div 
                   key={idx} 
-                  className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/60 transition-colors"
+                  className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/60 transition-colors"
                 >
-                  <div>
+                  <div className="max-w-[70%]">
                     <h4 className="font-bold text-xs text-slate-800">{plan.name}</h4>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{plan.desc} · {plan.details}</p>
+                    <p className="text-[9px] text-slate-500 mt-0.5">{plan.desc} · {plan.details}</p>
                   </div>
                   <button
                     onClick={() => handleInitiatePay(plan)}
                     disabled={payLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                   >
-                    ¥{plan.amount} 购买
+                    ¥{plan.amount}
                   </button>
                 </div>
               ))}
             </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-100 text-slate-400 text-[10px] leading-relaxed">
+            * 真实支付功能后续上线。当前通道仅为支付逻辑联调，用户可点击发起模拟订单以测试会员系统自动升级逻辑。
+          </div>
+        </div>
+
+        {/* 线下人工购买卡片 */}
+        <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 rounded-3xl border border-indigo-100 p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-600/10 to-indigo-650/10 rounded-full blur-xl transform translate-x-4 -translate-y-4"></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-550 to-indigo-650 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/10">
+                <Gift className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900">线下人工购买</h3>
+                <p className="text-xs text-slate-500">联系系统客服人工直接开通</p>
+              </div>
+            </div>
+            
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+              如需正式升级开通，请联系管理员线下转账购买，管理员将为您在后台<b>直接授权开通</b>会员资格或<b>分发激活激活码</b>。
+            </p>
+
+            <div className="space-y-3 bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-slate-150 shadow-sm">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-semibold">客服微信号</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">Admin_VIP_Service</span>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText("Admin_VIP_Service");
+                      alert("客服微信号已成功复制到剪贴板！");
+                    }}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50/80 hover:bg-blue-100/80 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    复制
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
+                <span className="text-slate-400 font-semibold">服务邮箱</span>
+                <span className="font-bold text-slate-700">admin@qq.com</span>
+              </div>
+              <div className="text-[9px] text-slate-400 leading-relaxed border-t border-slate-100 pt-2">
+                * 备注说明：加好友请备注“错题本VIP升级”及您的登录邮箱账号。
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-150 text-[10px] text-slate-400 leading-relaxed relative z-10">
+            人工服务在线时间：每日 9:00 - 22:00。非工作时段可留言，我们将在上线后第一时间为您授权。
           </div>
         </div>
 
@@ -252,7 +304,7 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
             <button 
               onClick={() => setShowPayModal(false)} 
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none cursor-pointer"
             >
               ✕
             </button>
@@ -275,7 +327,7 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
                 </div>
               )}
               <p className="text-[10px] text-slate-400 mt-4 text-center">
-                由于演示环境未开通真实支付，请使用下方模拟支付完成回调测试
+                由于本平台未接入真实商户，请使用下方按钮测试“模拟支付成功”回调
               </p>
             </div>
 
