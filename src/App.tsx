@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -19,7 +19,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
   const [role, setRole] = useState<string | null>(localStorage.getItem('errorbook_role'));
-  
+
   const [loginRole, setLoginRole] = useState<'student' | 'teacher'>('student');
   const [loginType, setLoginType] = useState<'idCard' | 'phone'>('idCard');
   const [authUsername, setAuthUsername] = useState('');
@@ -93,8 +93,8 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          username: authUsername.trim(), 
+        body: JSON.stringify({
+          username: authUsername.trim(),
           password: authPassword.trim(),
           loginRole: 'teacher'
         })
@@ -192,7 +192,7 @@ export default function App() {
       if (!res.ok) {
         throw new Error(data.error || '注册失败');
       }
-      
+
       // 注册成功直接自动登录
       localStorage.setItem('errorbook_token', data.token);
       localStorage.setItem('errorbook_username', data.username);
@@ -214,330 +214,301 @@ export default function App() {
 
   if (!token) {
     return (
-      <div className="min-h-screen w-full flex bg-slate-50 font-sans text-slate-700 overflow-y-auto">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f4f6f9] font-sans text-slate-700 p-4 md:p-6 overflow-y-auto">
         
-        {/* Left Intro Pane (Hidden on Mobile) */}
-        <div className="hidden lg:flex w-[55%] flex-col justify-between p-16 bg-gradient-to-tr from-slate-50 via-blue-50/20 to-blue-50 border-r border-slate-200 relative overflow-hidden select-none">
-          <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-gradient-to-br from-blue-500/10 to-transparent blur-[120px] pointer-events-none"></div>
+        {/* Main Card Container */}
+        <div className="w-full max-w-[960px] min-h-[560px] bg-white rounded-[24px] shadow-xl shadow-slate-200/50 flex overflow-hidden border border-slate-100/80">
           
-          {/* Header Logo */}
-          <div className="flex items-center gap-3.5 z-10">
-            <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25 text-white font-extrabold text-lg">
-              AI
+          {/* Left Intro Pane (Hidden on Mobile) */}
+          <div 
+            className="hidden md:flex w-[42%] flex-col justify-between p-10 bg-[#f0f6ff] relative select-none shrink-0"
+            style={{
+              backgroundImage: 'radial-gradient(#c7dffc 1.2px, transparent 1.2px)',
+              backgroundSize: '16px 16px'
+            }}
+          >
+            {/* Top Logo */}
+            <div className="flex items-center gap-3.5 z-10">
+              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md shadow-blue-100/80">
+                {/* Custom SVG Tech Book Logo */}
+                <svg viewBox="0 0 100 100" className="w-9 h-9">
+                  <defs>
+                    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#1d4ed8" />
+                    </linearGradient>
+                    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="100%" stopColor="#93c5fd" />
+                    </linearGradient>
+                  </defs>
+                  {/* 书脊 */}
+                  <path d="M22,25 C22,21.5 25,19 29,19 L32,19 L32,81 L29,81 C25,81 22,78.5 22,75 Z" fill="#1e40af" />
+                  {/* 书页立体厚度 */}
+                  <path d="M32,19 L72,19 C76,19 78,21.5 78,25 L78,75 C78,78.5 76,81 72,81 L32,81 Z" fill="url(#bookGrad)" />
+                  {/* 右上角折角，增加立体感 */}
+                  <path d="M72,19 L78,25 L72,25 Z" fill="#1e3a8a" opacity="0.4" />
+                  {/* 四角星 AI 智能星光 */}
+                  <path d="M52,33 Q52,45 40,45 Q52,45 52,57 Q52,45 64,45 Q52,45 52,33 Z" fill="url(#sparkGrad)" />
+                  {/* 小闪光 */}
+                  <path d="M68,26 Q68,31 63,31 Q68,31 68,36 Q68,31 73,31 Q68,31 68,26 Z" fill="#60a5fa" />
+                  {/* 数据分析底线与圆点 */}
+                  <line x1="40" y1="67" x2="62" y2="67" stroke="#93c5fd" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="1 4" />
+                  <circle cx="67" cy="67" r="2" fill="#ffffff" />
+                </svg>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-1.5">
-                爱错题
-                <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg border border-blue-100">AI 错题本</span>
-              </h2>
-            </div>
-          </div>
 
-          {/* Slogans & Features */}
-          <div className="my-auto max-w-lg z-10">
-            <div className="space-y-3 mb-10">
-              <h1 className="text-3xl font-extrabold text-slate-850 tracking-tight leading-tight">
-                拍照即录入，爱错题智能分析
+            {/* Title & Slogan */}
+            <div className="z-10">
+              <h1 className="text-[28px] font-extrabold text-slate-800 tracking-tight leading-tight">
+                探索智能解析，
               </h1>
-              <p className="text-slate-450 text-sm font-semibold tracking-wide">
-                让每一道错题都变成掌握的起点
+              <h1 className="text-[28px] font-extrabold text-slate-800 tracking-tight leading-tight mt-1">
+                提升学习效率。
+              </h1>
+              <p className="text-slate-400 text-xs font-semibold leading-relaxed mt-4">
+                加入猫头鹰 AI错题本，<br />体验全新的错题整理模式。
               </p>
             </div>
 
-            {/* Feature Cards */}
-            <div className="space-y-4">
-              {/* Card 1 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
-                  <Camera className="w-5 h-5" />
+            {/* Social Proof Card */}
+            <div className="bg-white/80 backdrop-blur-md p-4 rounded-[18px] border border-white/50 shadow-sm shadow-blue-100/40 flex items-center gap-3.5 z-10">
+              <div className="flex items-center">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shadow-sm">
+                  师
                 </div>
-                <div>
-                  <h4 className="font-bold text-slate-800 text-[14px]">拍照识别</h4>
-                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">拍照或上传题目照片，AI 自动切题、提取并解析</p>
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shadow-sm -ml-2.5">
+                  生
                 </div>
-              </div>
-
-              {/* Card 2 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800 text-[14px]">AI 智能解析</h4>
-                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">提供详细的解题步骤、多维错因归纳与关联知识点</p>
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-sky-400 to-blue-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shadow-sm -ml-2.5">
+                  创
                 </div>
               </div>
-
-              {/* Card 3 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800 text-[14px]">智能组卷</h4>
-                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">自由挑选错题一键生成巩固试卷，导出高品质 PDF</p>
-                </div>
-              </div>
-
-              {/* Card 4 */}
-              <div className="flex items-start gap-4.5 bg-white/70 backdrop-blur-md p-5 rounded-2xl border border-white/80 shadow-sm shadow-blue-500/5 transition hover:translate-y-[-2px] hover:shadow-md duration-300">
-                <div className="p-3.5 bg-blue-50 rounded-xl text-blue-600 shrink-0">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800 text-[14px]">公共题库</h4>
-                  <p className="text-xs text-slate-450 mt-1 font-medium leading-relaxed">精选共享海量题目，和大家一起讨论解题思路</p>
-                </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-slate-700 leading-none">超过 10,000+</span>
+                <span className="text-[10px] text-slate-400 font-bold mt-1 leading-none">老师与学生的共同选择</span>
               </div>
             </div>
 
-            {/* Checklists */}
-            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[11px] font-bold text-slate-500">
-              <div className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600" />
-                支持数学公式与几何图形
+          </div>
+
+          {/* Right Form Pane */}
+          <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-white">
+            <div className="w-full max-w-[360px] mx-auto space-y-6">
+              
+              {/* Form Header */}
+              <div>
+                <h2 className="text-[26px] font-black text-slate-800 tracking-tight">
+                  {isRegisterMode ? '加入我们' : '欢迎登录'}
+                </h2>
+                <p className="text-xs text-slate-400 mt-1.5 font-bold tracking-wide">
+                  {isRegisterMode ? '欢迎注册使用AI错题识别' : '继续您的智能学习之旅。'}
+                </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600" />
-                多错题本分类管理
+
+              {/* Error & Success Messages */}
+              {authError && (
+                <div className="bg-rose-50 text-rose-600 border border-rose-100 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+                  {authError}
+                </div>
+              )}
+              {regSuccess && (
+                <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="leading-snug">{regSuccess}</span>
+                </div>
+              )}
+
+              {/* Form Box */}
+              {isRegisterMode ? (
+                // ================= 注册表单 =================
+                <form onSubmit={handleRegister} className="space-y-4">
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      QQ 邮箱
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                        <Mail className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                        <input
+                          type="email"
+                          placeholder="请输入您的 QQ 邮箱地址"
+                          value={regEmail}
+                          onChange={e => setRegEmail(e.target.value)}
+                          className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium"
+                          required
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendCode}
+                        disabled={sendCodeLoading || countdown > 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs px-5 py-3 rounded-full transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-sm shadow-blue-500/10"
+                      >
+                        {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">邮箱验证码</label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <Sparkles className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="请输入 6 位验证码"
+                        value={regCode}
+                        onChange={e => setRegCode(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      设置密码
+                    </label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <Lock className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="设置您的账号密码（至少 6 位）"
+                        value={regPassword}
+                        onChange={e => setRegPassword(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium pr-8"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4.5 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-full font-extrabold transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  >
+                    {authLoading ? '正在注册...' : '立即注册'}
+                  </button>
+                </form>
+              ) : (
+                // ================= 登录表单 =================
+                <form onSubmit={handleAuth} className="space-y-4">
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      用户名
+                    </label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <User className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="请输入账号"
+                        value={authUsername}
+                        onChange={e => setAuthUsername(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      密码
+                    </label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <Lock className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="请输入密码"
+                        value={authPassword}
+                        onChange={e => setAuthPassword(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium pr-8"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4.5 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs pt-1 select-none">
+                    <span />
+                    <button
+                      type="button"
+                      onClick={() => alert("密码重置功能升级中，请联系平台管理员 admin 协助重置密码！")}
+                      className="text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
+                    >
+                      忘记密码？
+                    </button>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-full font-extrabold transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  >
+                    {authLoading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        正在登录...
+                      </>
+                    ) : (
+                      '立即登录'
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* Bottom Switch Link */}
+              <div className="text-center text-xs font-semibold select-none pt-2">
+                <span className="text-slate-400">
+                  {isRegisterMode ? '已有账号？' : '还没有账号？'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterMode(!isRegisterMode);
+                    setAuthError(null);
+                    setRegSuccess(null);
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-extrabold ml-1 cursor-pointer transition-colors"
+                >
+                  {isRegisterMode ? '立即登录' : '立即免费注册'}
+                </button>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600" />
-                掌握度智能追踪
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600" />
-                全平台数据同步
-              </div>
+
             </div>
           </div>
 
-          {/* Footer note */}
-          <div className="text-xs text-slate-400 font-bold tracking-wide flex items-center gap-1.5 z-10">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-650 animate-pulse"></span>
-            已帮助数千名学生高效管理错题
-          </div>
         </div>
 
-        {/* Right Form Pane */}
-        <div className="flex-1 flex flex-col justify-center items-center p-8 bg-slate-50 md:bg-white">
-          <div className="w-full max-w-[360px] space-y-6">
-            
-            {/* Logo and Slogan */}
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/25 text-white font-extrabold text-2xl mb-4 select-none">
-                AI
-              </div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-1 select-none">
-                爱错题 <span className="text-xs font-semibold text-slate-400 font-mono">AI 错题本</span>
-              </h2>
-              <p className="text-xs text-slate-450 mt-1.5 font-bold tracking-wide select-none">
-                {isRegisterMode ? '欢迎注册使用爱错题' : '欢迎回到爱错题'}
-              </p>
-            </div>
-
-            {/* Switch Tabs */}
-            <div className="flex bg-slate-100 p-1 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRegisterMode(false);
-                  setAuthError(null);
-                  setRegSuccess(null);
-                }}
-                className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  !isRegisterMode
-                    ? 'bg-blue-600 text-white shadow-sm font-black'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                登录
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRegisterMode(true);
-                  setAuthError(null);
-                  setRegSuccess(null);
-                }}
-                className={`flex-1 py-2 text-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isRegisterMode
-                    ? 'bg-blue-600 text-white shadow-sm font-black'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                注册
-              </button>
-            </div>
-
-            {/* Forms Container */}
-            {isRegisterMode ? (
-              // ================= 注册表单 =================
-              <form onSubmit={handleRegister} className="space-y-4">
-                {authError && (
-                  <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-                    {authError}
-                  </div>
-                )}
-                {regSuccess && (
-                  <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="leading-snug">{regSuccess}</span>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    QQ 邮箱
-                  </label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="email"
-                      placeholder="请输入您的 QQ 邮箱地址"
-                      value={regEmail}
-                      onChange={e => setRegEmail(e.target.value)}
-                      className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSendCode}
-                      disabled={sendCodeLoading || countdown > 0}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                    >
-                      {countdown > 0 ? `${countdown}s` : '获取验证码'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">邮箱验证码</label>
-                  <input 
-                    type="text"
-                    placeholder="请输入 6 位验证码"
-                    value={regCode}
-                    onChange={e => setRegCode(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    设置密码
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type={showPassword ? "text" : "password"}
-                      placeholder="设置您的账号密码（至少 6 位）"
-                      value={regPassword}
-                      onChange={e => setRegPassword(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
-                >
-                  {authLoading ? '正在注册...' : '立即注册'}
-                </button>
-              </form>
-            ) : (
-              // ================= 登录表单 =================
-              <form onSubmit={handleAuth} className="space-y-4">
-                {authError && (
-                  <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-                    {authError}
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    账号 / 注册邮箱
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="请输入邮箱或管理员账号（如: admin）"
-                    value={authUsername}
-                    onChange={e => setAuthUsername(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    密码
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type={showPassword ? "text" : "password"}
-                      placeholder="请输入密码"
-                      value={authPassword}
-                      onChange={e => setAuthPassword(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400/80 pr-10"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-xs pt-1 select-none">
-                  <span />
-                  <button
-                    type="button"
-                    onClick={() => alert("密码重置功能升级中，请联系平台管理员 admin 协助重置密码！")}
-                    className="text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
-                  >
-                    忘记密码？
-                  </button>
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
-                >
-                  {authLoading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      正在登录...
-                    </>
-                  ) : (
-                    '安全登录'
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* Brand Footer */}
-            <div className="text-center text-[10px] text-slate-350 font-extrabold tracking-widest pt-4 select-none">
-              ai-cuoti.com
-            </div>
-
+        {/* Back to Home Button & Brand Footer */}
+        <div className="flex flex-col items-center gap-3 mt-8">
+          <a
+            href="https://ai-cuoti.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200/60 hover:border-slate-300 rounded-full shadow-sm hover:shadow-md text-xs font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
+          >
+            <Home className="w-4 h-4" />
+            <span>返回官网首页</span>
+          </a>
+          <div className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase select-none">
+            ai-cuoti.com
           </div>
         </div>
 
@@ -547,7 +518,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 font-sans text-slate-800 overflow-hidden">
-      
+
       {/* Sidebar Navigation - Desktop */}
       <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col shrink-0">
         <div className="p-6 border-b border-slate-100">
@@ -558,41 +529,38 @@ export default function App() {
             <h1 className="text-lg font-extrabold tracking-tight text-slate-900">智能错题本</h1>
           </div>
         </div>
-        
+
         <nav className="flex-1 p-4 space-y-1.5">
           <button
             onClick={() => setCurrentView('dashboard')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              currentView === 'dashboard' 
-                ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'dashboard'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
           >
             <Home className="w-4 h-4" />
             <span>首页统计</span>
           </button>
-          
+
           {role !== 'student' && (
             <button
               onClick={() => setCurrentView('add')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentView === 'add' 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'add'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
             >
               <Camera className="w-4 h-4" />
               <span>拍照录题</span>
             </button>
           )}
-          
+
           <button
             onClick={() => setCurrentView('library')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              currentView === 'library' 
-                ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'library'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
           >
             <Database className="w-4 h-4" />
             <span>错题库管理</span>
@@ -601,25 +569,23 @@ export default function App() {
           {role !== 'student' && (
             <button
               onClick={() => setCurrentView('publicLibrary')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentView === 'publicLibrary' 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'publicLibrary'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
             >
               <BookOpen className="w-4 h-4" />
               <span>公共题库</span>
             </button>
           )}
-          
+
           {role === 'admin' && (
             <button
               onClick={() => setCurrentView('users')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentView === 'users' 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'users'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
             >
               <Users className="w-4 h-4" />
               <span>用户管理</span>
@@ -628,11 +594,10 @@ export default function App() {
 
           <button
             onClick={() => setCurrentView('vipCenter')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-              currentView === 'vipCenter' 
-                ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'vipCenter'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
           >
             <Award className="w-4 h-4" />
             <span>会员中心</span>
@@ -641,7 +606,7 @@ export default function App() {
 
         {/* SQLite Storage Status & Link */}
         <div className="p-4 border-t border-slate-100 space-y-3">
-          <button 
+          <button
             onClick={() => setShowSqlTip(true)}
             className="w-full text-left p-3.5 bg-slate-900 rounded-2xl text-white hover:bg-black transition-colors relative group overflow-hidden"
           >
@@ -674,7 +639,7 @@ export default function App() {
               </div>
             </div>
           </button>
-          
+
           <button
             onClick={handleLogout}
             className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/50 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-rose-500/5 cursor-pointer"
@@ -686,7 +651,7 @@ export default function App() {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        
+
         {/* Mobile Header (Hidden on Desktop) */}
         <header className="md:hidden flex h-16 bg-white border-b border-slate-200 items-center justify-between px-5 sticky top-0 z-25 shrink-0">
           <div className="flex items-center gap-2">
@@ -696,14 +661,14 @@ export default function App() {
             <h1 className="text-md font-extrabold tracking-tight text-slate-900">智能错题本</h1>
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={() => setShowSqlTip(true)}
               className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-3 py-1.5 font-bold transition-colors flex items-center gap-1"
             >
               <HardDrive className="w-3 h-3" />
               存储说明
             </button>
-            <button 
+            <button
               onClick={handleLogout}
               className="text-[10px] bg-rose-50 text-rose-600 rounded-full px-3 py-1.5 font-bold hover:bg-rose-100 transition-colors"
             >
@@ -718,17 +683,17 @@ export default function App() {
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
             {currentView === 'library' && (
-              <QuestionLibrary 
-                onNavigate={setCurrentView} 
+              <QuestionLibrary
+                onNavigate={setCurrentView}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('library');
                   setCurrentView('paper');
-                }} 
+                }}
               />
             )}
             {currentView === 'publicLibrary' && role !== 'student' && (
-              <PublicQuestionLibrary 
+              <PublicQuestionLibrary
                 onNavigate={setCurrentView}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
@@ -739,16 +704,16 @@ export default function App() {
             )}
             {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
             {currentView === 'vipCenter' && (
-              <VipCenter 
+              <VipCenter
                 token={token}
                 userInfo={userInfo}
                 onRefresh={fetchUserInfo}
               />
             )}
             {currentView === 'paper' && (
-              <TestPaper 
-                questions={paperQuestions} 
-                onBack={() => setCurrentView(paperSourceView)} 
+              <TestPaper
+                questions={paperQuestions}
+                onBack={() => setCurrentView(paperSourceView)}
               />
             )}
           </div>
@@ -756,42 +721,42 @@ export default function App() {
 
         {/* Mobile Navigation - Only Bottom */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
-          <NavItem 
-            icon={<Home className="w-5 h-5" />} label="首页" 
-            active={currentView === 'dashboard'} 
-            onClick={() => setCurrentView('dashboard')} 
+          <NavItem
+            icon={<Home className="w-5 h-5" />} label="首页"
+            active={currentView === 'dashboard'}
+            onClick={() => setCurrentView('dashboard')}
           />
           {role === 'admin' ? (
-            <NavItem 
-              icon={<Users className="w-5 h-5" />} label="用户管理" 
-              active={currentView === 'users'} 
-              onClick={() => setCurrentView('users')} 
+            <NavItem
+              icon={<Users className="w-5 h-5" />} label="用户管理"
+              active={currentView === 'users'}
+              onClick={() => setCurrentView('users')}
             />
           ) : role !== 'student' ? (
             <div className="relative -top-5">
-              <button 
+              <button
                 onClick={() => setCurrentView('add')}
                 className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
               >
-                 <Camera className="w-6 h-6" />
+                <Camera className="w-6 h-6" />
               </button>
             </div>
           ) : null}
-          <NavItem 
-            icon={<Database className="w-5 h-5" />} label="错题库" 
-            active={currentView === 'library'} 
-            onClick={() => setCurrentView('library')} 
+          <NavItem
+            icon={<Database className="w-5 h-5" />} label="错题库"
+            active={currentView === 'library'}
+            onClick={() => setCurrentView('library')}
           />
-          <NavItem 
-            icon={<Award className="w-5 h-5" />} label="会员中心" 
-            active={currentView === 'vipCenter'} 
-            onClick={() => setCurrentView('vipCenter')} 
+          <NavItem
+            icon={<Award className="w-5 h-5" />} label="会员中心"
+            active={currentView === 'vipCenter'}
+            onClick={() => setCurrentView('vipCenter')}
           />
           {role !== 'student' && (
-            <NavItem 
-              icon={<BookOpen className="w-5 h-5" />} label="公共题库" 
-              active={currentView === 'publicLibrary'} 
-              onClick={() => setCurrentView('publicLibrary')} 
+            <NavItem
+              icon={<BookOpen className="w-5 h-5" />} label="公共题库"
+              active={currentView === 'publicLibrary'}
+              onClick={() => setCurrentView('publicLibrary')}
             />
           )}
         </nav>
@@ -801,8 +766,8 @@ export default function App() {
       {showSqlTip && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setShowSqlTip(false)} 
+            <button
+              onClick={() => setShowSqlTip(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none"
             >
               ✕
@@ -811,7 +776,7 @@ export default function App() {
               <HardDrive className="w-5 h-5" />
               <h3 className="text-lg">多用户 SQLite 存储信息</h3>
             </div>
-            
+
             <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
               <p>
                 您的错题数据已经由前端的 <strong>IndexedDB (浏览器本地存储)</strong> 成功迁移至服务端的 <strong>SQLite 物理数据库 (questions.db)</strong> 中。
@@ -832,7 +797,7 @@ export default function App() {
               </ul>
             </div>
 
-            <button 
+            <button
               onClick={() => setShowSqlTip(false)}
               className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors cursor-pointer"
             >
@@ -848,7 +813,7 @@ export default function App() {
 
 function NavItem({ icon, label, active, onClick }: { icon: ReactNode, label: string, active: boolean, onClick: () => void }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       className={`flex flex-col items-center justify-center w-full py-3 ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-950'}`}
     >
