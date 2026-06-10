@@ -60,6 +60,9 @@ router.get("/admin/redeem-codes", requireAdmin, adminCtrl.getRedemptionCodes);
 
 router.get("/admin/settings", requireAdmin, adminCtrl.getSystemSettings);
 router.post("/admin/settings", requireAdmin, adminCtrl.saveSystemSettings);
+router.get("/admin/settings/ai-history", requireAdmin, adminCtrl.getAiSettingHistory);
+router.delete("/admin/settings/ai-history/:id", requireAdmin, adminCtrl.deleteAiSettingHistory);
+router.post("/admin/settings/ai-history/restore", requireAdmin, adminCtrl.restoreAiSettingHistory);
 
 // ================= 公告与私域配置 路由 =================
 router.get("/announcements", requireAuth, userCtrl.getActiveAnnouncements);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Mail, ShieldAlert, Save, RefreshCw, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { Bot, Mail, ShieldAlert, Save, RefreshCw, Eye, EyeOff, CheckCircle2, History, Trash2 } from 'lucide-react';
 
 interface SystemSettingsData {
   AI_PROVIDER: string;
@@ -17,6 +17,19 @@ interface SystemSettingsData {
   LIMIT_VIP: string;
   LIMIT_SVIP: string;
   ALLOW_STUDENT_AI: string;
+}
+
+interface AiSettingHistoryItem {
+  id: number;
+  provider: string;
+  apiBaseUrl: string;
+  apiKey: string;
+  geminiApiKey: string;
+  model: string;
+  visionModel: string;
+  geminiModel: string;
+  remark: string;
+  createdAt: number;
 }
 
 export default function SystemSettings() {
@@ -49,9 +62,98 @@ export default function SystemSettings() {
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showSmtpPass, setShowSmtpPass] = useState(false);
 
+  // AI 历史记录相关状态
+  const [historyList, setHistoryList] = useState<AiSettingHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [remark, setRemark] = useState('');
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
   useEffect(() => {
     fetchSettings();
+    fetchHistory();
   }, []);
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/admin/settings/ai-history', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.history) {
+          setHistoryList(data.history);
+        }
+      }
+    } catch (err) {
+      console.error('获取历史配置失败:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleRestoreHistory = async (id: number) => {
+    if (!window.confirm('确定要恢复此大模型通道配置吗？这将会覆盖当前生效的 AI 设置。')) {
+      return;
+    }
+    setRestoringId(id);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/admin/settings/ai-history/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '恢复历史配置失败');
+      }
+      if (data.settings) {
+        setSettings(prev => ({ ...prev, ...data.settings }));
+      }
+      setSuccessMsg('已成功恢复选中的历史配置！');
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handleDeleteHistory = async (id: number) => {
+    if (!window.confirm('确定要删除此条历史配置记录吗？')) {
+      return;
+    }
+    setDeletingId(id);
+    setError(null);
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch(`/api/admin/settings/ai-history/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '删除历史配置失败');
+      }
+      setHistoryList(prev => prev.filter(item => item.id !== id));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -105,13 +207,15 @@ export default function SystemSettings() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ settings })
+        body: JSON.stringify({ settings, remark })
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || '保存设置失败');
       }
       setSuccessMsg('系统设置已成功保存，并在后台实时生效！');
+      setRemark(''); // 清空配置备注
+      fetchHistory(); // 重新获取历史记录
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
       setError(err.message);
@@ -324,6 +428,118 @@ export default function SystemSettings() {
                         />
                       </div>
                     </>
+                  )}
+                </div>
+
+                {/* 配置备注/别名 */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <label className="text-xs font-bold text-slate-500">当前修改备注/别名（可选）</label>
+                  <input
+                    type="text"
+                    value={remark}
+                    onChange={(e) => setRemark(e.target.value)}
+                    placeholder="例如：DeepSeek 生产备用、Gemma测试通道，用于记录在历史配置中"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-[11px] text-slate-400 font-semibold">若配置有改变并保存，该备注将与当前配置共同存入配置历史中，方便日后切换。</p>
+                </div>
+
+                {/* 历史配置列表 */}
+                <div className="space-y-4 pt-6 border-t border-slate-200">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-slate-500" />
+                      历史配置记录
+                    </h4>
+                    <p className="text-[11px] text-slate-400">记录了您每次修改并保存的 AI 通道设置，点击“应用”即可快速恢复。</p>
+                  </div>
+
+                  {historyLoading ? (
+                    <div className="py-6 flex justify-center items-center gap-2">
+                      <div className="w-5 h-5 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin"></div>
+                      <span className="text-xs text-slate-400 font-semibold">加载历史记录...</span>
+                    </div>
+                  ) : historyList.length === 0 ? (
+                    <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                      <p className="text-xs text-slate-400 font-medium">暂无历史通道配置记录</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                      {historyList.map((item) => {
+                        const isCurrentlyActive = 
+                          settings.AI_PROVIDER === item.provider &&
+                          settings.AI_API_BASE_URL === item.apiBaseUrl &&
+                          settings.AI_API_KEY === item.apiKey &&
+                          settings.GEMINI_API_KEY === item.geminiApiKey &&
+                          settings.AI_MODEL === item.model &&
+                          settings.AI_VISION_MODEL === item.visionModel &&
+                          settings.GEMINI_MODEL === item.geminiModel;
+
+                        return (
+                          <div 
+                            key={item.id} 
+                            className={`p-3.5 border rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-all ${
+                              isCurrentlyActive 
+                                ? 'bg-blue-50/50 border-blue-200 shadow-sm' 
+                                : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${
+                                  item.provider === 'gemini' 
+                                    ? 'bg-purple-100 text-purple-700' 
+                                    : 'bg-indigo-100 text-indigo-700'
+                                }`}>
+                                  {item.provider === 'gemini' ? 'Gemini' : 'OpenAI 兼容'}
+                                </span>
+                                {item.remark && (
+                                  <span className="text-xs font-bold text-slate-700">
+                                    {item.remark}
+                                  </span>
+                                )}
+                                {isCurrentlyActive && (
+                                  <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black">
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                    当前生效
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-medium flex flex-wrap gap-x-3 gap-y-0.5">
+                                <span>模型: <code className="text-slate-600 font-mono bg-slate-50 px-1 rounded">{item.provider === 'gemini' ? item.geminiModel : item.model}</code></span>
+                                {item.provider === 'openai' && item.apiBaseUrl && (
+                                  <span className="truncate max-w-[200px]">Base: <code className="text-slate-500">{item.apiBaseUrl}</code></span>
+                                )}
+                                <span>时间: {new Date(item.createdAt).toLocaleString()}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                              <button
+                                type="button"
+                                disabled={isCurrentlyActive || restoringId === item.id}
+                                onClick={() => handleRestoreHistory(item.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${
+                                  isCurrentlyActive 
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100 active:scale-95'
+                                }`}
+                              >
+                                {restoringId === item.id ? '应用中...' : '应用此配置'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingId === item.id}
+                                onClick={() => handleDeleteHistory(item.id)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-all active:scale-95"
+                                title="删除此历史记录"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>

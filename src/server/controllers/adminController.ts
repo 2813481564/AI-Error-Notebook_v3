@@ -55,15 +55,52 @@ export const getSystemSettings = (req: express.Request, res: express.Response) =
 // 4. 保存系统设置
 export const saveSystemSettings = (req: express.Request, res: express.Response) => {
   try {
-    const { settings } = req.body;
+    const { settings, remark } = req.body;
     if (!settings || typeof settings !== 'object') {
       return res.status(400).json({ error: "无效的设置数据" });
+    }
+    
+    const current = getSettings();
+    const keysToCheck = [
+      "AI_PROVIDER",
+      "AI_API_BASE_URL",
+      "AI_API_KEY",
+      "GEMINI_API_KEY",
+      "AI_MODEL",
+      "AI_VISION_MODEL",
+      "GEMINI_MODEL"
+    ];
+    
+    let isAiChanged = false;
+    for (const key of keysToCheck) {
+      const newValue = settings[key] !== undefined ? String(settings[key]) : "";
+      const oldValue = current[key] || "";
+      if (newValue !== oldValue) {
+        isAiChanged = true;
+        break;
+      }
     }
     
     // 使用事务保障原子性
     const tx = db.transaction(() => {
       for (const [key, value] of Object.entries(settings)) {
         db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)").run(key, String(value));
+      }
+      
+      if (isAiChanged) {
+        const provider = String(settings.AI_PROVIDER || "gemini");
+        const apiBaseUrl = String(settings.AI_API_BASE_URL || "");
+        const apiKey = String(settings.AI_API_KEY || "");
+        const geminiApiKey = String(settings.GEMINI_API_KEY || "");
+        const model = String(settings.AI_MODEL || "");
+        const visionModel = String(settings.AI_VISION_MODEL || "");
+        const geminiModel = String(settings.GEMINI_MODEL || "");
+        
+        db.prepare(`
+          INSERT INTO ai_setting_history (
+            provider, apiBaseUrl, apiKey, geminiApiKey, model, visionModel, geminiModel, remark, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(provider, apiBaseUrl, apiKey, geminiApiKey, model, visionModel, geminiModel, remark || "", Date.now());
       }
     });
     tx();
@@ -156,6 +193,66 @@ export const saveVipContact = (req: express.Request, res: express.Response) => {
   } catch (error: any) {
     console.error("Save Vip Contact Error:", error);
     res.status(500).json({ error: error.message || "保存私域配置失败" });
+  }
+};
+
+// 9. 获取 AI 大模型通道配置历史
+export const getAiSettingHistory = (req: express.Request, res: express.Response) => {
+  try {
+    const history = db.prepare("SELECT * FROM ai_setting_history ORDER BY createdAt DESC").all();
+    res.json({ success: true, history });
+  } catch (error: any) {
+    console.error("Get AI Setting History Error:", error);
+    res.status(500).json({ error: error.message || "获取AI历史配置失败" });
+  }
+};
+
+// 10. 删除 AI 大模型通道历史配置记录
+export const deleteAiSettingHistory = (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "历史配置ID不能为空" });
+    }
+    db.prepare("DELETE FROM ai_setting_history WHERE id = ?").run(id);
+    res.json({ success: true, message: "历史配置已删除" });
+  } catch (error: any) {
+    console.error("Delete AI Setting History Error:", error);
+    res.status(500).json({ error: error.message || "删除历史配置失败" });
+  }
+};
+
+// 11. 恢复 AI 大模型通道历史配置
+export const restoreAiSettingHistory = (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "历史配置ID不能为空" });
+    }
+    
+    const record = db.prepare("SELECT * FROM ai_setting_history WHERE id = ?").get(id) as any;
+    if (!record) {
+      return res.status(404).json({ error: "未找到对应的历史配置记录" });
+    }
+    
+    // 更新 system_settings 中的 AI 配置
+    const tx = db.transaction(() => {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('AI_PROVIDER', ?)").run(record.provider);
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('AI_API_BASE_URL', ?)").run(record.apiBaseUrl || "");
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('AI_API_KEY', ?)").run(record.apiKey || "");
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('GEMINI_API_KEY', ?)").run(record.geminiApiKey || "");
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('AI_MODEL', ?)").run(record.model || "");
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('AI_VISION_MODEL', ?)").run(record.visionModel || "");
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('GEMINI_MODEL', ?)").run(record.geminiModel || "");
+    });
+    tx();
+    
+    // 获取最新的系统设置并返回
+    const updatedSettings = getSettings();
+    res.json({ success: true, settings: updatedSettings, message: "已恢复选中的历史配置" });
+  } catch (error: any) {
+    console.error("Restore AI Setting History Error:", error);
+    res.status(500).json({ error: error.message || "恢复历史配置失败" });
   }
 };
 

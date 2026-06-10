@@ -93,6 +93,19 @@ db.exec(`
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS ai_setting_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    apiBaseUrl TEXT,
+    apiKey TEXT,
+    geminiApiKey TEXT,
+    model TEXT,
+    visionModel TEXT,
+    geminiModel TEXT,
+    remark TEXT,
+    createdAt INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS announcements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
