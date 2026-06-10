@@ -55,5 +55,19 @@ router.delete("/admin/users/:username", requireAdmin, qCtrl.adminDeleteUser);
 
 router.post("/admin/generate-code", requireAdmin, adminCtrl.generateCode);
 router.get("/admin/redemption-codes", requireAdmin, adminCtrl.getRedemptionCodes);
+router.post("/admin/redeem-codes", requireAdmin, adminCtrl.generateCode);
+router.get("/admin/redeem-codes", requireAdmin, adminCtrl.getRedemptionCodes);
+
+router.get("/admin/settings", requireAdmin, adminCtrl.getSystemSettings);
+router.post("/admin/settings", requireAdmin, adminCtrl.saveSystemSettings);
+
+// ================= 公告与私域配置 路由 =================
+router.get("/announcements", requireAuth, userCtrl.getActiveAnnouncements);
+router.get("/vip/contact", requireAuth, userCtrl.getVipContact);
+
+router.get("/admin/announcements", requireAdmin, adminCtrl.getAnnouncements);
+router.post("/admin/announcements", requireAdmin, adminCtrl.saveAnnouncement);
+router.delete("/admin/announcements/:id", requireAdmin, adminCtrl.deleteAnnouncement);
+router.post("/admin/vip/contact", requireAdmin, adminCtrl.saveVipContact);
 
 export default router;

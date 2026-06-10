@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Gift, CreditCard, CheckCircle2, ShieldAlert, Award, Star, Calendar, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Gift, CheckCircle2, ShieldAlert, Award, Star, Zap, QrCode, Copy, Sparkles, Mail, FileText } from 'lucide-react';
 
 interface VipCenterProps {
   token: string | null;
@@ -13,21 +13,75 @@ interface VipCenterProps {
   onRefresh: () => void;
 }
 
+interface Announcement {
+  id: number;
+  title: string;
+  imageUrl: string;
+  linkUrl: string | null;
+}
+
+interface VipContact {
+  wechatQr: string;
+  wechatId: string;
+  serviceEmail: string;
+  notes: string;
+}
+
 export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps) {
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [redeemLoading, setRedeemLoading] = useState(false);
 
-  // 模拟支付弹窗状态
-  const [showPayModal, setShowPayModal] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<{ name: string; amount: number; desc: string } | null>(null);
-  const [orderId, setOrderId] = useState<string | null>(null);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [payLoading, setPayLoading] = useState(false);
-  const [payConfirmLoading, setPayConfirmLoading] = useState(false);
+  // 公告与客服状态
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [contact, setContact] = useState<VipContact>({
+    wechatQr: '',
+    wechatId: 'Admin_VIP_Service',
+    serviceEmail: 'admin@qq.com',
+    notes: '人工服务在线时间：每日 9:00 - 22:00。加微信号请备注“错题本VIP升级”。',
+  });
+  
+  // 轮播图当前幻灯片索引
+  const [currentSlide, setCurrentSlide] = useState(0);
 
-  // 1. 兑换激活码
+  // 获取公告与私域联系方式
+  useEffect(() => {
+    const fetchVipData = async () => {
+      try {
+        const headers = { 'Authorization': `Bearer ${token}` };
+        
+        // 1. 获取激活的公告
+        const annRes = await fetch('/api/announcements', { headers });
+        if (annRes.ok) {
+          const annData = await annRes.json();
+          setAnnouncements(annData);
+        }
+
+        // 2. 获取客服配置
+        const contactRes = await fetch('/api/vip/contact', { headers });
+        if (contactRes.ok) {
+          const contactData = await contactRes.json();
+          setContact(contactData);
+        }
+      } catch (err) {
+        console.error('Failed to fetch VipCenter data:', err);
+      }
+    };
+
+    fetchVipData();
+  }, [token]);
+
+  // 轮播图自动播放
+  useEffect(() => {
+    if (announcements.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % announcements.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [announcements]);
+
+  // 兑换激活码
   const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!redeemCode.trim()) return;
@@ -59,124 +113,148 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
     }
   };
 
-  // 2. 发起支付
-  const handleInitiatePay = async (plan: { name: string; amount: number; desc: string }) => {
-    setPayLoading(true);
-    setCurrentPlan(plan);
-    try {
-      const res = await fetch('/api/user/pay', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ amount: plan.amount })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '订单发起失败');
-      }
-      setOrderId(data.orderId);
-      setQrUrl(data.qrUrl);
-      setShowPayModal(true);
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setPayLoading(false);
-    }
+  const handleCopy = () => {
+    navigator.clipboard.writeText(contact.wechatId);
+    alert('微信号已复制成功！请在微信中搜索添加。');
   };
-
-  // 3. 确认支付成功
-  const handleConfirmPay = async () => {
-    if (!orderId) return;
-    setPayConfirmLoading(true);
-    try {
-      const res = await fetch('/api/user/pay-success', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ orderId })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '支付确认失败');
-      }
-      alert('模拟支付成功！您的会员已成功延长。');
-      setShowPayModal(false);
-      onRefresh();
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setPayConfirmLoading(false);
-    }
-  };
-
-  const plans = [
-    { name: '黄金会员', amount: 19, desc: '30 天 VIP 额度', details: '每天限用 100 次 AI 分析' },
-    { name: '钻石会员', amount: 99, desc: '365 天 VIP 额度', details: '每天限用 100 次 AI 分析' },
-    { name: '尊享 SVIP', amount: 199, desc: '365 天 SVIP 额度', details: '每天限用 300 次 AI 分析' }
-  ];
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-6 font-sans text-slate-700">
       
-      {/* 头部面板 */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none transform translate-y-6 translate-x-6">
+      {/* 1. 动态轮播图公告区 */}
+      {announcements.length > 0 ? (
+        <div className="relative w-full h-48 md:h-64 rounded-3xl overflow-hidden shadow-md border border-slate-200 group bg-slate-100">
+          <div 
+            className="flex h-full transition-transform duration-500 ease-out"
+            style={{ 
+              transform: `translateX(-${currentSlide * 100}%)`, 
+              width: `${announcements.length * 100}%` 
+            }}
+          >
+            {announcements.map((ann, idx) => (
+              <div 
+                key={ann.id} 
+                onClick={() => ann.linkUrl && window.open(ann.linkUrl, '_blank')}
+                className={`h-full flex-shrink-0 relative ${ann.linkUrl ? 'cursor-pointer' : ''}`}
+                style={{ width: `${100 / announcements.length}%` }}
+              >
+                <img 
+                  src={ann.imageUrl} 
+                  alt={ann.title} 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent flex items-end p-6">
+                  <h3 className="text-white font-extrabold text-sm md:text-lg drop-shadow-md">{ann.title}</h3>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* 左右导航按钮 */}
+          {announcements.length > 1 && (
+            <>
+              <button 
+                onClick={() => setCurrentSlide(prev => (prev - 1 + announcements.length) % announcements.length)}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 hover:bg-white/80 backdrop-blur-sm flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-opacity font-extrabold text-lg select-none cursor-pointer"
+              >
+                ‹
+              </button>
+              <button 
+                onClick={() => setCurrentSlide(prev => (prev + 1) % announcements.length)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 hover:bg-white/80 backdrop-blur-sm flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-opacity font-extrabold text-lg select-none cursor-pointer"
+              >
+                ›
+              </button>
+              
+              {/* 分页圆点 */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                {announcements.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentSlide(idx)}
+                    className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
+                      currentSlide === idx ? 'bg-white w-4' : 'bg-white/50 hover:bg-white/80'
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        /* 无配置轮播图时，显示精美的默认设计卡片 */
+        <div className="relative w-full h-44 rounded-3xl overflow-hidden shadow-md border border-slate-200 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center p-6 md:p-10 text-white">
+          <div className="space-y-2 relative z-10 max-w-xl">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
+              智能错题本会员特权
+            </div>
+            <h3 className="text-xl md:text-2xl font-black">升级 VIP / SVIP 高级会员</h3>
+            <p className="text-xs text-blue-100 font-semibold leading-relaxed">
+              支持更深层次的错题根因归纳，享受每日最高 300 次 AI 专属大模型解析，帮助您快速击破学习薄弱环节！
+            </p>
+          </div>
+          <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none transform translate-y-6 translate-x-6">
+            <Award size={180} />
+          </div>
+        </div>
+      )}
+
+      {/* 2. 头部身份等级面板 */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none transform translate-y-6 translate-x-6">
           <Award size={200} />
         </div>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
           <div>
-            <p className="text-xs text-blue-200 uppercase font-black tracking-widest">Membership Dashboard</p>
-            <h2 className="text-2xl font-black mt-1">会员等级与额度中心</h2>
+            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Membership Dashboard</p>
+            <h2 className="text-xl font-black mt-1">会员等级与额度中心</h2>
             <div className="flex flex-wrap gap-2.5 mt-3">
-              <span className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
-                当前身份: {userInfo?.role.toUpperCase()}
+              <span className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                当前身份: {userInfo?.role.toUpperCase() === 'ADMIN' ? '管理员' : userInfo?.role.toUpperCase() === 'VIP' ? 'VIP黄金会员' : userInfo?.role.toUpperCase() === 'SVIP' ? 'SVIP钻石会员' : '普通用户'}
               </span>
-              <span className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold">
-                到期时间: {userInfo?.vipExpireAt || '未激活会员'}
+              <span className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold">
+                到期时间: {userInfo?.vipExpireAt || '永久额度/无期限限制'}
               </span>
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 w-full md:w-auto">
-            <p className="text-xs text-blue-100 font-semibold mb-1">今日 AI 分析额度</p>
+          <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 w-full md:w-auto">
+            <p className="text-xs text-slate-300 font-semibold mb-1">今日 AI 分析额度</p>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black">{userInfo?.aiUsedToday}</span>
-              <span className="text-xs text-blue-200">/ {userInfo?.aiLimit === Infinity ? '无限' : `${userInfo?.aiLimit}次`}</span>
+              <span className="text-2xl font-black text-blue-400">{userInfo?.aiUsedToday}</span>
+              <span className="text-xs text-slate-400">/ {userInfo?.aiLimit === Infinity ? '无限' : `${userInfo?.aiLimit}次`}</span>
             </div>
-            <p className="text-[10px] text-blue-200 mt-1">
+            <p className="text-[10px] text-slate-400 mt-1">
               今日剩余可用：{userInfo?.aiRemaining}
             </p>
           </div>
         </div>
       </div>
 
-      {/* 三栏布局 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 3. 两栏主要布局 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* 兑换激活码卡片 */}
+        {/* 左栏：卡券兑换 */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-                <Gift className="w-5 h-5" />
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-650 shadow-sm">
+                <Gift className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">激活码兑换</h3>
-                <p className="text-xs text-slate-500">输入您的卡券激活码以升级会员等级</p>
+                <h3 className="font-extrabold text-slate-900 text-sm">激活码兑换中心</h3>
+                <p className="text-xs text-slate-400 font-semibold">输入您的激活券码以自助升级身份</p>
               </div>
             </div>
 
             <form onSubmit={handleRedeem} className="space-y-3">
               <input
                 type="text"
-                placeholder="请输入格式如 XXXX-XXXX-XXXX-XXXX 的兑换码"
+                placeholder="请输入格式为 XXXX-XXXX-XXXX-XXXX 的激活码"
                 value={redeemCode}
                 onChange={e => setRedeemCode(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 border border-slate-250 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800 transition-all placeholder-slate-400"
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-xs font-semibold text-slate-800 transition-all placeholder-slate-400"
               />
               {redeemError && (
                 <div className="bg-rose-50 text-rose-600 border border-rose-100 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
@@ -186,169 +264,96 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
               )}
               {redeemSuccess && (
                 <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
                   {redeemSuccess}
                 </div>
               )}
               <button
                 type="submit"
                 disabled={redeemLoading || !redeemCode.trim()}
-                className="w-full bg-indigo-650 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-xs transition-all shadow-md shadow-indigo-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {redeemLoading ? '正在激活...' : '立即兑换激活'}
+                {redeemLoading ? '正在激活中...' : '立即提交兑换'}
               </button>
             </form>
           </div>
-          <div className="mt-4 pt-4 border-t border-slate-100 text-slate-400 text-[10px] leading-relaxed">
-            * 兑换码通常由服务商或管理员发放。每个激活码仅可使用一次，使用后立即生效并增加对应的会员天数。
+          <div className="mt-6 pt-4 border-t border-slate-100 text-slate-400 text-[10px] leading-relaxed">
+            * 兑换说明：激活码一经兑换即作废。升级成功后相应的权益和限制将自动与您的账号绑定，系统重置重装不影响您的剩余天数。
           </div>
         </div>
 
-        {/* 扫码演示支付卡片 */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                <CreditCard className="w-5 h-5" />
+        {/* 右栏：线下人工购买/私域引流 */}
+        <div className="bg-gradient-to-br from-indigo-50/20 to-blue-50/20 rounded-3xl border border-indigo-100/70 p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-600/10 to-indigo-600/10 rounded-full blur-xl transform translate-x-4 -translate-y-4"></div>
+          
+          <div className="space-y-4 relative z-10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/10">
+                <QrCode className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">扫码演示支付</h3>
-                <p className="text-xs text-slate-500">模拟虚拟收银台测试通道</p>
+                <h3 className="font-extrabold text-slate-900 text-sm">线下人工专享通道</h3>
+                <p className="text-xs text-slate-500 font-semibold">微信扫码联系系统客服开通/获取卡密</p>
               </div>
             </div>
             
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              用于技术演示及后期接口联调的<b>模拟通道</b>。在此付款不会扣除真实费用，可秒级自动升级：
+            <p className="text-xs text-slate-650 leading-relaxed">
+              请扫码或添加微信号联系客服进行线下转账。完成付款后客服将为您的账号<b>直接授权</b>或者发卡<b>激活码</b>完成开通。
             </p>
 
-            <div className="space-y-2">
-              {plans.map((plan, idx) => (
-                <div 
-                  key={idx} 
-                  className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/60 transition-colors"
-                >
-                  <div className="max-w-[70%]">
-                    <h4 className="font-bold text-xs text-slate-800">{plan.name}</h4>
-                    <p className="text-[9px] text-slate-500 mt-0.5">{plan.desc} · {plan.details}</p>
+            {/* 客服配置展示区：上下布局 */}
+            <div className="flex flex-col gap-4 items-center bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-slate-150 shadow-sm w-full">
+              
+              {/* 二维码图片展示 (上) */}
+              {contact.wechatQr && (
+                <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 w-full">
+                  <img 
+                    src={contact.wechatQr} 
+                    alt="微信收款/客服二维码" 
+                    className="w-32 h-32 border border-slate-200 rounded-xl bg-white p-1.5 shadow-md object-cover"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-2 font-bold tracking-wide">微信扫一扫联系客服</span>
+                </div>
+              )}
+
+              {/* 客服文本详情 (下) */}
+              <div className="space-y-3 w-full">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-bold">客服微信号</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg select-all">{contact.wechatId}</span>
+                    <button 
+                      onClick={handleCopy}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5 shadow-sm"
+                    >
+                      <Copy className="w-2.5 h-2.5" />
+                      <span>复制</span>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleInitiatePay(plan)}
-                    disabled={payLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-                  >
-                    ¥{plan.amount}
-                  </button>
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100 text-slate-400 text-[10px] leading-relaxed">
-            * 真实支付功能后续上线。当前通道仅为支付逻辑联调，用户可点击发起模拟订单以测试会员系统自动升级逻辑。
-          </div>
-        </div>
+                
+                <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
+                  <span className="text-slate-400 font-bold">客服邮箱</span>
+                  <span className="font-bold text-slate-700 flex items-center gap-1">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{contact.serviceEmail}</span>
+                  </span>
+                </div>
 
-        {/* 线下人工购买卡片 */}
-        <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 rounded-3xl border border-indigo-100 p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-600/10 to-indigo-650/10 rounded-full blur-xl transform translate-x-4 -translate-y-4"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-550 to-indigo-650 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/10">
-                <Gift className="w-5 h-5 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900">线下人工购买</h3>
-                <p className="text-xs text-slate-500">联系系统客服人工直接开通</p>
-              </div>
-            </div>
-            
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              如需正式升级开通，请联系管理员线下转账购买，管理员将为您在后台<b>直接授权开通</b>会员资格或<b>分发激活激活码</b>。
-            </p>
-
-            <div className="space-y-3 bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-slate-150 shadow-sm">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-semibold">客服微信号</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">Admin_VIP_Service</span>
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText("Admin_VIP_Service");
-                      alert("客服微信号已成功复制到剪贴板！");
-                    }}
-                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50/80 hover:bg-blue-100/80 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                  >
-                    复制
-                  </button>
+                <div className="text-[10px] text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
+                  {contact.notes}
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
-                <span className="text-slate-400 font-semibold">服务邮箱</span>
-                <span className="font-bold text-slate-700">admin@qq.com</span>
-              </div>
-              <div className="text-[9px] text-slate-400 leading-relaxed border-t border-slate-100 pt-2">
-                * 备注说明：加好友请备注“错题本VIP升级”及您的登录邮箱账号。
-              </div>
+
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-150 text-[10px] text-slate-400 leading-relaxed relative z-10">
-            人工服务在线时间：每日 9:00 - 22:00。非工作时段可留言，我们将在上线后第一时间为您授权。
+          <div className="mt-4 pt-4 border-t border-slate-200/60 text-[10px] text-slate-450 leading-relaxed relative z-10 font-semibold">
+            加客服请备注“错题本VIP升级”及登录的邮箱账号，以便我们以最快速度为您激活权益。
           </div>
         </div>
 
       </div>
-
-      {/* 虚拟支付二维码 Modal */}
-      {showPayModal && currentPlan && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setShowPayModal(false)} 
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none cursor-pointer"
-            >
-              ✕
-            </button>
-            <div className="mb-4 text-center">
-              <h3 className="text-lg font-black text-slate-900">模拟收银台 (测试环境)</h3>
-              <p className="text-xs text-slate-500 mt-1">订单ID: {orderId}</p>
-            </div>
-
-            <div className="flex flex-col items-center p-6 bg-slate-50 rounded-2xl border border-slate-200/80 mb-6">
-              <p className="text-xs font-semibold text-slate-600 mb-4">购买项目：{currentPlan.name} (¥{currentPlan.amount})</p>
-              {qrUrl ? (
-                <img 
-                  src={qrUrl} 
-                  alt="Payment QR" 
-                  className="w-36 h-36 border border-slate-200 rounded-xl bg-white p-2 shadow-sm"
-                />
-              ) : (
-                <div className="w-36 h-36 border border-dashed border-slate-300 rounded-xl bg-white flex items-center justify-center text-xs text-slate-400">
-                  生成中...
-                </div>
-              )}
-              <p className="text-[10px] text-slate-400 mt-4 text-center">
-                由于本平台未接入真实商户，请使用下方按钮测试“模拟支付成功”回调
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowPayModal(false)}
-                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-              >
-                取消购买
-              </button>
-              <button
-                onClick={handleConfirmPay}
-                disabled={payConfirmLoading}
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-emerald-500/20 cursor-pointer"
-              >
-                {payConfirmLoading ? '确认中...' : '模拟支付成功 (测试按钮)'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -1,12 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import https from "https";
-
-// 初始化 Gemini 客户端
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini';
-const AI_API_BASE_URL = process.env.AI_API_BASE_URL || '';
-const AI_API_KEY = process.env.AI_API_KEY || '';
+import { getSetting } from "./settingService";
 
 // 助手函数：从 LLM 原始文本中提取 JSON 字符串
 export function extractJsonString(str: string): string {
@@ -96,8 +90,14 @@ export async function generateContentWithFallback(params: {
   systemPrompt?: string;
   thinkingMode?: 'enabled' | 'disabled';
 }) {
-  if (AI_PROVIDER === 'openai') {
-    const modelToUse = params.model || process.env.AI_MODEL || 'deepseek-chat';
+  const provider = getSetting("AI_PROVIDER", process.env.AI_PROVIDER || 'gemini');
+  const apiBaseUrl = getSetting("AI_API_BASE_URL", process.env.AI_API_BASE_URL || '');
+  const apiKey = getSetting("AI_API_KEY", process.env.AI_API_KEY || '');
+  const openaiModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
+  const geminiModel = getSetting("GEMINI_MODEL", process.env.GEMINI_MODEL || 'gemma-4-31b-it');
+
+  if (provider === 'openai') {
+    const modelToUse = params.model || openaiModel;
     console.log(`[AI Request via OpenAI Compat] Using model: ${modelToUse}, thinkingMode: ${params.thinkingMode || 'disabled'}`);
 
     const userMessages = params.contents.map(c => {
@@ -128,7 +128,7 @@ export async function generateContentWithFallback(params: {
       ? [{ role: 'system', content: params.systemPrompt }, ...userMessages]
       : userMessages;
 
-    const urlObj = new URL(`${AI_API_BASE_URL}/chat/completions`);
+    const urlObj = new URL(`${apiBaseUrl}/chat/completions`);
     const reqData: any = {
       model: modelToUse,
       messages: messages,
@@ -152,7 +152,7 @@ export async function generateContentWithFallback(params: {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AI_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Length': Buffer.byteLength(reqBody)
         },
         timeout: 1200000
@@ -184,8 +184,10 @@ export async function generateContentWithFallback(params: {
   }
 
   // Gemini 默认处理逻辑
-  const primaryModel = process.env.GEMINI_MODEL || 'gemma-4-31b-it';
+  const primaryModel = geminiModel;
   const modelToUse = params.model || primaryModel;
+  const geminiApiKey = getSetting("GEMINI_API_KEY", process.env.GEMINI_API_KEY || "");
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
   try {
     console.log(`[AI Request] Using model: ${modelToUse}`);

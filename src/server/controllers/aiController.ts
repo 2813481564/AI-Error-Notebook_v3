@@ -6,12 +6,14 @@ import {
   extractJsonString,
   sanitizeJsonString
 } from "../services/aiService";
+import { getSetting } from "../services/settingService";
 
 // 1. 分析图片并生成相似题目
 export const analyze = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
     }
 
@@ -127,7 +129,8 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
   let text = 'not_sent_yet';
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
     }
 
@@ -181,7 +184,7 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
       config: {
         temperature: 0.1
       },
-      model: process.env.AI_VISION_MODEL || 'glm-5v-turbo',
+      model: getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo'),
       systemPrompt
     });
 
@@ -257,7 +260,8 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
 export const diagnose = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 诊断功能" });
     }
 
@@ -358,7 +362,8 @@ ${standardAnswerSection}
 export const similar = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法生成同类题" });
     }
 
@@ -489,7 +494,8 @@ label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"midd
 export const paperVariants = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法生成试卷变式" });
     }
 
@@ -612,7 +618,8 @@ ${JSON.stringify(questions.map((q: any, idx: number) => ({ index: idx + 1, text:
 export const paperVariantRegenerate = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    if (!user || user.role === 'student') {
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
       return res.status(403).json({ error: "权限不足，学生角色无法生成变式" });
     }
 

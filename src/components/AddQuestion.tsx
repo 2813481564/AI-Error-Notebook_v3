@@ -27,8 +27,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // 是否开启 AI 深度推理慢思考
-  const [aiThinkingMode, setAiThinkingMode] = useState<boolean>(false);
 
   const handleCreateNotebook = async () => {
     const name = prompt('请输入新错题本名称：');
@@ -213,7 +211,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           },
           body: JSON.stringify({
             ...item,
-            thinkingMode: aiThinkingMode ? 'enabled' : 'disabled'
+            thinkingMode: 'disabled'
           })
         });
 
@@ -470,19 +468,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
               </div>
             </div>
 
-            {/* 深度思考选项开关 */}
-            <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
-              <input
-                type="checkbox"
-                id="aiThinkingMode"
-                checked={aiThinkingMode}
-                onChange={(e) => setAiThinkingMode(e.target.checked)}
-                className="w-4 h-4 text-blue-600 bg-white border-slate-350 rounded focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="aiThinkingMode" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                🧠 开启 AI 深度思考诊断模式 (提供慢思考，生成更精准的分析)
-              </label>
-            </div>
+
           </div>
 
           {!imageStr ? (

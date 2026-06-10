@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -7,8 +7,10 @@ import UserManagement from './components/UserManagement';
 import TestPaper from './components/TestPaper';
 import PublicQuestionLibrary from './components/PublicQuestionLibrary';
 import VipCenter from './components/VipCenter';
+import SystemSettings from './components/SystemSettings';
+import AnnouncementManagement from './components/AnnouncementManagement';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'publicLibrary' | 'vipCenter';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'publicLibrary' | 'vipCenter' | 'settings' | 'announcements';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -496,19 +498,10 @@ export default function App() {
 
         </div>
 
-        {/* Back to Home Button & Brand Footer */}
+        {/* Brand Footer */}
         <div className="flex flex-col items-center gap-3 mt-8">
-          <a
-            href="https://ai-cuoti.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200/60 hover:border-slate-300 rounded-full shadow-sm hover:shadow-md text-xs font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
-          >
-            <Home className="w-4 h-4" />
-            <span>返回官网首页</span>
-          </a>
           <div className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase select-none">
-            ai-cuoti.com
+            www.baidu.com
           </div>
         </div>
 
@@ -589,6 +582,32 @@ export default function App() {
             >
               <Users className="w-4 h-4" />
               <span>用户管理</span>
+            </button>
+          )}
+
+          {role === 'admin' && (
+            <button
+              onClick={() => setCurrentView('settings')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'settings'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>系统设置</span>
+            </button>
+          )}
+
+          {role === 'admin' && (
+            <button
+              onClick={() => setCurrentView('announcements')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'announcements'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>公告管理</span>
             </button>
           )}
 
@@ -679,7 +698,7 @@ export default function App() {
 
         {/* Content Area */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
             {currentView === 'library' && (
@@ -703,6 +722,8 @@ export default function App() {
               />
             )}
             {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
+            {currentView === 'settings' && username === 'admin' && <SystemSettings />}
+            {currentView === 'announcements' && username === 'admin' && <AnnouncementManagement />}
             {currentView === 'vipCenter' && (
               <VipCenter
                 token={token}

@@ -368,10 +368,10 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                   <thead>
                     <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
                       <th className="py-4 px-6">用户名</th>
-                      <th className="py-4 px-6">会员角色等级</th>
-                      <th className="py-4 px-6">到期时间 / 专属限额</th>
-                      <th className="py-4 px-6">今日已用 AI 次数</th>
-                      <th className="py-4 px-6 text-center">累计错题数</th>
+                      <th className="py-4 px-6 whitespace-nowrap">会员角色等级</th>
+                      <th className="py-4 px-6 whitespace-nowrap">到期时间 / 专属限额</th>
+                      <th className="py-4 px-6 whitespace-nowrap">今日已用 AI 次数</th>
+                      <th className="py-4 px-6 text-center whitespace-nowrap">累计错题数</th>
                       <th className="py-4 px-6 text-right">操作</th>
                     </tr>
                   </thead>
@@ -383,22 +383,22 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                       return (
                         <tr key={user.username} className="hover:bg-slate-50/40 transition-colors">
                           <td className="py-4 px-6 font-bold text-slate-900">{user.username}</td>
-                          <td className="py-4 px-6">
+                          <td className="py-4 px-6 whitespace-nowrap">
                             {user.role === 'vip' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/50 shadow-sm shadow-blue-500/5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/50 shadow-sm shadow-blue-500/5 whitespace-nowrap">
                                 <Award className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
                                 VIP 黄金会员
                               </span>
                             )}
                             {user.role === 'svip' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-yellow-50 text-yellow-750 border border-yellow-250/50 shadow-sm shadow-yellow-500/5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-yellow-50 text-yellow-750 border border-yellow-250/50 shadow-sm shadow-yellow-500/5 whitespace-nowrap">
                                 <Award className="w-3.5 h-3.5 text-yellow-500 animate-bounce" />
                                 SVIP 钻石会员
                               </span>
                             )}
                             {user.role === 'user' && (
                               <div className="flex flex-col gap-1 items-start">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 whitespace-nowrap">
                                   {(user.idCardLast6 || user.phoneLast4) ? '免密普通用户' : '普通注册用户'}
                                 </span>
                                 {(user.idCardLast6 || user.phoneLast4) && (
@@ -410,13 +410,13 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                               </div>
                             )}
                             {user.role === 'admin' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200/50 shadow-sm shadow-rose-500/5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200/50 shadow-sm shadow-rose-500/5 whitespace-nowrap">
                                 <Award className="w-3.5 h-3.5 text-rose-500" />
                                 管理员
                               </span>
                             )}
                           </td>
-                          <td className="py-4 px-6 text-xs text-slate-600">
+                          <td className="py-4 px-6 text-xs text-slate-600 whitespace-nowrap">
                             <div className="space-y-1">
                               {user.role === 'admin' ? (
                                 <span className="text-slate-400 font-bold">永久有效</span>
@@ -456,7 +456,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                               )}
                             </div>
                           </td>
-                          <td className="py-4 px-6 text-center text-slate-900 font-bold">{user.questionCount}</td>
+                          <td className="py-4 px-6 text-center text-slate-900 font-bold whitespace-nowrap">{user.questionCount}</td>
                           <td className="py-4 px-6 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button

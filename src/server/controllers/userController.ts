@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { useRedemptionCode, addDays } from "../services/redeemService";
+import { getSetting } from "../services/settingService";
 
 // 1. 兑换码激活会员
 export const redeemCode = (req: AuthenticatedRequest, res: express.Response) => {
@@ -191,9 +192,10 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
     // 计算限额
     let limit = 30;
     if (currentRole === 'teacher') limit = 5000;
-    else if (currentRole === 'vip') limit = 100;
-    else if (currentRole === 'svip') limit = 300;
+    else if (currentRole === 'vip') limit = parseInt(getSetting("LIMIT_VIP", "100"));
+    else if (currentRole === 'svip') limit = parseInt(getSetting("LIMIT_SVIP", "300"));
     else if (currentRole === 'admin') limit = Infinity;
+    else limit = parseInt(getSetting("LIMIT_USER", "30"));
 
     // 如果天数变了，使用次数今天重置
     let usedToday = user.aiUsedToday;
@@ -214,3 +216,35 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
     res.status(500).json({ error: error.message || "获取用户信息失败" });
   }
 };
+
+// 获取当前所有启用的公告
+export const getActiveAnnouncements = (req: express.Request, res: express.Response) => {
+  try {
+    const list = db.prepare("SELECT * FROM announcements WHERE status = 'active' ORDER BY sortOrder ASC, createdAt DESC").all();
+    res.json(list);
+  } catch (error: any) {
+    console.error("Get Active Announcements Error:", error);
+    res.status(500).json({ error: error.message || "获取公告列表失败" });
+  }
+};
+
+// 获取私域联系客服与二维码配置
+export const getVipContact = (req: express.Request, res: express.Response) => {
+  try {
+    const wechatQr = getSetting("VIP_WECHAT_QR", "");
+    const wechatId = getSetting("VIP_WECHAT_ID", "Admin_VIP_Service");
+    const serviceEmail = getSetting("VIP_SERVICE_EMAIL", "admin@qq.com");
+    const notes = getSetting("VIP_SERVICE_NOTES", "人工服务在线时间：每日 9:00 - 22:00。非工作时段可留言，我们将在上线后第一时间为您授权。备注说明：加客服微信号请备注“错题本VIP升级”及您的登录邮箱账号。");
+    
+    res.json({
+      wechatQr,
+      wechatId,
+      serviceEmail,
+      notes
+    });
+  } catch (error: any) {
+    console.error("Get Vip Contact Error:", error);
+    res.status(500).json({ error: error.message || "获取私域配置失败" });
+  }
+};
+

@@ -85,8 +85,23 @@ db.exec(`
     userId TEXT NOT NULL,
     createdAt INTEGER NOT NULL
   );
-
+  
   CREATE INDEX IF NOT EXISTS idx_notebooks_userId ON notebooks(userId);
+
+  CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    imageUrl TEXT NOT NULL,
+    linkUrl TEXT,
+    sortOrder INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    createdAt INTEGER NOT NULL
+  );
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -235,4 +250,27 @@ try {
   }
 } catch (err) {
   console.error("初始化 admin 失败:", err);
+}
+
+// 自动配置初始系统设置
+try {
+  const stmt = db.prepare("INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)");
+  stmt.run("AI_PROVIDER", process.env.AI_PROVIDER || "gemini");
+  stmt.run("AI_API_BASE_URL", process.env.AI_API_BASE_URL || "");
+  stmt.run("AI_API_KEY", process.env.AI_API_KEY || "");
+  stmt.run("GEMINI_API_KEY", process.env.GEMINI_API_KEY || "");
+  stmt.run("AI_MODEL", process.env.AI_MODEL || "glm-5.1");
+  stmt.run("AI_VISION_MODEL", process.env.AI_VISION_MODEL || "glm-5v-turbo");
+  stmt.run("GEMINI_MODEL", process.env.GEMINI_MODEL || "gemma-4-31b-it");
+  stmt.run("SMTP_HOST", process.env.SMTP_HOST || "smtp.qq.com");
+  stmt.run("SMTP_PORT", process.env.SMTP_PORT || "465");
+  stmt.run("SMTP_USER", process.env.SMTP_USER || "");
+  stmt.run("SMTP_PASS", process.env.SMTP_PASS || "");
+  stmt.run("LIMIT_USER", "30");
+  stmt.run("LIMIT_VIP", "100");
+  stmt.run("LIMIT_SVIP", "300");
+  stmt.run("ALLOW_STUDENT_AI", "true");
+  console.log("system_settings 数据库表初始化完成！");
+} catch (err) {
+  console.error("初始化 system_settings 失败:", err);
 }

@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import { db } from "../config/db";
 import { transporter } from "../config/mail";
+import { getSetting } from "../services/settingService";
 
 // 密码哈希辅助函数
 export function hashPassword(password: string): string {
@@ -38,8 +39,11 @@ export const sendCode = async (req: express.Request, res: express.Response) => {
       VALUES (?, ?, ?)
     `).run(email, code, createdAt);
 
-    // 检查环境变量是否配置了邮箱服务
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS || process.env.SMTP_PASS === "your-smtp-auth-code") {
+    // 检查环境变量及系统设置是否配置了邮箱服务
+    const smtpUser = getSetting("SMTP_USER", process.env.SMTP_USER || "");
+    const smtpPass = getSetting("SMTP_PASS", process.env.SMTP_PASS || "");
+
+    if (!smtpUser || !smtpPass || smtpPass === "your-smtp-auth-code") {
       console.log(`[开发测试模式] 验证码发送至: ${email}，验证码为: ${code}`);
       return res.json({
         success: true,
@@ -50,7 +54,7 @@ export const sendCode = async (req: express.Request, res: express.Response) => {
 
     // 邮件内容
     const mailOptions = {
-      from: `"智能错题识别系统" <${process.env.SMTP_USER}>`,
+      from: `"智能错题识别系统" <${smtpUser}>`,
       to: email,
       subject: "【智能错题识别】注册验证码",
       html: `

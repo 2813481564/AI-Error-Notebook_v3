@@ -1,6 +1,7 @@
 import express from "express";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "./auth";
+import { getSetting } from "../services/settingService";
 
 // 限制 AI 使用次数中间件
 export const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
@@ -48,9 +49,10 @@ export const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, n
     if (user.customAiLimit !== null && user.customAiLimit !== undefined) {
       limit = user.customAiLimit;
     } else {
-      if (role === 'vip') limit = 100;
-      else if (role === 'svip') limit = 300;
+      if (role === 'vip') limit = parseInt(getSetting("LIMIT_VIP", "100"));
+      else if (role === 'svip') limit = parseInt(getSetting("LIMIT_SVIP", "300"));
       else if (role === 'admin') limit = Infinity;
+      else limit = parseInt(getSetting("LIMIT_USER", "30"));
     }
 
     if (used >= limit) {
