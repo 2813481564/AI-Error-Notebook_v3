@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, CheckCircle2, ShieldAlert, Award, Star, Zap, QrCode, Copy, Sparkles, Mail, FileText } from 'lucide-react';
+import { Crown, Zap, Sparkles, BookOpen, Award, ArrowRight, Check, X, QrCode, Mail, Copy, CheckCircle2, Star, ShieldAlert } from 'lucide-react';
 
 interface VipCenterProps {
   token: string | null;
@@ -11,13 +11,7 @@ interface VipCenterProps {
     aiRemaining: string | number;
   } | null;
   onRefresh: () => void;
-}
-
-interface Announcement {
-  id: number;
-  title: string;
-  imageUrl: string;
-  linkUrl: string | null;
+  onNavigate: (view: any) => void;
 }
 
 interface VipContact {
@@ -25,40 +19,75 @@ interface VipContact {
   wechatId: string;
   serviceEmail: string;
   notes: string;
+  vipCardTag?: string;
+  vipCardTitle?: string;
+  vipCardDesc?: string;
+  priceVipMonth?: string;
+  priceVipYear?: string;
+  priceSvipMonth?: string;
+  priceSvipYear?: string;
+  limitVip?: string;
+  limitSvip?: string;
 }
 
-export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps) {
+export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: VipCenterProps) {
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [redeemLoading, setRedeemLoading] = useState(false);
 
-  // 公告与客服状态
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  // 私域联系方式状态
   const [contact, setContact] = useState<VipContact>({
     wechatQr: '',
     wechatId: 'Admin_VIP_Service',
     serviceEmail: 'admin@qq.com',
     notes: '人工服务在线时间：每日 9:00 - 22:00。加微信号请备注“错题本VIP升级”。',
   });
-  
-  // 轮播图当前幻灯片索引
-  const [currentSlide, setCurrentSlide] = useState(0);
 
-  // 获取公告与私域联系方式
+  // 模拟支付状态
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payAmount, setPayAmount] = useState(0);
+  const [payRole, setPayRole] = useState<'vip' | 'svip'>('vip');
+  const [payDuration, setPayDuration] = useState<'month' | 'year'>('month');
+  const [orderId, setOrderId] = useState('');
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [payLoading, setPayLoading] = useState(false);
+  const [payModalError, setPayModalError] = useState<string | null>(null);
+
+  // 轮播公告状态
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [currentAnnIndex, setCurrentAnnIndex] = useState(0);
+
+  // 获取公告列表
+  useEffect(() => {
+    const fetchAnnouncements = async () => {
+      try {
+        const res = await fetch('/api/announcements');
+        if (res.ok) {
+          const list = await res.json();
+          setAnnouncements(list.filter((ann: any) => ann.status === 'active'));
+        }
+      } catch (err) {
+        console.error('Failed to fetch announcements:', err);
+      }
+    };
+    fetchAnnouncements();
+  }, []);
+
+  // 轮播公告自动切换
+  useEffect(() => {
+    if (announcements.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentAnnIndex(prev => (prev + 1) % announcements.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, [announcements]);
+
+  // 获取私域联系方式
   useEffect(() => {
     const fetchVipData = async () => {
       try {
         const headers = { 'Authorization': `Bearer ${token}` };
-        
-        // 1. 获取激活的公告
-        const annRes = await fetch('/api/announcements', { headers });
-        if (annRes.ok) {
-          const annData = await annRes.json();
-          setAnnouncements(annData);
-        }
-
-        // 2. 获取客服配置
         const contactRes = await fetch('/api/vip/contact', { headers });
         if (contactRes.ok) {
           const contactData = await contactRes.json();
@@ -71,15 +100,6 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
 
     fetchVipData();
   }, [token]);
-
-  // 轮播图自动播放
-  useEffect(() => {
-    if (announcements.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % announcements.length);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, [announcements]);
 
   // 兑换激活码
   const handleRedeem = async (e: React.FormEvent) => {
@@ -118,129 +138,581 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
     alert('微信号已复制成功！请在微信中搜索添加。');
   };
 
+  // 发起模拟支付
+  const handleInitiatePay = async (role: 'vip' | 'svip', duration: 'month' | 'year') => {
+    setPayLoading(true);
+    setPayModalError(null);
+    setPayRole(role);
+    setPayDuration(duration);
+
+    try {
+      const res = await fetch('/api/user/pay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ role, duration })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '创建订单失败');
+      }
+      setOrderId(data.orderId);
+      setQrCodeUrl(data.qrUrl);
+      setPayAmount(data.amount);
+      setShowPayModal(true);
+    } catch (err: any) {
+      alert(err.message || '发起支付失败，请稍后重试');
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  // 确认支付成功
+  const handleConfirmPay = async () => {
+    setPayLoading(true);
+    setPayModalError(null);
+    try {
+      const res = await fetch('/api/user/pay-success', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '确认支付失败');
+      }
+      alert('支付成功！您的会员权限已更新。');
+      setShowPayModal(false);
+      onRefresh();
+    } catch (err: any) {
+      setPayModalError(err.message || '确认支付失败，请检查是否付款成功');
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  // 获取当前等级显示
+  const getRoleDisplay = () => {
+    const role = userInfo?.role.toLowerCase();
+    if (role === 'admin') return '管理员';
+    if (role === 'svip') return 'SVIP钻石会员';
+    if (role === 'vip') return 'VIP黄金会员';
+    return '免费版';
+  };
+
   return (
-    <div className="space-y-6 font-sans text-slate-700">
-      
-      {/* 1. 动态轮播图公告区 */}
-      {announcements.length > 0 ? (
-        <div className="relative w-full h-48 md:h-64 rounded-3xl overflow-hidden shadow-md border border-slate-200 group bg-slate-100">
-          <div 
-            className="flex h-full transition-transform duration-500 ease-out"
-            style={{ 
-              transform: `translateX(-${currentSlide * 100}%)`, 
-              width: `${announcements.length * 100}%` 
-            }}
-          >
-            {announcements.map((ann, idx) => (
-              <div 
-                key={ann.id} 
-                onClick={() => ann.linkUrl && window.open(ann.linkUrl, '_blank')}
-                className={`h-full flex-shrink-0 relative ${ann.linkUrl ? 'cursor-pointer' : ''}`}
-                style={{ width: `${100 / announcements.length}%` }}
-              >
-                <img 
-                  src={ann.imageUrl} 
-                  alt={ann.title} 
-                  className="w-full h-full object-cover"
+    <div className="space-y-6 font-sans text-slate-700 pb-8 animate-in fade-in duration-500">
+
+      {/* 轮播公告 Banner */}
+      {announcements.length > 0 && (
+        <div className="relative w-full h-[120px] md:h-[150px] overflow-hidden rounded-3xl border border-slate-200/80 shadow-sm bg-gradient-to-r from-indigo-900 to-indigo-950 group">
+          {announcements.map((ann, idx) => (
+            <a
+              key={ann.id}
+              href={ann.linkUrl || '#'}
+              target={ann.linkUrl ? '_blank' : '_self'}
+              rel="noopener noreferrer"
+              className={`absolute inset-0 w-full h-full flex items-center justify-between transition-all duration-700 ease-in-out cursor-pointer ${idx === currentAnnIndex
+                  ? 'opacity-100 translate-x-0 pointer-events-auto'
+                  : 'opacity-0 translate-x-full pointer-events-none'
+                }`}
+            >
+              {/* 背景图 */}
+              {ann.imageUrl ? (
+                <img
+                  src={ann.imageUrl}
+                  alt={ann.title}
+                  className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-102 transition-transform duration-700"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent flex items-end p-6">
-                  <h3 className="text-white font-extrabold text-sm md:text-lg drop-shadow-md">{ann.title}</h3>
+              ) : null}
+
+              {/* 蒙层与内容 */}
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-955/40 to-transparent p-6 md:p-8 flex flex-col justify-center text-white z-10">
+                <span className="bg-indigo-650/90 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full w-max border border-indigo-500/30 tracking-wider mb-2">
+                  系统公告
+                </span>
+                <h3 className="text-sm md:text-lg font-black tracking-tight drop-shadow-sm line-clamp-1 max-w-lg">
+                  {ann.title}
+                </h3>
+              </div>
+
+              {/* 跳转指示 */}
+              {ann.linkUrl && (
+                <div className="absolute right-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white w-8 h-8 rounded-full flex items-center justify-center transition-all z-20">
+                  <ArrowRight className="w-4 h-4" />
                 </div>
-              </div>
-            ))}
-          </div>
-          
-          {/* 左右导航按钮 */}
+              )}
+            </a>
+          ))}
+
+          {/* 指示器 Dots */}
           {announcements.length > 1 && (
-            <>
-              <button 
-                onClick={() => setCurrentSlide(prev => (prev - 1 + announcements.length) % announcements.length)}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 hover:bg-white/80 backdrop-blur-sm flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-opacity font-extrabold text-lg select-none cursor-pointer"
-              >
-                ‹
-              </button>
-              <button 
-                onClick={() => setCurrentSlide(prev => (prev + 1) % announcements.length)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 hover:bg-white/80 backdrop-blur-sm flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-opacity font-extrabold text-lg select-none cursor-pointer"
-              >
-                ›
-              </button>
-              
-              {/* 分页圆点 */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-                {announcements.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentSlide(idx)}
-                    className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
-                      currentSlide === idx ? 'bg-white w-4' : 'bg-white/50 hover:bg-white/80'
+            <div className="absolute bottom-3 right-6 flex gap-1.5 z-20">
+              {announcements.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentAnnIndex(idx)}
+                  className={`w-1.5 h-1.5 rounded-full transition-all cursor-pointer ${idx === currentAnnIndex ? 'bg-white w-3.5' : 'bg-white/40'
                     }`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        /* 无配置轮播图时，显示精美的默认设计卡片 */
-        <div className="relative w-full h-44 rounded-3xl overflow-hidden shadow-md border border-slate-200 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center p-6 md:p-10 text-white">
-          <div className="space-y-2 relative z-10 max-w-xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
-              智能错题本会员特权
+                />
+              ))}
             </div>
-            <h3 className="text-xl md:text-2xl font-black">升级 VIP / SVIP 高级会员</h3>
-            <p className="text-xs text-blue-100 font-semibold leading-relaxed">
-              支持更深层次的错题根因归纳，享受每日最高 300 次 AI 专属大模型解析，帮助您快速击破学习薄弱环节！
-            </p>
-          </div>
-          <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none transform translate-y-6 translate-x-6">
-            <Award size={180} />
-          </div>
+          )}
         </div>
       )}
 
-      {/* 2. 头部身份等级面板 */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none transform translate-y-6 translate-x-6">
-          <Award size={200} />
-        </div>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-          <div>
-            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Membership Dashboard</p>
-            <h2 className="text-xl font-black mt-1">会员等级与额度中心</h2>
-            <div className="flex flex-wrap gap-2.5 mt-3">
-              <span className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
-                当前身份: {userInfo?.role.toUpperCase() === 'ADMIN' ? '管理员' : userInfo?.role.toUpperCase() === 'VIP' ? 'VIP黄金会员' : userInfo?.role.toUpperCase() === 'SVIP' ? 'SVIP钻石会员' : '普通用户'}
-              </span>
-              <span className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs font-bold">
-                到期时间: {userInfo?.vipExpireAt || '永久额度/无期限限制'}
-              </span>
-            </div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 w-full md:w-auto">
-            <p className="text-xs text-slate-300 font-semibold mb-1">今日 AI 分析额度</p>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-blue-400">{userInfo?.aiUsedToday}</span>
-              <span className="text-xs text-slate-400">/ {userInfo?.aiLimit === Infinity ? '无限' : `${userInfo?.aiLimit}次`}</span>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              今日剩余可用：{userInfo?.aiRemaining}
+      {/* 1. 顶部身份与宣传横栏 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* 左卡片：解锁完整的 AI 错题本能力 */}
+        <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm flex flex-col justify-between min-h-[260px]">
+          <div className="space-y-4">
+            <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-100/50">
+              <Crown className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+              {contact.vipCardTag || '智能错题本会员'}
+            </span>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
+              {contact.vipCardTitle || '解锁更完整的 AI 错题本能力'}
+            </h2>
+            <p className="text-xs text-slate-400 font-semibold leading-relaxed max-w-xl">
+              {contact.vipCardDesc || 'VIP 覆盖日常练习与组卷，SVIP 解锁探索模式和费曼学习。支持支付宝自助开通；如需对公或发票，可下滑联系客服协助。'}
             </p>
           </div>
+          <div className="flex flex-wrap gap-3 mt-6">
+            <button
+              onClick={() => document.getElementById('pricing-packages')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-5 py-3 rounded-xl transition flex items-center gap-1.5 shadow-sm shadow-amber-700/10 cursor-pointer"
+            >
+              选购会员套餐
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => document.getElementById('contact-support')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+            >
+              联系客服
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+            >
+              返回设置
+            </button>
+          </div>
+        </div>
+
+        {/* 右卡片：当前身份与限额指标 */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="bg-slate-100 text-slate-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                {userInfo?.role.toLowerCase() === 'student' ? '免费版' : getRoleDisplay()}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold">
+                {userInfo?.role.toLowerCase() === 'student' ? '长期有效' : `有效期至 ${userInfo?.vipExpireAt || '长期有效'}`}
+              </span>
+            </div>
+
+            {/* 3个核心额度指标 */}
+            <div className="grid grid-cols-1 gap-3 mt-5">
+
+              {/* AI 学习额度 */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
+                    <Zap className="w-4 h-4 fill-amber-500" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-bold">AI 学习额度</span>
+                    <span className="text-xs font-bold text-slate-700 mt-0.5">
+                      {userInfo?.aiLimit === Infinity ? '无限制' : `${userInfo?.aiUsedToday || 0} / ${userInfo?.aiLimit || 30}次`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 精准模型额度 */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-bold">精准模型额度</span>
+                    <span className="text-xs font-bold text-slate-700 mt-0.5">
+                      {userInfo?.role.toLowerCase() === 'svip' ? '200 次/月' : userInfo?.role.toLowerCase() === 'vip' ? '50 次/月' : '3 次/月'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 错题容量 */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-650">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-bold">错题容量</span>
+                    <span className="text-xs font-bold text-slate-700 mt-0.5">
+                      {userInfo?.role.toLowerCase() === 'svip' || userInfo?.role.toLowerCase() === 'admin' ? '无限' : userInfo?.role.toLowerCase() === 'vip' ? '500 题' : '50 题'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 2. 权益对比看板 */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100/50">
+              权益对比
+            </span>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2 mt-1">
+              VIP / SVIP 10 项权益一眼看懂
+            </h3>
+          </div>
+          <button
+            onClick={() => document.getElementById('contact-support')?.scrollIntoView({ behavior: 'smooth' })}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1 cursor-pointer"
+          >
+            联系客服
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* 权益表格 */}
+        <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="p-4 text-xs font-bold text-slate-500 w-1/3">权益</th>
+                <th className="p-4 text-xs font-black text-blue-700 bg-blue-50/50 text-center w-1/3">
+                  <div className="flex items-center justify-center gap-1">
+                    <Crown className="w-4 h-4 fill-blue-500 text-blue-600" />
+                    <span>SVIP</span>
+                  </div>
+                </th>
+                <th className="p-4 text-xs font-black text-amber-700 bg-amber-50/30 text-center w-1/3">
+                  <div className="flex items-center justify-center gap-1">
+                    <Crown className="w-4 h-4 fill-amber-500 text-amber-600" />
+                    <span>VIP</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+
+              {/* 探索模式 */}
+              <tr>
+                <td className="p-4">
+                  <div className="flex flex-col">
+                    <span>探索模式</span>
+                    <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-100/30 px-1.5 py-0.5 rounded w-max mt-1 font-bold">SVIP 专属</span>
+                  </div>
+                </td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">交互式可视化</td>
+                <td className="p-4 text-center bg-amber-50/10 text-slate-400">
+                  <X className="w-4 h-4 mx-auto text-slate-350" />
+                </td>
+              </tr>
+
+              {/* 费曼学习 */}
+              <tr>
+                <td className="p-4">
+                  <div className="flex flex-col">
+                    <span>费曼学习</span>
+                    <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-100/30 px-1.5 py-0.5 rounded w-max mt-1 font-bold">SVIP 专属</span>
+                  </div>
+                </td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">对话 + 评估</td>
+                <td className="p-4 text-center bg-amber-50/10 text-slate-400">
+                  <X className="w-4 h-4 mx-auto text-slate-350" />
+                </td>
+              </tr>
+
+              {/* 精准模型额度 */}
+              <tr>
+                <td className="p-4">精准模型额度</td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">200 次/月</td>
+                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">50 次/月</td>
+              </tr>
+
+              {/* AI 学习额度 */}
+              <tr>
+                <td className="p-4">AI 学习额度</td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">{contact.limitSvip || '300'} 次/天</td>
+                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">{contact.limitVip || '100'} 次/天</td>
+              </tr>
+
+              {/* 错题容量 */}
+              <tr>
+                <td className="p-4">错题容量</td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">无限</td>
+                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">500 题</td>
+              </tr>
+
+              {/* 错题本数量 */}
+              <tr>
+                <td className="p-4">错题本数量</td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">无限</td>
+                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">20 个</td>
+              </tr>
+
+              {/* 组卷练习 */}
+              <tr>
+                <td className="p-4">组卷练习</td>
+                <td className="p-4 text-center bg-blue-50/20">
+                  <Check className="w-4 h-4 mx-auto text-blue-600 stroke-[3]" />
+                </td>
+                <td className="p-4 text-center bg-amber-50/10">
+                  <Check className="w-4 h-4 mx-auto text-amber-600 stroke-[3]" />
+                </td>
+              </tr>
+
+              {/* 举一反三 */}
+              <tr>
+                <td className="p-4">举一反三</td>
+                <td className="p-4 text-center bg-blue-50/20">
+                  <Check className="w-4 h-4 mx-auto text-blue-600 stroke-[3]" />
+                </td>
+                <td className="p-4 text-center bg-amber-50/10">
+                  <Check className="w-4 h-4 mx-auto text-amber-600 stroke-[3]" />
+                </td>
+              </tr>
+
+              {/* 闪卡学习 */}
+              <tr>
+                <td className="p-4">闪卡学习</td>
+                <td className="p-4 text-center bg-blue-50/20">
+                  <Check className="w-4 h-4 mx-auto text-blue-600 stroke-[3]" />
+                </td>
+                <td className="p-4 text-center bg-amber-50/10">
+                  <Check className="w-4 h-4 mx-auto text-amber-600 stroke-[3]" />
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* 3. 两栏主要布局 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 3. 会员订购套餐 */}
+      <div id="pricing-packages" className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* 左栏：卡券兑换 */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+        {/* VIP 套餐 */}
+        <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm flex flex-col justify-between relative hover:border-amber-300 hover:shadow-md transition-all duration-300">
+          <div className="space-y-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">VIP</h3>
+                <p className="text-xs text-slate-400 font-semibold mt-1">适合日常错题整理与练习闭环</p>
+              </div>
+              <span className="bg-amber-50 text-amber-700 text-xs font-black px-2.5 py-1 rounded-full border border-amber-100/50 shrink-0">
+                ¥{contact.priceVipMonth || '19.90'} • ¥{contact.priceVipYear || '199.00'}
+              </span>
+            </div>
+
+            {/* 标签 */}
+            <div className="flex flex-wrap gap-1.5">
+              <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">组卷练习</span>
+              <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{contact.limitVip || '100'}次/天 AI 学习额度</span>
+              <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">50次精准模型额度</span>
+            </div>
+
+            {/* 参数卡片 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">AI 学习 {contact.limitVip || '100'} 次/天</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">精准模型 50 次</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">错题 500 题</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
+                <Crown className="w-4 h-4 text-purple-600 fill-purple-200 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">错题本 20 个</span>
+              </div>
+            </div>
+
+            {/* 详细特权列表 */}
+            <ul className="space-y-2.5 text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>开放组卷练习，支持按错题生成试卷</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>更高 AI 学习额度，覆盖日常拍照、练习、闪卡</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>更高精准模型额度，适合难题和复杂题型</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>更多错题本和错题容量，适合多学科整理</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="space-y-2.5 mt-8">
+            <button
+              onClick={() => handleInitiatePay('vip', 'month')}
+              disabled={payLoading}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              VIP 月卡 ¥{contact.priceVipMonth || '19.90'} →
+            </button>
+            <button
+              onClick={() => handleInitiatePay('vip', 'year')}
+              disabled={payLoading}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              VIP 年卡 ¥{contact.priceVipYear || '199.00'} →
+            </button>
+          </div>
+        </div>
+
+        {/* SVIP 套餐 */}
+        <div className="bg-white rounded-3xl p-8 border-2 border-amber-600/70 shadow-sm flex flex-col justify-between relative hover:border-amber-600 hover:shadow-md transition-all duration-300">
+          <div className="absolute -top-3 right-8 bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+            推荐
+          </div>
+
+          <div className="space-y-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">SVIP</h3>
+                <p className="text-xs text-slate-400 font-semibold mt-1">适合深度学习、讲解训练和长期错题库</p>
+              </div>
+              <span className="bg-amber-700 text-white text-xs font-black px-2.5 py-1 rounded-full shrink-0">
+                ¥{contact.priceSvipMonth || '29.90'} • ¥{contact.priceSvipYear || '299.00'}
+              </span>
+            </div>
+
+            {/* 标签 */}
+            <div className="flex flex-wrap gap-1.5">
+              <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">探索模式</span>
+              <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">费曼学习</span>
+              <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">无限错题库</span>
+            </div>
+
+            {/* 参数卡片 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
+                <Zap className="w-4 h-4 text-blue-650 fill-blue-500 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">AI 学习 {contact.limitSvip || '300'} 次/天</span>
+              </div>
+              <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-650 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">精准模型 200 次</span>
+              </div>
+              <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">错题 无限</span>
+              </div>
+              <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
+                <Crown className="w-4 h-4 text-purple-600 fill-purple-200 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-700">错题本 无限</span>
+              </div>
+            </div>
+
+            {/* 详细特权列表 */}
+            <ul className="space-y-2.5 text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>包含 VIP 的全部权益</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>开放探索模式，用交互式可视化理解题目</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>开放费曼学习，通过讲解与评估检验掌握度</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>更多 AI 学习额度和精准模型额度</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>错题本和错题容量不设上限</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="space-y-2.5 mt-8">
+            <button
+              onClick={() => handleInitiatePay('svip', 'month')}
+              disabled={payLoading}
+              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer disabled:opacity-50"
+            >
+              SVIP 月卡 ¥{contact.priceSvipMonth || '29.90'} →
+            </button>
+            <button
+              onClick={() => handleInitiatePay('svip', 'year')}
+              disabled={payLoading}
+              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer disabled:opacity-50"
+            >
+              SVIP 年卡 ¥{contact.priceSvipYear || '299.00'} →
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 4. 横向权益卖点横条 */}
+      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-wrap items-center justify-around gap-4 text-xs font-semibold text-slate-500">
+        <div className="flex items-center gap-1.5">
+          <BookOpen className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>SVIP 独享探索模式</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Crown className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>SVIP 独享费曼学习</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>SVIP 200 次精准模型额度</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>VIP 起开放组卷练习</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Award className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>配额按 30 天周期重置</span>
+        </div>
+      </div>
+
+      {/* 5. 底部两栏：激活码兑换 + 私域客服二维码 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        {/* 左栏：卡券兑换 (col-span-5) */}
+        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-650 shadow-sm">
-                <Gift className="w-5 h-5 animate-pulse" />
+              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 shadow-sm shrink-0">
+                <Award className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-extrabold text-slate-900 text-sm">激活码兑换中心</h3>
@@ -271,7 +743,7 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
               <button
                 type="submit"
                 disabled={redeemLoading || !redeemCode.trim()}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-xs transition-all shadow-md shadow-indigo-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-slate-900 hover:bg-black text-white py-3.5 rounded-xl font-bold text-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {redeemLoading ? '正在激活中...' : '立即提交兑换'}
               </button>
@@ -282,78 +754,146 @@ export default function VipCenter({ token, userInfo, onRefresh }: VipCenterProps
           </div>
         </div>
 
-        {/* 右栏：线下人工购买/私域引流 */}
-        <div className="bg-gradient-to-br from-indigo-50/20 to-blue-50/20 rounded-3xl border border-indigo-100/70 p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-600/10 to-indigo-600/10 rounded-full blur-xl transform translate-x-4 -translate-y-4"></div>
-          
-          <div className="space-y-4 relative z-10">
+        {/* 右栏：微信客服协助 (col-span-7) */}
+        <div id="contact-support" className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col md:flex-row justify-between gap-6 relative overflow-hidden">
+
+          <div className="space-y-4 flex-1">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/10">
-                <QrCode className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-sm">线下人工专享通道</h3>
-                <p className="text-xs text-slate-500 font-semibold">微信扫码联系系统客服开通/获取卡密</p>
-              </div>
+              <span className="bg-amber-50 text-amber-700 text-[10px] font-black px-2.5 py-1 rounded-full border border-amber-100/50">
+
+                智能错开通咨询
+              </span>
             </div>
-            
-            <p className="text-xs text-slate-650 leading-relaxed">
-              请扫码或添加微信号联系客服进行线下转账。完成付款后客服将为您的账号<b>直接授权</b>或者发卡<b>激活码</b>完成开通。
+
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">
+
+              智能错 SVIP 客服协助
+            </h3>
+
+            <p className="text-xs text-slate-400 font-semibold leading-relaxed">
+              已支持支付宝自助开通；如需人工协助、对公或发票，请添加客服并备注注册邮箱。
             </p>
 
-            {/* 客服配置展示区：上下布局 */}
-            <div className="flex flex-col gap-4 items-center bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-slate-150 shadow-sm w-full">
-              
-              {/* 二维码图片展示 (上) */}
-              {contact.wechatQr && (
-                <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 w-full">
-                  <img 
-                    src={contact.wechatQr} 
-                    alt="微信收款/客服二维码" 
-                    className="w-32 h-32 border border-slate-200 rounded-xl bg-white p-1.5 shadow-md object-cover"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-2 font-bold tracking-wide">微信扫一扫联系客服</span>
-                </div>
-              )}
+            <div className="flex flex-wrap gap-2.5 pt-2">
+              <span className="bg-slate-50 text-slate-500 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-150">
+                当前账号: {localStorage.getItem('errorbook_username') || '未知'}
+              </span>
+            </div>
 
-              {/* 客服文本详情 (下) */}
-              <div className="space-y-3 w-full">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-bold">客服微信号</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg select-all">{contact.wechatId}</span>
-                    <button 
-                      onClick={handleCopy}
-                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5 shadow-sm"
-                    >
-                      <Copy className="w-2.5 h-2.5" />
-                      <span>复制</span>
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
-                  <span className="text-slate-400 font-bold">客服邮箱</span>
-                  <span className="font-bold text-slate-700 flex items-center gap-1">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{contact.serviceEmail}</span>
-                  </span>
-                </div>
-
-                <div className="text-[10px] text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
-                  {contact.notes}
+            {/* 客服文本详情 */}
+            <div className="space-y-3 w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 mt-2">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-400">客服微信号</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-indigo-700 select-all">{contact.wechatId}</span>
+                  <button
+                    onClick={handleCopy}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                  >
+                    复制
+                  </button>
                 </div>
               </div>
 
+              <div className="flex items-center justify-between text-xs font-semibold border-t border-slate-100 pt-2.5">
+                <span className="text-slate-400">客服邮箱</span>
+                <span className="font-bold text-slate-700 flex items-center gap-1">
+                  <span>{contact.serviceEmail}</span>
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-200/60 text-[10px] text-slate-450 leading-relaxed relative z-10 font-semibold">
-            加客服请备注“错题本VIP升级”及登录的邮箱账号，以便我们以最快速度为您激活权益。
+          {/* 二维码展示 */}
+          <div className="flex flex-col items-center justify-center shrink-0 border border-slate-100 rounded-2xl p-4 bg-slate-50 max-w-[180px] mx-auto md:mx-0">
+            {contact.wechatQr ? (
+              <img
+                src={contact.wechatQr}
+                alt="微信客服二维码"
+                className="w-28 h-28 border border-slate-200 rounded-xl bg-white p-1 shadow-sm object-cover"
+              />
+            ) : (
+              <div className="w-28 h-28 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-slate-300">
+                <QrCode className="w-12 h-12 animate-pulse" />
+              </div>
+            )}
+            <span className="text-[9px] text-slate-400 mt-2 font-bold tracking-wide text-center">微信扫码联系客服</span>
           </div>
+
         </div>
 
       </div>
+
+      {/* 6. 模拟支付弹窗 */}
+      {showPayModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowPayModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none"
+            >
+              ✕
+            </button>
+            <div className="mb-4 flex items-center gap-2 text-amber-700 font-bold">
+              <QrCode className="w-5 h-5" />
+              <h3 className="text-lg">安全支付 (模拟)</h3>
+            </div>
+
+            <div className="space-y-4 text-slate-600 text-xs leading-relaxed text-center">
+              <p className="text-slate-400 font-bold">
+                您正在购买 <span className="text-slate-800 font-extrabold">{payRole.toUpperCase()} {payDuration === 'month' ? '月卡' : '年卡'}</span> 套餐
+              </p>
+
+              <div className="text-2xl font-black text-slate-900 mt-2">
+                ￥{payAmount.toFixed(2)}
+              </div>
+
+              {/* 模拟收款二维码 */}
+              <div className="my-5 flex justify-center">
+                {qrCodeUrl ? (
+                  <img
+                    src={qrCodeUrl}
+                    alt="付款二维码"
+                    className="w-40 h-40 border border-slate-200 rounded-2xl p-2 shadow-sm bg-white"
+                  />
+                ) : (
+                  <div className="w-40 h-40 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-350 animate-pulse">
+                    加载中...
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-amber-50 text-amber-700 border border-amber-100/50 p-3 rounded-xl text-left">
+                <p className="font-bold">提示：</p>
+                <p className="mt-0.5">此为本地模拟支付环境，不需要真实付款。点击下方“确认支付”即可直接完成充值和身份升级。</p>
+              </div>
+
+              {payModalError && (
+                <div className="bg-rose-50 text-rose-600 border border-rose-100 p-2.5 rounded-xl text-left font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{payModalError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowPayModal(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition cursor-pointer text-xs"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmPay}
+                disabled={payLoading}
+                className="flex-1 bg-amber-700 hover:bg-amber-800 text-white font-bold py-3 rounded-xl transition cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {payLoading ? '确认中...' : '确认支付'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

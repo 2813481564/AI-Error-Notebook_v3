@@ -747,6 +747,7 @@ export default function App() {
                 token={token}
                 userInfo={userInfo}
                 onRefresh={fetchUserInfo}
+                onNavigate={setCurrentView}
               />
             )}
             {currentView === 'paper' && (

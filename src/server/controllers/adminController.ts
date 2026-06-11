@@ -183,20 +183,41 @@ export const deleteAnnouncement = (req: express.Request, res: express.Response) 
 // 8. 保存私域客服与收款二维码配置
 export const saveVipContact = (req: express.Request, res: express.Response) => {
   try {
-    const { wechatQr, wechatId, serviceEmail, notes } = req.body;
+    const { 
+      wechatQr, 
+      wechatId, 
+      serviceEmail, 
+      notes,
+      vipCardTag,
+      vipCardTitle,
+      vipCardDesc,
+      priceVipMonth,
+      priceVipYear,
+      priceSvipMonth,
+      priceSvipYear
+    } = req.body;
     
     const tx = db.transaction(() => {
       db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_WECHAT_QR', ?)").run(wechatQr || "");
       db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_WECHAT_ID', ?)").run(wechatId || "");
       db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_SERVICE_EMAIL', ?)").run(serviceEmail || "");
       db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_SERVICE_NOTES', ?)").run(notes || "");
+      
+      // 保存定制属性
+      if (vipCardTag !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_CARD_TAG', ?)").run(vipCardTag);
+      if (vipCardTitle !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_CARD_TITLE', ?)").run(vipCardTitle);
+      if (vipCardDesc !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('VIP_CARD_DESC', ?)").run(vipCardDesc);
+      if (priceVipMonth !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('PRICE_VIP_MONTH', ?)").run(priceVipMonth);
+      if (priceVipYear !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('PRICE_VIP_YEAR', ?)").run(priceVipYear);
+      if (priceSvipMonth !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('PRICE_SVIP_MONTH', ?)").run(priceSvipMonth);
+      if (priceSvipYear !== undefined) db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('PRICE_SVIP_YEAR', ?)").run(priceSvipYear);
     });
     tx();
     
-    res.json({ success: true, message: "私域配置保存成功" });
+    res.json({ success: true, message: "配置保存成功" });
   } catch (error: any) {
     console.error("Save Vip Contact Error:", error);
-    res.status(500).json({ error: error.message || "保存私域配置失败" });
+    res.status(500).json({ error: error.message || "保存配置失败" });
   }
 };
 

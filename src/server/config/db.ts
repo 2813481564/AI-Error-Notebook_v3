@@ -310,6 +310,25 @@ try {
   console.error("redemption_codes 数据库迁移检查失败:", err);
 }
 
+// 数据库迁移逻辑：检测 orders 表是否缺少 targetRole, days 字段
+try {
+  const tableInfo = db.pragma("table_info(orders)") as any[];
+  if (tableInfo.length > 0) {
+    const hasTargetRole = tableInfo.some(col => col.name === 'targetRole');
+    if (!hasTargetRole) {
+      console.log("正在升级 orders 表以支持 targetRole 字段...");
+      db.exec("ALTER TABLE orders ADD COLUMN targetRole TEXT");
+    }
+    const hasDays = tableInfo.some(col => col.name === 'days');
+    if (!hasDays) {
+      console.log("正在升级 orders 表以支持 days 字段...");
+      db.exec("ALTER TABLE orders ADD COLUMN days INTEGER");
+    }
+  }
+} catch (err) {
+  console.error("orders 数据库迁移检查失败:", err);
+}
+
 // 自动初始化 admin 用户
 try {
   const hashPasswordTemp = (pwd: string) => crypto.createHash("sha256").update(pwd).digest("hex");
@@ -343,6 +362,15 @@ try {
   stmt.run("LIMIT_VIP", "100");
   stmt.run("LIMIT_SVIP", "300");
   stmt.run("ALLOW_STUDENT_AI", "true");
+
+  // 初始化 VIP 客服配置默认值及自定义页面文案价格等
+  stmt.run("VIP_CARD_TAG", "智能错题本会员");
+  stmt.run("VIP_CARD_TITLE", "解锁更完整的 AI 错题本能力");
+  stmt.run("VIP_CARD_DESC", "VIP 覆盖日常练习与组卷，SVIP 解锁探索模式和费曼学习。支持支付宝自助开通；如需对公或发票，可下滑联系客服协助。");
+  stmt.run("PRICE_VIP_MONTH", "19.90");
+  stmt.run("PRICE_VIP_YEAR", "199.00");
+  stmt.run("PRICE_SVIP_MONTH", "29.90");
+  stmt.run("PRICE_SVIP_YEAR", "299.00");
   console.log("system_settings 数据库表初始化完成！");
 } catch (err) {
   console.error("初始化 system_settings 失败:", err);

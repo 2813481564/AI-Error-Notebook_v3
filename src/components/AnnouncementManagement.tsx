@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Megaphone, QrCode, Save, Plus, Trash2, Edit2, CheckCircle2, ShieldAlert, Sparkles, Image as ImageIcon, Link as LinkIcon, Layers, Eye, EyeOff } from 'lucide-react';
+import { Megaphone, QrCode, Save, Plus, Trash2, Edit2, CheckCircle2, ShieldAlert, Sparkles, Image as ImageIcon, Link as LinkIcon, Layers, Eye, EyeOff, Crown } from 'lucide-react';
 
 interface Announcement {
   id: number;
@@ -16,6 +16,15 @@ interface VipContact {
   wechatId: string;
   serviceEmail: string;
   notes: string;
+  vipCardTag?: string;
+  vipCardTitle?: string;
+  vipCardDesc?: string;
+  priceVipMonth?: string;
+  priceVipYear?: string;
+  priceSvipMonth?: string;
+  priceSvipYear?: string;
+  limitVip?: string;
+  limitSvip?: string;
 }
 
 export default function AnnouncementManagement() {
@@ -25,6 +34,7 @@ export default function AnnouncementManagement() {
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'contactAnn' | 'vipCustom'>('contactAnn');
 
   // 私域配置状态
   const [contact, setContact] = useState<VipContact>({
@@ -32,6 +42,15 @@ export default function AnnouncementManagement() {
     wechatId: '',
     serviceEmail: '',
     notes: '',
+    vipCardTag: '',
+    vipCardTitle: '',
+    vipCardDesc: '',
+    priceVipMonth: '',
+    priceVipYear: '',
+    priceSvipMonth: '',
+    priceSvipYear: '',
+    limitVip: '',
+    limitSvip: '',
   });
 
   // 编辑/新增公告表单状态
@@ -209,9 +228,33 @@ export default function AnnouncementManagement() {
           <Megaphone className="w-5 h-5 animate-pulse" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">公告与私域管理</h1>
-          <p className="text-xs text-slate-400 font-semibold">管理会员中心顶部的轮播图公告，以及配置人工付费导流的微信二维码与微信号</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">公告与会员配置</h1>
+          <p className="text-xs text-slate-400 font-semibold">管理会员中心的顶部轮播公告，配置人工客服微信及自定义会员定价与界面文案</p>
         </div>
+      </div>
+
+      {/* Tab 选项卡导航 */}
+      <div className="flex gap-2 border-b border-slate-200 pb-px">
+        <button
+          onClick={() => setActiveTab('contactAnn')}
+          className={`px-5 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+            activeTab === 'contactAnn'
+              ? 'border-indigo-600 text-indigo-650'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          私域客服与公告 Banner
+        </button>
+        <button
+          onClick={() => setActiveTab('vipCustom')}
+          className={`px-5 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+            activeTab === 'vipCustom'
+              ? 'border-indigo-600 text-indigo-650'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          会员中心文案与定价定制
+        </button>
       </div>
 
       {/* 消息提示框 */}
@@ -229,7 +272,8 @@ export default function AnnouncementManagement() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {activeTab === 'contactAnn' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fade-in">
         
         {/* 左侧：私域客服与付款二维码配置 */}
         <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
@@ -438,6 +482,212 @@ export default function AnnouncementManagement() {
           )}
         </div>
       </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fade-in">
+          
+          {/* 左侧：表单配置 */}
+          <div className="lg:col-span-6 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Crown className="w-4 h-4 text-amber-600 fill-amber-250" />
+              <h2 className="font-extrabold text-sm text-slate-900">会员中心前台定制配置</h2>
+            </div>
+            
+            <form onSubmit={handleSaveContact} className="space-y-4">
+              
+              {/* Slogan 文案配置 */}
+              <div className="space-y-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">顶部 宣传横幅文案</span>
+                
+                <div className="space-y-1.5 mt-2">
+                  <label className="text-[11px] font-bold text-slate-500 pl-0.5">顶标特色标签 (Tag)</label>
+                  <input 
+                    type="text"
+                    value={contact.vipCardTag || ''}
+                    onChange={e => setContact(prev => ({ ...prev, vipCardTag: e.target.value }))}
+                    placeholder="e.g. 智能错题本会员"
+                    maxLength={15}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-500 pl-0.5">横幅主标题 (Title)</label>
+                  <input 
+                    type="text"
+                    value={contact.vipCardTitle || ''}
+                    onChange={e => setContact(prev => ({ ...prev, vipCardTitle: e.target.value }))}
+                    placeholder="e.g. 解锁更完整的 AI 错题本能力"
+                    maxLength={30}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-500 pl-0.5">详细副描述简述 (Description)</label>
+                  <textarea 
+                    value={contact.vipCardDesc || ''}
+                    onChange={e => setContact(prev => ({ ...prev, vipCardDesc: e.target.value }))}
+                    placeholder="e.g. VIP 覆盖日常练习与组卷，SVIP 解锁探索模式和费曼学习..."
+                    maxLength={150}
+                    rows={3}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* 会员定价配置 */}
+              <div className="space-y-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">订阅套餐价格定制 (¥ 元)</span>
+                
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 pl-0.5">VIP 月卡定价 (¥)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={contact.priceVipMonth || ''}
+                      onChange={e => setContact(prev => ({ ...prev, priceVipMonth: e.target.value }))}
+                      placeholder="19.90"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 pl-0.5">VIP 年卡定价 (¥)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={contact.priceVipYear || ''}
+                      onChange={e => setContact(prev => ({ ...prev, priceVipYear: e.target.value }))}
+                      placeholder="199.00"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 pl-0.5">SVIP 月卡定价 (¥)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={contact.priceSvipMonth || ''}
+                      onChange={e => setContact(prev => ({ ...prev, priceSvipMonth: e.target.value }))}
+                      placeholder="29.90"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 pl-0.5">SVIP 年卡定价 (¥)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={contact.priceSvipYear || ''}
+                      onChange={e => setContact(prev => ({ ...prev, priceSvipYear: e.target.value }))}
+                      placeholder="299.00"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 transition-colors"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingContact}
+                className="w-full bg-gradient-to-r from-amber-600 to-indigo-650 text-white py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/10 hover:from-amber-750 hover:to-indigo-750 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {savingContact ? '正在保存前台配置...' : '保存前台配置'}
+              </button>
+
+            </form>
+          </div>
+
+          {/* 右侧：前台效果预览 */}
+          <div className="lg:col-span-6 bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="flex items-center gap-2 border-b border-slate-200/60 pb-3">
+              <Eye className="w-4 h-4 text-slate-500" />
+              <h2 className="font-extrabold text-sm text-slate-605">会员中心效果实时预览</h2>
+            </div>
+            
+            <div className="space-y-6 scale-[0.93] origin-top">
+              
+              {/* Slogan 横幅卡片 */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col min-h-[160px] justify-between">
+                <div className="space-y-3">
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100/50 w-max">
+                    <Crown className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                    {contact.vipCardTag || '智能错题本会员'}
+                  </span>
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+                    {contact.vipCardTitle || '解锁更完整的 AI 错题本能力'}
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
+                    {contact.vipCardDesc || 'VIP 覆盖日常练习与组卷，SVIP 解锁探索模式和费曼学习。支持支付宝自助开通；如需对公或发票，可下滑联系客服协助。'}
+                  </p>
+                </div>
+              </div>
+
+              {/* 套餐预览卡片 */}
+              <div className="grid grid-cols-2 gap-4">
+                
+                {/* VIP 卡片 */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">VIP</h4>
+                      <p className="text-[9px] text-slate-400 font-semibold mt-0.5">适合日常错题整理与练习</p>
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-500 space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-slate-700 bg-slate-50 p-1.5 rounded-lg">
+                      <span>月卡价格</span>
+                      <span className="font-extrabold text-amber-700">¥{contact.priceVipMonth || '19.90'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-700 bg-slate-50 p-1.5 rounded-lg">
+                      <span>年卡价格</span>
+                      <span className="font-extrabold text-amber-700">¥{contact.priceVipYear || '199.00'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SVIP 卡片 */}
+                <div className="bg-white rounded-3xl p-5 border-2 border-amber-600/70 shadow-sm space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">SVIP</h4>
+                      <p className="text-[9px] text-slate-400 font-semibold mt-0.5">适合深度 AI 讲解与训练</p>
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-500 space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-slate-700 bg-slate-50 p-1.5 rounded-lg">
+                      <span>月卡价格</span>
+                      <span className="font-extrabold text-amber-750">¥{contact.priceSvipMonth || '29.90'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-700 bg-slate-50 p-1.5 rounded-lg">
+                      <span>年卡价格</span>
+                      <span className="font-extrabold text-amber-750">¥{contact.priceSvipYear || '299.00'}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="text-center text-[10px] text-slate-400 font-semibold italic">
+                * 本区域为前台实时渲染预览，保存后将立即对全体用户生效
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
 
       {/* 新增/编辑公告模态框 */}
       {showModal && editingAnn && (

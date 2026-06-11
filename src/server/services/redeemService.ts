@@ -81,18 +81,26 @@ export function useRedemptionCode(codeStr: string, username: string): { success:
       WHERE code = ?
     `).run(username, Date.now(), cleanCode);
 
-    db.prepare(`
-      UPDATE users 
-      SET role = ?, vipExpireAt = ? 
-      WHERE username = ?
-    `).run(targetRole, newVipExpireAt, username);
+    if (username === 'admin') {
+      db.prepare(`
+        UPDATE users 
+        SET vipExpireAt = ? 
+        WHERE username = ?
+      `).run(newVipExpireAt, username);
+    } else {
+      db.prepare(`
+        UPDATE users 
+        SET role = ?, vipExpireAt = ? 
+        WHERE username = ?
+      `).run(targetRole, newVipExpireAt, username);
+    }
   });
 
   redeemTx();
 
   return {
     success: true,
-    role: targetRole,
+    role: username === 'admin' ? 'admin' : targetRole,
     vipExpireAt: newVipExpireAt
   };
 }
