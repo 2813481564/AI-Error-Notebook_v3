@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, TrendingUp } from 'lucide-react';
+import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, TrendingUp, Database, Camera, FileText, Award, Users, Settings, Megaphone } from 'lucide-react';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
@@ -9,6 +9,83 @@ export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void
   
   const userRole = localStorage.getItem('errorbook_role') || 'student';
   const isStudent = userRole === 'student';
+
+  const menuCards = [
+    {
+      title: '我的错题本',
+      desc: '浏览与多维检索您积累的所有错题',
+      icon: Database,
+      iconBg: 'bg-blue-50 text-blue-600 border border-blue-100/50',
+      hoverBorder: 'hover:border-blue-200 hover:shadow-blue-500/5',
+      view: 'library',
+      show: true,
+    },
+    {
+      title: '上传错题',
+      desc: '拍照或上传图片，快速识别并录入错题',
+      icon: Camera,
+      iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-100/50',
+      hoverBorder: 'hover:border-emerald-200 hover:shadow-emerald-500/5',
+      view: 'add',
+      show: true,
+    },
+    {
+      title: '组卷练习',
+      desc: '利用AI智能或手动挑选错题，组成专属试卷',
+      icon: Sparkles,
+      iconBg: 'bg-amber-50 text-amber-600 border border-amber-100/50',
+      hoverBorder: 'hover:border-amber-200 hover:shadow-amber-500/5',
+      view: 'exercise',
+      show: true,
+    },
+    {
+      title: '我的试卷',
+      desc: '查看并打印已生成的试卷，记录复习效果',
+      icon: FileText,
+      iconBg: 'bg-purple-50 text-purple-600 border border-purple-100/50',
+      hoverBorder: 'hover:border-purple-200 hover:shadow-purple-500/5',
+      view: 'papers',
+      show: true,
+    },
+    {
+      title: '会员中心',
+      desc: '查看个人会员状态，获取AI识别及解析额度',
+      icon: Award,
+      iconBg: 'bg-rose-50 text-rose-600 border border-rose-100/50',
+      hoverBorder: 'hover:border-rose-200 hover:shadow-rose-500/5',
+      view: 'vipCenter',
+      show: true,
+    },
+    {
+      title: '用户管理',
+      desc: '管理系统内的用户账号、角色权限及密码重置',
+      icon: Users,
+      iconBg: 'bg-cyan-50 text-cyan-600 border border-cyan-100/50',
+      hoverBorder: 'hover:border-cyan-200 hover:shadow-cyan-500/5',
+      view: 'users',
+      show: userRole === 'admin',
+    },
+    {
+      title: '系统设置',
+      desc: '配置系统的全局参数及AI通道模型等核心配置',
+      icon: Settings,
+      iconBg: 'bg-slate-100 text-slate-700 border border-slate-200/50',
+      hoverBorder: 'hover:border-slate-300 hover:shadow-slate-500/5',
+      view: 'settings',
+      show: userRole === 'admin',
+    },
+    {
+      title: '公告管理',
+      desc: '发布与编辑系统首页公告，通知所有在校师生',
+      icon: Megaphone,
+      iconBg: 'bg-teal-50 text-teal-600 border border-teal-100/50',
+      hoverBorder: 'hover:border-teal-200 hover:shadow-teal-500/5',
+      view: 'announcements',
+      show: userRole === 'admin',
+    },
+  ];
+
+  const visibleCards = menuCards.filter(card => card.show);
 
   useEffect(() => {
     db.getAllQuestions()
@@ -147,6 +224,38 @@ export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void
           </div>
         </div>
 
+      </div>
+
+      {/* 快捷功能导航 */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-extrabold text-slate-500 tracking-wider uppercase pl-1">快捷功能导航</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {visibleCards.map((card, index) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={index}
+                onClick={() => onNavigate(card.view)}
+                className={`group flex flex-col justify-between p-5 bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer ${card.hoverBorder} hover:-translate-y-1`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className={`p-2.5 rounded-xl ${card.iconBg} flex items-center justify-center`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900 mt-4 group-hover:text-blue-600 transition-colors">
+                    {card.title}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-1.5 font-medium leading-relaxed">
+                    {card.desc}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Main Content Sections - Dual Columns */}

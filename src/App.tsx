@@ -5,14 +5,13 @@ import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
 import UserManagement from './components/UserManagement';
 import TestPaper from './components/TestPaper';
-import PublicQuestionLibrary from './components/PublicQuestionLibrary';
 import VipCenter from './components/VipCenter';
 import SystemSettings from './components/SystemSettings';
 import AnnouncementManagement from './components/AnnouncementManagement';
 import CreatePaperExercise from './components/CreatePaperExercise';
 import SavedPapers from './components/SavedPapers';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'publicLibrary' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -581,18 +580,7 @@ export default function App() {
             <span>我的试卷</span>
           </button>
 
-          {role !== 'student' && (
-            <button
-              onClick={() => setCurrentView('publicLibrary')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'publicLibrary'
-                ? 'bg-blue-50 text-blue-700 shadow-sm'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>公共题库</span>
-            </button>
-          )}
+
 
           {role === 'admin' && (
             <button
@@ -750,16 +738,7 @@ export default function App() {
                 }}
               />
             )}
-            {currentView === 'publicLibrary' && role !== 'student' && (
-              <PublicQuestionLibrary
-                onNavigate={setCurrentView}
-                onGeneratePaper={(selected) => {
-                  setPaperQuestions(selected);
-                  setPaperSourceView('publicLibrary');
-                  setCurrentView('paper');
-                }}
-              />
-            )}
+
             {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
             {currentView === 'settings' && username === 'admin' && <SystemSettings />}
             {currentView === 'announcements' && username === 'admin' && <AnnouncementManagement />}
@@ -812,13 +791,7 @@ export default function App() {
             active={currentView === 'vipCenter'}
             onClick={() => setCurrentView('vipCenter')}
           />
-          {role !== 'student' && (
-            <NavItem
-              icon={<BookOpen className="w-5 h-5" />} label="公共题库"
-              active={currentView === 'publicLibrary'}
-              onClick={() => setCurrentView('publicLibrary')}
-            />
-          )}
+
         </nav>
       </div>
 
