@@ -38,6 +38,16 @@ export interface Stats {
   weakPoints: { point: string; count: number }[];
 }
 
+export interface SavedPaper {
+  id: string;
+  title: string;
+  userId: string;
+  createdAt: number;
+  questionIds: string[];
+  mode: 'original' | 'variant';
+}
+
+
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('errorbook_token');
   return {
@@ -167,6 +177,58 @@ export const db = {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '从公共题库删除失败');
+    }
+  },
+
+  async getAllPapers(): Promise<SavedPaper[]> {
+    const res = await fetch('/api/papers', {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取试卷列表失败');
+    }
+    return res.json();
+  },
+
+  async savePaper(title: string, questionIds: string[], mode: 'original' | 'variant'): Promise<void> {
+    const res = await fetch('/api/papers', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ title, questionIds, mode })
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '保存试卷失败');
+    }
+  },
+
+  async deletePaper(id: string): Promise<void> {
+    const res = await fetch(`/api/papers/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '删除试卷失败');
     }
   }
 };

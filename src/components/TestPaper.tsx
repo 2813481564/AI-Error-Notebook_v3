@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2, RefreshCw } from 'lucide-react';
-import { ErrorQuestion } from '../lib/db';
+import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2, RefreshCw, Save } from 'lucide-react';
+import { db, ErrorQuestion } from '../lib/db';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
@@ -23,6 +23,34 @@ export default function TestPaper({
   const [generating, setGenerating] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
+
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [paperTitleInput, setPaperTitleInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleOpenSaveModal = () => {
+    setPaperTitleInput(title + (paperMode === 'variant' ? ' (AI变式)' : ''));
+    setSaveError(null);
+    setShowSaveModal(true);
+  };
+
+  const handleConfirmSave = async () => {
+    if (!paperTitleInput.trim()) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const qIds = questions.map(q => q.id);
+      await db.savePaper(paperTitleInput.trim(), qIds, paperMode);
+      setShowSaveModal(false);
+      alert('试卷保存成功！您可以到“我的试卷”中查看。');
+    } catch (err: any) {
+      console.error(err);
+      setSaveError(err.message || '保存试卷失败，请重试');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -287,6 +315,15 @@ export default function TestPaper({
             </button>
           )}
 
+          {/* Save Paper Trigger */}
+          <button
+            onClick={handleOpenSaveModal}
+            className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold hover:bg-slate-50 transition-colors shadow-sm cursor-pointer w-full sm:w-auto justify-center"
+          >
+            <Save className="w-4 h-4 text-slate-500" />
+            <span>保存试卷</span>
+          </button>
+
           {/* Print Trigger */}
           <button
             onClick={handlePrint}
@@ -444,6 +481,63 @@ export default function TestPaper({
         </div>
 
       </div>
+
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div className="no-print fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-base font-black text-slate-900 flex items-center gap-2 mb-4">
+              <Save className="w-5 h-5 text-blue-600" />
+              <span>保存试卷到云端</span>
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-1.5 block">试卷标题</label>
+                <input
+                  type="text"
+                  value={paperTitleInput}
+                  onChange={(e) => setPaperTitleInput(e.target.value)}
+                  placeholder="请输入试卷标题..."
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+              
+              <div className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                <p>• 试卷模式：<span className="font-bold text-slate-700">{paperMode === 'original' ? '原错题版' : 'AI 变式强化版'}</span></p>
+                <p>• 题目数量：<span className="font-bold text-slate-700">{questions.length} 道</span></p>
+              </div>
+
+              {saveError && (
+                <p className="text-xs text-rose-500 font-bold">{saveError}</p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowSaveModal(false)}
+                  disabled={isSaving}
+                  className="flex-1 py-2.5 border border-slate-200 text-slate-600 bg-white rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmSave}
+                  disabled={isSaving || !paperTitleInput.trim()}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/10 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>正在保存...</span>
+                    </>
+                  ) : (
+                    <span>确认保存</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
