@@ -140,60 +140,8 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
 
   // 发起模拟支付
   const handleInitiatePay = async (role: 'vip' | 'svip', duration: 'month' | 'year') => {
-    setPayLoading(true);
-    setPayModalError(null);
-    setPayRole(role);
-    setPayDuration(duration);
-
-    try {
-      const res = await fetch('/api/user/pay', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ role, duration })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '创建订单失败');
-      }
-      setOrderId(data.orderId);
-      setQrCodeUrl(data.qrUrl);
-      setPayAmount(data.amount);
-      setShowPayModal(true);
-    } catch (err: any) {
-      alert(err.message || '发起支付失败，请稍后重试');
-    } finally {
-      setPayLoading(false);
-    }
-  };
-
-  // 确认支付成功
-  const handleConfirmPay = async () => {
-    setPayLoading(true);
-    setPayModalError(null);
-    try {
-      const res = await fetch('/api/user/pay-success', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ orderId })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '确认支付失败');
-      }
-      alert('支付成功！您的会员权限已更新。');
-      setShowPayModal(false);
-      onRefresh();
-    } catch (err: any) {
-      setPayModalError(err.message || '确认支付失败，请检查是否付款成功');
-    } finally {
-      setPayLoading(false);
-    }
+    alert('当前支付功能未开放，请联系下方客服');
+    document.getElementById('contact-support')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // 获取当前等级显示
@@ -218,8 +166,8 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               target={ann.linkUrl ? '_blank' : '_self'}
               rel="noopener noreferrer"
               className={`absolute inset-0 w-full h-full flex items-center justify-between transition-all duration-700 ease-in-out cursor-pointer ${idx === currentAnnIndex
-                  ? 'opacity-100 translate-x-0 pointer-events-auto'
-                  : 'opacity-0 translate-x-full pointer-events-none'
+                ? 'opacity-100 translate-x-0 pointer-events-auto'
+                : 'opacity-0 translate-x-full pointer-events-none'
                 }`}
             >
               {/* 背景图 */}
@@ -337,21 +285,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
                 </div>
               </div>
 
-              {/* 精准模型额度 */}
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-slate-400 font-bold">精准模型额度</span>
-                    <span className="text-xs font-bold text-slate-700 mt-0.5">
-                      {userInfo?.role.toLowerCase() === 'svip' ? '200 次/月' : userInfo?.role.toLowerCase() === 'vip' ? '50 次/月' : '3 次/月'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
               {/* 错题容量 */}
               <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
                 <div className="flex items-center gap-2.5">
@@ -443,13 +376,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
                 </td>
               </tr>
 
-              {/* 精准模型额度 */}
-              <tr>
-                <td className="p-4">精准模型额度</td>
-                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">200 次/月</td>
-                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">50 次/月</td>
-              </tr>
-
               {/* AI 学习额度 */}
               <tr>
                 <td className="p-4">AI 学习额度</td>
@@ -529,7 +455,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
             <div className="flex flex-wrap gap-1.5">
               <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">组卷练习</span>
               <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{contact.limitVip || '100'}次/天 AI 学习额度</span>
-              <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">50次精准模型额度</span>
             </div>
 
             {/* 参数卡片 */}
@@ -537,10 +462,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" />
                 <span className="text-[11px] font-bold text-slate-700">AI 学习 {contact.limitVip || '100'} 次/天</span>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-700">精准模型 50 次</span>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -564,10 +485,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               </li>
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span>更高精准模型额度，适合难题和复杂题型</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                 <span>更多错题本和错题容量，适合多学科整理</span>
               </li>
             </ul>
@@ -576,15 +493,13 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
           <div className="space-y-2.5 mt-8">
             <button
               onClick={() => handleInitiatePay('vip', 'month')}
-              disabled={payLoading}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
             >
               VIP 月卡 ¥{contact.priceVipMonth || '19.90'} →
             </button>
             <button
               onClick={() => handleInitiatePay('vip', 'year')}
-              disabled={payLoading}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
             >
               VIP 年卡 ¥{contact.priceVipYear || '199.00'} →
             </button>
@@ -622,10 +537,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
                 <span className="text-[11px] font-bold text-slate-700">AI 学习 {contact.limitSvip || '300'} 次/天</span>
               </div>
               <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-650 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-700">精准模型 200 次</span>
-              </div>
-              <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span className="text-[11px] font-bold text-slate-700">错题 无限</span>
               </div>
@@ -651,7 +562,7 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               </li>
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span>更多 AI 学习额度和精准模型额度</span>
+                <span>更多 AI 学习额度</span>
               </li>
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -663,15 +574,13 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
           <div className="space-y-2.5 mt-8">
             <button
               onClick={() => handleInitiatePay('svip', 'month')}
-              disabled={payLoading}
-              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer disabled:opacity-50"
+              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer"
             >
               SVIP 月卡 ¥{contact.priceSvipMonth || '29.90'} →
             </button>
             <button
               onClick={() => handleInitiatePay('svip', 'year')}
-              disabled={payLoading}
-              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer disabled:opacity-50"
+              className="w-full bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold py-3.5 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-amber-700/10 cursor-pointer"
             >
               SVIP 年卡 ¥{contact.priceSvipYear || '299.00'} →
             </button>
@@ -689,10 +598,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
         <div className="flex items-center gap-1.5">
           <Crown className="w-4 h-4 text-amber-600 shrink-0" />
           <span>SVIP 独享费曼学习</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>SVIP 200 次精准模型额度</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Zap className="w-4 h-4 text-amber-600 shrink-0" />
@@ -823,78 +728,6 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
         </div>
 
       </div>
-
-      {/* 6. 模拟支付弹窗 */}
-      {showPayModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowPayModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg outline-none"
-            >
-              ✕
-            </button>
-            <div className="mb-4 flex items-center gap-2 text-amber-700 font-bold">
-              <QrCode className="w-5 h-5" />
-              <h3 className="text-lg">安全支付 (模拟)</h3>
-            </div>
-
-            <div className="space-y-4 text-slate-600 text-xs leading-relaxed text-center">
-              <p className="text-slate-400 font-bold">
-                您正在购买 <span className="text-slate-800 font-extrabold">{payRole.toUpperCase()} {payDuration === 'month' ? '月卡' : '年卡'}</span> 套餐
-              </p>
-
-              <div className="text-2xl font-black text-slate-900 mt-2">
-                ￥{payAmount.toFixed(2)}
-              </div>
-
-              {/* 模拟收款二维码 */}
-              <div className="my-5 flex justify-center">
-                {qrCodeUrl ? (
-                  <img
-                    src={qrCodeUrl}
-                    alt="付款二维码"
-                    className="w-40 h-40 border border-slate-200 rounded-2xl p-2 shadow-sm bg-white"
-                  />
-                ) : (
-                  <div className="w-40 h-40 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-350 animate-pulse">
-                    加载中...
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-amber-50 text-amber-700 border border-amber-100/50 p-3 rounded-xl text-left">
-                <p className="font-bold">提示：</p>
-                <p className="mt-0.5">此为本地模拟支付环境，不需要真实付款。点击下方“确认支付”即可直接完成充值和身份升级。</p>
-              </div>
-
-              {payModalError && (
-                <div className="bg-rose-50 text-rose-600 border border-rose-100 p-2.5 rounded-xl text-left font-bold flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
-                  <span>{payModalError}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowPayModal(false)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition cursor-pointer text-xs"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleConfirmPay}
-                disabled={payLoading}
-                className="flex-1 bg-amber-700 hover:bg-amber-800 text-white font-bold py-3 rounded-xl transition cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-sm"
-              >
-                {payLoading ? '确认中...' : '确认支付'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
