@@ -168,11 +168,13 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
       return res.status(401).json({ error: "未登录，请先登录" });
     }
 
-    const user = db.prepare("SELECT role, lastAiResetDate, aiUsedToday, vipExpireAt FROM users WHERE username = ?").get(username) as {
+    const user = db.prepare("SELECT role, lastAiResetDate, aiUsedToday, vipExpireAt, nickname, avatar FROM users WHERE username = ?").get(username) as {
       role: string;
       lastAiResetDate: string | null;
       aiUsedToday: number;
       vipExpireAt: string | null;
+      nickname: string | null;
+      avatar: string | null;
     } | undefined;
 
     if (!user) {
@@ -209,7 +211,9 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
       vipExpireAt: user.vipExpireAt || null,
       aiUsedToday: usedToday,
       aiLimit: limit,
-      aiRemaining: limit === Infinity ? "无限" : Math.max(0, limit - usedToday)
+      aiRemaining: limit === Infinity ? "无限" : Math.max(0, limit - usedToday),
+      nickname: user.nickname || null,
+      avatar: user.avatar || null
     });
   } catch (error: any) {
     console.error("Get User Info Error:", error);
@@ -245,6 +249,62 @@ export const getVipContact = (req: express.Request, res: express.Response) => {
   } catch (error: any) {
     console.error("Get Vip Contact Error:", error);
     res.status(500).json({ error: error.message || "获取私域配置失败" });
+  }
+};
+
+// 5. 修改个人昵称和头像
+export const updateProfile = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const username = req.userId;
+    const { nickname, avatar } = req.body;
+    if (!username) {
+      return res.status(401).json({ error: "未登录，请先登录" });
+    }
+
+    db.prepare("UPDATE users SET nickname = ?, avatar = ? WHERE username = ?").run(
+      nickname !== undefined ? nickname.trim() : null,
+      avatar || null,
+      username
+    );
+
+    res.json({ success: true, message: "个人资料修改成功" });
+  } catch (error: any) {
+    console.error("Update Profile Error:", error);
+    res.status(500).json({ error: error.message || "修改个人资料失败" });
+  }
+};
+
+// 6. 修改登录密码
+export const changePassword = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const username = req.userId;
+    const { oldPassword, newPassword } = req.body;
+    if (!username) {
+      return res.status(401).json({ error: "未登录，请先登录" });
+    }
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "旧密码或新密码不能为空" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "新密码长度不能少于 6 位" });
+    }
+
+    const user = db.prepare("SELECT password FROM users WHERE username = ?").get(username) as { password: string } | undefined;
+    if (!user) {
+      return res.status(404).json({ error: "用户不存在" });
+    }
+
+    const hashPasswordTemp = (pwd: string) => crypto.createHash("sha256").update(pwd).digest("hex");
+    if (user.password !== hashPasswordTemp(oldPassword)) {
+      return res.status(400).json({ error: "旧密码输入错误" });
+    }
+
+    db.prepare("UPDATE users SET password = ? WHERE username = ?").run(hashPasswordTemp(newPassword), username);
+
+    res.json({ success: true, message: "密码修改成功，请牢记您的新密码" });
+  } catch (error: any) {
+    console.error("Change Password Error:", error);
+    res.status(500).json({ error: error.message || "修改密码失败" });
   }
 };
 

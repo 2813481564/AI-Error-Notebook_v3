@@ -17,7 +17,9 @@ db.exec(`
     idCardLast6 TEXT,
     phoneLast4 TEXT,
     vipExpireAt TEXT,
-    customAiLimit INTEGER DEFAULT NULL
+    customAiLimit INTEGER DEFAULT NULL,
+    nickname TEXT,
+    avatar TEXT
   );
   
   CREATE TABLE IF NOT EXISTS sessions (
@@ -47,7 +49,9 @@ db.exec(`
     similarQuestion TEXT,
     paperName TEXT,
     standardAnswer TEXT,
-    score INTEGER
+    score INTEGER,
+    notebookId TEXT,
+    masteryStatus TEXT DEFAULT 'not_mastered'
   );
   
   CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
@@ -83,10 +87,24 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     userId TEXT NOT NULL,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    grade TEXT,
+    subject TEXT,
+    description TEXT
   );
   
   CREATE INDEX IF NOT EXISTS idx_notebooks_userId ON notebooks(userId);
+
+  CREATE TABLE IF NOT EXISTS papers (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    userId TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    questionIds TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'original'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_papers_userId ON papers(userId);
 
   CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,
@@ -179,6 +197,12 @@ try {
     db.exec("ALTER TABLE questions ADD COLUMN notebookId TEXT");
     db.exec("CREATE INDEX IF NOT EXISTS idx_questions_notebookId ON questions(notebookId)");
   }
+
+  const hasMasteryStatus = tableInfo.some(col => col.name === 'masteryStatus');
+  if (!hasMasteryStatus) {
+    console.log("正在升级 questions 表以支持 masteryStatus 字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN masteryStatus TEXT DEFAULT 'not_mastered'");
+  }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);
 }
@@ -231,9 +255,45 @@ try {
     db.exec("ALTER TABLE users ADD COLUMN customAiLimit INTEGER DEFAULT NULL");
   }
 
+  const hasNickname = tableInfo.some(col => col.name === 'nickname');
+  if (!hasNickname) {
+    console.log("正在升级 users 表以支持 nickname 字段...");
+    db.exec("ALTER TABLE users ADD COLUMN nickname TEXT");
+  }
+
+  const hasAvatar = tableInfo.some(col => col.name === 'avatar');
+  if (!hasAvatar) {
+    console.log("正在升级 users 表以支持 avatar 字段...");
+    db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+  }
+
   console.log("users 表升级检查完成！");
 } catch (err) {
   console.error("users 数据库迁移检查失败:", err);
+}
+
+// 数据库迁移逻辑：检测 notebooks 表是否缺少 grade, subject, description 字段
+try {
+  const tableInfo = db.pragma("table_info(notebooks)") as any[];
+  if (tableInfo.length > 0) {
+    const hasGrade = tableInfo.some(col => col.name === 'grade');
+    if (!hasGrade) {
+      console.log("正在升级 notebooks 表以支持 grade 字段...");
+      db.exec("ALTER TABLE notebooks ADD COLUMN grade TEXT");
+    }
+    const hasSubject = tableInfo.some(col => col.name === 'subject');
+    if (!hasSubject) {
+      console.log("正在升级 notebooks 表以支持 subject 字段...");
+      db.exec("ALTER TABLE notebooks ADD COLUMN subject TEXT");
+    }
+    const hasDescription = tableInfo.some(col => col.name === 'description');
+    if (!hasDescription) {
+      console.log("正在升级 notebooks 表以支持 description 字段...");
+      db.exec("ALTER TABLE notebooks ADD COLUMN description TEXT");
+    }
+  }
+} catch (err) {
+  console.error("notebooks 数据库迁移检查失败:", err);
 }
 
 // 数据库迁移逻辑：检测 redemption_codes 表是否缺少 days 字段

@@ -22,6 +22,7 @@ export interface ErrorQuestion {
   similarQuestion?: SimilarQuestion;
   studentId?: string;
   status?: 'pending' | 'audited';
+  masteryStatus?: 'not_mastered' | 'mastered';
   studentAnswer?: string;
   errorDiagnosis?: DiagnosisStep[];
   paperName?: string;
@@ -79,6 +80,24 @@ export const db = {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '保存错题失败');
+    }
+  },
+
+  async updateQuestionMastery(id: string, masteryStatus: 'not_mastered' | 'mastered'): Promise<void> {
+    const res = await fetch(`/api/questions/${id}/mastery`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ masteryStatus })
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '更新掌握状态失败');
     }
   },
 

@@ -55,7 +55,8 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       standardAnswer: row.standardAnswer || undefined,
       score: row.score !== null && row.score !== undefined ? row.score : undefined,
       notebookId: row.notebookId || undefined,
-      notebookName: row.notebookName || undefined
+      notebookName: row.notebookName || undefined,
+      masteryStatus: row.masteryStatus || 'not_mastered'
     }));
 
     res.json(questions);
@@ -95,8 +96,8 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
 
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score, notebookId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score, notebookId, masteryStatus
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -117,7 +118,8 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       question.paperName || null,
       question.standardAnswer || null,
       question.score !== undefined ? question.score : null,
-      question.notebookId || null
+      question.notebookId || null,
+      question.masteryStatus || 'not_mastered'
     );
 
     res.json({ success: true });
@@ -452,30 +454,30 @@ export const getNotebooks = (req: AuthenticatedRequest, res: express.Response) =
 // 13. 创建错题本
 export const createNotebook = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { name } = req.body;
+    const { name, grade, subject, description } = req.body;
     if (!name || name.trim() === "") {
       return res.status(400).json({ error: "错题本名称不能为空" });
     }
     const id = "nb_" + Math.random().toString(36).substring(2, 9);
-    const stmt = db.prepare("INSERT INTO notebooks (id, name, userId, createdAt) VALUES (?, ?, ?, ?)");
-    stmt.run(id, name.trim(), req.userId, Date.now());
-    res.json({ success: true, notebook: { id, name: name.trim() } });
+    const stmt = db.prepare("INSERT INTO notebooks (id, name, userId, createdAt, grade, subject, description) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    stmt.run(id, name.trim(), req.userId, Date.now(), grade || null, subject || null, description || null);
+    res.json({ success: true, notebook: { id, name: name.trim(), grade, subject, description } });
   } catch (error: any) {
     console.error("Create Notebook Error:", error);
     res.status(500).json({ error: error.message || "创建错题本失败" });
   }
 };
 
-// 14. 更新错题本名称
+// 14. 更新错题本
 export const updateNotebook = (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, grade, subject, description } = req.body;
     if (!name || name.trim() === "") {
       return res.status(400).json({ error: "错题本名称不能为空" });
     }
-    const stmt = db.prepare("UPDATE notebooks SET name = ? WHERE id = ? AND userId = ?");
-    const result = stmt.run(name.trim(), id, req.userId);
+    const stmt = db.prepare("UPDATE notebooks SET name = ?, grade = ?, subject = ?, description = ? WHERE id = ? AND userId = ?");
+    const result = stmt.run(name.trim(), grade || null, subject || null, description || null, id, req.userId);
     if (result.changes === 0) {
       return res.status(400).json({ error: "更新失败，错题本不存在或不属于您" });
     }
@@ -491,13 +493,127 @@ export const deleteNotebook = (req: AuthenticatedRequest, res: express.Response)
   try {
     const { id } = req.params;
     const deleteTx = db.transaction(() => {
-      db.prepare("UPDATE questions SET notebookId = NULL WHERE notebookId = ? AND userId = ?").run(id, req.userId);
-      db.prepare("DELETE FROM notebooks WHERE id = ? AND userId = ?").run(id, req.userId);
+      // 物理级联删除属于该用户的该错题本下的所有错题
+      db.prepare("DELETE FROM questions WHERE notebookId = ? AND (userId = ? OR studentId = ?)")
+        .run(id, req.userId, req.userId);
+      // 删除错题本自身
+      db.prepare("DELETE FROM notebooks WHERE id = ? AND userId = ?")
+        .run(id, req.userId);
     });
     deleteTx();
     res.json({ success: true });
   } catch (error: any) {
     console.error("Delete Notebook Error:", error);
     res.status(500).json({ error: error.message || "删除错题本失败" });
+  }
+};
+
+// 16. 快捷修改错题掌握状态
+export const updateQuestionMastery = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const { masteryStatus } = req.body;
+    if (!id || !masteryStatus) {
+      return res.status(400).json({ error: "参数不完整" });
+    }
+
+    const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
+    const existing = checkStmt.get(id) as { userId: string } | undefined;
+    if (!existing) {
+      return res.status(404).json({ error: "错题不存在" });
+    }
+
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user) {
+      return res.status(403).json({ error: "用户不存在" });
+    }
+
+    if (existing.userId !== req.userId && user.role !== 'admin') {
+      return res.status(403).json({ error: "无权修改此错题的掌握状态" });
+    }
+
+    db.prepare("UPDATE questions SET masteryStatus = ? WHERE id = ?").run(masteryStatus, id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Update Question Mastery Error:", error);
+    res.status(500).json({ error: error.message || "更新掌握状态失败" });
+  }
+};
+
+// 17. 获取已组试卷列表
+export const getPapers = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user) {
+      return res.status(404).json({ error: "用户不存在" });
+    }
+
+    let rows: any[];
+    if (user.role === 'admin') {
+      rows = db.prepare("SELECT * FROM papers ORDER BY createdAt DESC").all() as any[];
+    } else {
+      rows = db.prepare("SELECT * FROM papers WHERE userId = ? ORDER BY createdAt DESC").all(req.userId) as any[];
+    }
+
+    const papers = rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      userId: row.userId,
+      createdAt: row.createdAt,
+      questionIds: JSON.parse(row.questionIds),
+      mode: row.mode
+    }));
+
+    res.json(papers);
+  } catch (error: any) {
+    console.error("Get Papers Error:", error);
+    res.status(500).json({ error: error.message || "获取试卷列表失败" });
+  }
+};
+
+// 18. 保存试卷
+export const savePaper = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { title, questionIds, mode } = req.body;
+    if (!title || !questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ error: "试卷数据不完整" });
+    }
+
+    const id = "paper_" + Math.random().toString(36).substring(2, 9);
+    db.prepare(`
+      INSERT INTO papers (id, title, userId, createdAt, questionIds, mode)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, title.trim(), req.userId, Date.now(), JSON.stringify(questionIds), mode || 'original');
+
+    res.json({ success: true, paper: { id, title: title.trim(), createdAt: Date.now() } });
+  } catch (error: any) {
+    console.error("Save Paper Error:", error);
+    res.status(500).json({ error: error.message || "保存试卷失败" });
+  }
+};
+
+// 19. 删除试卷
+export const deletePaper = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user) {
+      return res.status(404).json({ error: "用户不存在" });
+    }
+
+    const existing = db.prepare("SELECT userId FROM papers WHERE id = ?").get(id) as { userId: string } | undefined;
+    if (!existing) {
+      return res.status(404).json({ error: "试卷不存在" });
+    }
+
+    if (existing.userId !== req.userId && user.role !== 'admin') {
+      return res.status(403).json({ error: "无权删除此试卷" });
+    }
+
+    db.prepare("DELETE FROM papers WHERE id = ?").run(id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Delete Paper Error:", error);
+    res.status(500).json({ error: error.message || "删除试卷失败" });
   }
 };

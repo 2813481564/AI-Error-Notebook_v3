@@ -134,15 +134,26 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 解析功能" });
     }
 
-    const { imageBase64, mimeType, answerImageBase64, answerMimeType, answerText } = req.body;
+    const { imageBase64, mimeType, answerImageBase64, answerMimeType, answerText, mode } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing imageBase64" });
     }
 
-    let prompt = `
+    const isSingle = mode === 'single';
+
+    let prompt = ``;
+    if (isSingle) {
+      prompt += `
+识别我提供的图片中的题目文本及手写内容。
+【重要指令】：当前为单题提取模式。请不要将图片切分为多道题，只将其中的最核心的一道题完整提取出来，作为一个整体题目返回。
+我提供了一张【学生试卷/作业图片】（第一张图）。
+`;
+    } else {
+      prompt += `
 识别我提供的图片中的所有独立大题或子题（如"20."、"21."、"22."等）。
 我提供了一张【学生试卷/作业图片】（第一张图）。
 `;
+    }
     if (answerImageBase64) {
       prompt += `另外，我提供了一张对应的【标准答案参考图片】（第二张图）。请务必对照两张图，将同一道题的题干、学生手写作答以及参考的标准答案进行一一匹配提取。\n`;
     }

@@ -20,6 +20,8 @@ router.get("/user/info", requireAuth, userCtrl.getUserInfo);
 router.post("/user/redeem", requireAuth, userCtrl.redeemCode);
 router.post("/user/pay", requireAuth, userCtrl.initiatePayment);
 router.post("/user/pay-success", requireAuth, userCtrl.confirmPaymentSuccess);
+router.put("/user/profile", requireAuth, userCtrl.updateProfile);
+router.put("/user/password", requireAuth, userCtrl.changePassword);
 
 // ================= AI 路由 =================
 router.post("/analyze", requireAuth, checkAiLimit, aiCtrl.analyze);
@@ -33,6 +35,11 @@ router.post("/paper/variant/regenerate", requireAuth, checkAiLimit, aiCtrl.paper
 router.get("/questions", requireAuth, qCtrl.getQuestions);
 router.post("/questions", requireAuth, qCtrl.saveQuestion);
 router.delete("/questions/:id", requireAuth, qCtrl.deleteQuestion);
+router.put("/questions/:id/mastery", requireAuth, qCtrl.updateQuestionMastery);
+
+router.get("/papers", requireAuth, qCtrl.getPapers);
+router.post("/papers", requireAuth, qCtrl.savePaper);
+router.delete("/papers/:id", requireAuth, qCtrl.deletePaper);
 
 router.get("/notebooks", requireAuth, qCtrl.getNotebooks);
 router.post("/notebooks", requireAuth, qCtrl.createNotebook);

@@ -3,22 +3,65 @@ import { db, ErrorQuestion } from '../lib/db';
 import { Upload, Camera, Loader2, Sparkles, AlertCircle, RotateCw, Trash2, Plus, Check, ChevronLeft } from 'lucide-react';
 import FormattedMath from './FormattedMath';
 
+// 图片无缝拼接辅助函数
+const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{ url: string; mimeType: string }> => {
+  if (list.length === 0) throw new Error("请上传至少一张图片");
+  if (list.length === 1) return { url: list[0].url, mimeType: list[0].mimeType };
+
+  const loadImg = (src: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  };
+
+  const imgs = await Promise.all(list.map(item => loadImg(item.url)));
+  
+  // 计算合并后的 Canvas 宽度（取所有图片的最大宽度）和高度（所有图片高度累加）
+  const maxWidth = Math.max(...imgs.map(img => img.width));
+  const totalHeight = imgs.reduce((sum, img) => sum + img.height, 0);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = maxWidth;
+  canvas.height = totalHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error("Canvas 2D context not supported");
+
+  // 顺次绘制每张图片
+  let currentY = 0;
+  imgs.forEach((img) => {
+    // 居中绘制
+    const destX = (maxWidth - img.width) / 2;
+    ctx.drawImage(img, destX, currentY);
+    currentY += img.height;
+  });
+
+  return {
+    url: canvas.toDataURL(list[0].mimeType),
+    mimeType: list[0].mimeType
+  };
+};
+
 export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
+  
+  // 单图/多题下的单张图片状态
   const [imageStr, setImageStr] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
+
+  // 跨页多图模式下的图片队列状态
+  const [imageList, setImageList] = useState<{ id: string; url: string; mimeType: string }[]>([]);
+
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 错题本相关状态
   const [notebooks, setNotebooks] = useState<{ id: string; name: string }[]>([]);
   const [selectedNotebook, setSelectedNotebook] = useState<string>('');
-
-  // 标准答案相关的状态（此处仅作向下兼容定义，不再渲染UI输入项）
-  const [answerImageStr, setAnswerImageStr] = useState<string | null>(null);
-  const [answerMimeType, setAnswerMimeType] = useState<string>('image/jpeg');
-  const [answerText, setAnswerText] = useState<string>('');
-  const answerFileInputRef = useRef<HTMLInputElement>(null);
 
   // 原始图片放大查看状态
   const [isZoomed, setIsZoomed] = useState(false);
@@ -27,29 +70,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const multiFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreateNotebook = async () => {
-    const name = prompt('请输入新错题本名称：');
-    if (!name || !name.trim()) return;
-    try {
-      const token = localStorage.getItem('errorbook_token');
-      const res = await fetch('/api/notebooks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ name: name.trim() })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '创建失败');
-      setNotebooks(prev => [...prev, data]);
-      setSelectedNotebook(data.id);
-    } catch (err: any) {
-      alert(err.message || '操作失败');
-    }
-  };
-
+  // 获取错题本列表
   useEffect(() => {
     const token = localStorage.getItem('errorbook_token');
     fetch('/api/notebooks', {
@@ -66,6 +90,28 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       .catch(console.error);
   }, []);
 
+  const handleCreateNotebook = async () => {
+    const name = prompt('请输入新错题本名称：');
+    if (!name || !name.trim()) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/notebooks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '创建失败');
+      setNotebooks(prev => [...prev, data.notebook || data]);
+      setSelectedNotebook(data.notebook?.id || data.id);
+    } catch (err: any) {
+      alert(err.message || '操作失败');
+    }
+  };
+
   // Stage 2 states (extracted questions for review)
   const [extractedQuestions, setExtractedQuestions] = useState<{ subject: string; originalText: string; studentAnswer: string }[] | null>(null);
 
@@ -76,9 +122,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [errorReasons, setErrorReasons] = useState<Record<number, string>>({});
   const [expandedSolutions, setExpandedSolutions] = useState<Record<number, boolean>>({});
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Handle file upload
+  // 单图文件上传回调
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -94,7 +138,29 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     reader.readAsDataURL(file);
   };
 
-  // Rotate image 90 degrees clockwise using HTML5 Canvas
+  // 跨页多图文件上传回调
+  const handleMultiFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target?.result as string;
+        setImageList(prev => [
+          ...prev,
+          {
+            id: "img_" + Math.random().toString(36).substring(2, 9),
+            url,
+            mimeType: file.type
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // 单图模式下的 90 度旋转
   const handleRotate = () => {
     if (!imageStr) return;
     const img = new Image();
@@ -103,7 +169,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Swap width and height for 90 degree rotation
       canvas.width = img.height;
       canvas.height = img.width;
 
@@ -117,12 +182,52 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     img.src = imageStr;
   };
 
-  // Stage 1 -> Stage 2: Call Vision AI to extract text
+  // 跨页列表中的特定图片 90 度旋转
+  const handleRotateInList = (index: number) => {
+    const item = imageList[index];
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      canvas.width = img.height;
+      canvas.height = img.width;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((90 * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      const rotated = canvas.toDataURL(item.mimeType);
+      const next = [...imageList];
+      next[index] = { ...item, url: rotated };
+      setImageList(next);
+    };
+    img.src = item.url;
+  };
+
+  // 调用 AI 提取文本
   const extractQuestions = async () => {
-    if (!imageStr) return;
+    let finalImageStr = imageStr;
+    let finalMimeType = mimeType;
+
     setAnalyzing(true);
     setError(null);
     try {
+      if (uploadMode === 'crossPage') {
+        if (imageList.length === 0) {
+          throw new Error('请至少上传一张图片！');
+        }
+        // 合并多图为大长图
+        const merged = await mergeImages(imageList);
+        finalImageStr = merged.url;
+        finalMimeType = merged.mimeType;
+        // 保存合并后的图，用于后续显示和归档
+        setImageStr(merged.url);
+        setMimeType(merged.mimeType);
+      } else {
+        if (!imageStr) {
+          throw new Error('请先上传图片！');
+        }
+      }
+
       const token = localStorage.getItem('errorbook_token');
       const res = await fetch('/api/extract', {
         method: 'POST',
@@ -131,11 +236,9 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          imageBase64: imageStr,
-          mimeType,
-          answerImageBase64: answerImageStr || undefined,
-          answerMimeType,
-          answerText: answerText || undefined
+          imageBase64: finalImageStr,
+          mimeType: finalMimeType,
+          mode: uploadMode === 'multi' ? 'multi' : 'single'
         })
       });
 
@@ -162,7 +265,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     }
   };
 
-  // Stage 2 actions: Edit extracted questions list
   const handleUpdateExtracted = (idx: number, field: string, val: string) => {
     if (!extractedQuestions) return;
     const next = [...extractedQuestions];
@@ -170,20 +272,20 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     setExtractedQuestions(next);
   };
 
-  const handleAddQuestion = () => {
+  const handleAddNewQuestionCard = () => {
     setExtractedQuestions(prev => [
       ...(prev || []),
       { subject: '数学', originalText: '请输入题干内容...', studentAnswer: '' }
     ]);
   };
 
-  const handleDeleteQuestion = (idx: number) => {
+  const handleDeleteQuestionCard = (idx: number) => {
     if (!extractedQuestions) return;
     const next = extractedQuestions.filter((_, i) => i !== idx);
     setExtractedQuestions(next);
   };
 
-  // Stage 2 -> Stage 3: Call Text AI to diagnose each question
+  // 诊断各题
   const diagnoseAll = async () => {
     if (!extractedQuestions || extractedQuestions.length === 0) return;
     setStep(3);
@@ -198,7 +300,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
     const results: ErrorQuestion[] = new Array(extractedQuestions.length);
 
-    // 受控并发执行任务池定义
     const tasks = extractedQuestions.map((item, idx) => async () => {
       setDiagnosing(prev => ({ ...prev, [idx]: 'loading' }));
       try {
@@ -237,7 +338,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           studentAnswer: item.studentAnswer,
           errorDiagnosis: data.errorDiagnosis || [],
           notebookId: selectedNotebook || undefined,
-          score: data.score !== undefined ? data.score : undefined
+          score: data.score !== undefined ? data.score : undefined,
+          masteryStatus: 'not_mastered'
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'success' }));
       } catch (err: any) {
@@ -254,13 +356,14 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           studentAnswer: item.studentAnswer,
           errorDiagnosis: [],
           notebookId: selectedNotebook || undefined,
-          score: 0
+          score: 0,
+          masteryStatus: 'not_mastered'
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'error' }));
       }
     });
 
-    // 限制最大并发数为 3 的并发控制器
+    // 并发控制器（并发数限制为 3）
     const limitConcurrency = async (fns: (() => Promise<any>)[], limit: number) => {
       const executing: Promise<any>[] = [];
       for (const fn of fns) {
@@ -283,13 +386,12 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     const expanded: Record<number, boolean> = {};
     results.forEach((_, i) => {
       reasons[i] = '概念不清';
-      expanded[i] = i === 0; // Expand first by default
+      expanded[i] = i === 0;
     });
     setErrorReasons(reasons);
     setExpandedSolutions(expanded);
   };
 
-  // Checkbox functions in Stage 3
   const toggleSelectedIndex = (idx: number) => {
     const next = new Set(selectedIndexes);
     if (next.has(idx)) {
@@ -308,7 +410,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
     setExpandedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
-  // Final Stage: Save selected questions
+  // 归档保存
   const handleSave = async () => {
     if (!parsedData || parsedData.length === 0) return;
     if (selectedIndexes.size === 0) {
@@ -316,7 +418,6 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       return;
     }
 
-    // 过滤掉未勾选，以及虽然勾选了但是归类原因为“不纳入归档”的题目
     const selectedQuestions = parsedData.filter((_, idx) => {
       const isChecked = selectedIndexes.has(idx);
       const reason = errorReasons[idx] || '概念不清';
@@ -325,10 +426,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
     try {
       if (selectedQuestions.length > 0) {
-        // 合并所有选中的题目信息为一条整卷错题记录
+        // 合并所有勾选题目为 1 条错题记录
         const mergedOriginalText = selectedQuestions.map((q, idx) => {
           const text = q.originalText.trim();
-          const hasNumberPrefix = /^(?:[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六七八九十]+）)/.test(text);
+          const hasNumberPrefix = /^(?:[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六极九十]+）)/.test(text);
           return hasNumberPrefix ? text : `${idx + 1}. ${text}`;
         }).join('\n\n');
         const mergedStudentAnswer = selectedQuestions.map((q, idx) => {
@@ -377,7 +478,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           errorDiagnosis: mergedDiagnosis,
           notebookId: selectedNotebook || undefined,
           score: mergedScore,
-          status: 'pending' // 初始状态为待审核
+          status: 'pending',
+          masteryStatus: 'not_mastered'
         };
 
         await db.saveQuestion(mergedQuestion);
@@ -398,60 +500,57 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       {/* Step Indicator */}
       <div className="flex items-center justify-between mb-8 max-w-md mx-auto">
         <div className="flex flex-col items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-            }`}>1</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-500">上传与旋转</span>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1</div>
+          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">上传与设置</span>
         </div>
         <div className={`flex-1 h-0.5 mx-3 transition-colors duration-500 ${step >= 2 ? 'bg-blue-600' : 'bg-slate-100'}`} />
         <div className="flex flex-col items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-            }`}>2</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-500">内容校对</span>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>2</div>
+          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">内容校对</span>
         </div>
         <div className={`flex-1 h-0.5 mx-3 transition-colors duration-500 ${step >= 3 ? 'bg-blue-600' : 'bg-slate-100'}`} />
         <div className="flex flex-col items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-            }`}>3</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-500">名师诊断</span>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>3</div>
+          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">智能诊断</span>
         </div>
       </div>
 
       <div className="flex flex-col gap-1 mb-2">
-        <h2 className="text-2xl font-black text-slate-950 tracking-tight">
+        <h2 className="text-2xl font-black text-slate-950 tracking-tight font-sans">
           {step === 1 && '录入新错题'}
           {step === 2 && '校对题目文本'}
           {step === 3 && 'AI 智能诊断批改'}
         </h2>
-        <p className="text-sm text-slate-500">
-          {step === 1 && '上传错题图片，可自由旋转校正，使用 AI 切题识别'}
-          {step === 2 && '校对提取出的题干及作答文本，可手动增删修改，确保后续诊断精准'}
-          {step === 3 && 'AI 名师正在为您对每一道题进行核心考点梳理、标准解析与答题诊断'}
+        <p className="text-sm text-slate-500 font-medium">
+          {step === 1 && '选择拍照录题的模式，上传图片并关联错题本'}
+          {step === 2 && '校对 OCR 提取的题目与作答文字，修正后让 AI 分析更精准'}
+          {step === 3 && 'AI 智能为您进行步骤级诊断批改、分析薄弱考点与输出标准解析'}
         </p>
       </div>
 
       {error && (
-        <div className="bg-rose-50 text-rose-600 p-4 rounded-2xl flex gap-3 text-sm border border-rose-100">
+        <div className="bg-rose-50 text-rose-600 p-4 rounded-2xl flex gap-3 text-sm border border-rose-100 font-semibold shadow-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="font-semibold">{error}</p>
+          <p>{error}</p>
         </div>
       )}
 
-      {/* STEP 1: Upload & Rotate */}
+      {/* STEP 1: Upload & Mode Select */}
       {step === 1 && (
         <>
-          {/* 错题属性与关联设置 */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-6">
+          {/* 关联错题本 */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-5">
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span>📓</span> 归属错题本与诊断设置
+              <span>📓</span> 错题本归属设置
             </h3>
             
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">选择错题本</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择错题本</label>
               <div className="flex gap-2 items-center">
                 <select
                   value={selectedNotebook}
                   onChange={e => setSelectedNotebook(e.target.value)}
-                  className="flex-1 p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700"
+                  className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700"
                 >
                   <option value="">-- 请选择归属错题本 (选填，留空归入未分类) --</option>
                   {notebooks.map(nb => (
@@ -467,67 +566,256 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 </button>
               </div>
             </div>
-
-
           </div>
 
-          {!imageStr ? (
-            <div className="bg-white border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-12 flex flex-col items-center justify-center text-center shadow-sm">
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-sm shadow-blue-500/10">
-                <Camera className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-1">拍照或上传错题图片</h3>
-              <p className="text-xs text-slate-500 mb-6 max-w-xs leading-relaxed">精准识别印刷体与手写体，分步骤进行多题自动切题识别</p>
-
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-              />
-
+          {/* Mode Selector Tab */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
+            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/10"
+                type="button"
+                onClick={() => {
+                  setUploadMode('single');
+                  setImageStr(null);
+                  setImageList([]);
+                }}
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  uploadMode === 'single'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                    : 'text-slate-555 hover:text-slate-800'
+                }`}
               >
-                <Upload className="w-4 h-4" /> 选择本地图片
+                <span>单题录入</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadMode('multi');
+                  setImageStr(null);
+                  setImageList([]);
+                }}
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  uploadMode === 'multi'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                    : 'text-slate-555 hover:text-slate-800'
+                }`}
+              >
+                <span>多题录入</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadMode('crossPage');
+                  setImageStr(null);
+                  setImageList([]);
+                }}
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  uploadMode === 'crossPage'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                    : 'text-slate-555 hover:text-slate-800'
+                }`}
+              >
+                <span>跨页合并录入</span>
               </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 overflow-hidden relative shadow-sm flex flex-col items-center">
-                <img src={imageStr} alt="Uploaded" className="w-full max-h-96 object-contain rounded-xl" />
+            
+            <p className="text-[10px] text-slate-400 pl-0.5 leading-relaxed">
+              {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，AI 将以单题最高精度和聚焦深度提取题干与公式。'}
+              {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，AI 会自动寻找题号并进行切题分题，供您挑选。'}
+              {uploadMode === 'crossPage' && '💡 适用于试卷折叠、错题过长跨越两面等，上传多张图后前端将在 Canvas 中顺次无缝拼接后再做提取。'}
+            </p>
+          </div>
 
-                <div className="flex gap-2 mt-3 w-full justify-between px-1">
+          {/* Upload Area for Single/Multi Mode */}
+          {uploadMode !== 'crossPage' && (
+            <>
+              {!imageStr ? (
+                <div className="bg-white border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-3xl p-12 flex flex-col items-center justify-center text-center shadow-sm">
+                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-sm shadow-blue-500/10">
+                    <Camera className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 mb-1">上传试卷/错题单张图片</h3>
+                  <p className="text-xs text-slate-500 mb-6 max-w-xs leading-relaxed">
+                    支持识别各类印刷公式、中英文题干以及学生手写作答内容
+                  </p>
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                  />
+
                   <button
-                    onClick={handleRotate}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
-                    title="顺时针旋转90°"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/10 cursor-pointer"
                   >
-                    <RotateCw className="w-3.5 h-3.5" /> 顺时针旋转 90°
-                  </button>
-                  <button
-                    onClick={() => { setImageStr(null); setExtractedQuestions(null); }}
-                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2.5 rounded-xl text-xs font-bold transition"
-                  >
-                    重新上传
+                    <Upload className="w-4 h-4" /> 选择本地图片
                   </button>
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-white p-4 rounded-3xl border border-slate-200 overflow-hidden relative shadow-sm flex flex-col items-center">
+                    <img src={imageStr} alt="Uploaded" className="w-full max-h-96 object-contain rounded-2xl" />
+
+                    <div className="flex gap-2 mt-4 w-full justify-between px-1">
+                      <button
+                        onClick={handleRotate}
+                        className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="顺时针旋转90°"
+                      >
+                        <RotateCw className="w-3.5 h-3.5" /> 顺时针旋转 90°
+                      </button>
+                      <button
+                        onClick={() => { setImageStr(null); setExtractedQuestions(null); }}
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                      >
+                        重新上传
+                      </button>
+                    </div>
+                  </div>
+
+                  {!analyzing ? (
+                    <button
+                      onClick={extractQuestions}
+                      className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition text-sm cursor-pointer"
+                    >
+                      <Sparkles className="w-4.5 h-4.5" /> 开始 AI 切题提取文本
+                    </button>
+                  ) : (
+                    <div className="bg-white p-8 rounded-3xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
+                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                      <p className="text-slate-750 font-bold tracking-wide animate-pulse text-xs">AI 正在分析图片并提取题干与作答步骤中，请稍候...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Upload Area for Cross Page Mode */}
+          {uploadMode === 'crossPage' && (
+            <div className="space-y-4">
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>🖼️</span> 跨页多图拼接队列 ({imageList.length}张)
+                  </h3>
+                  <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-bold">按顺序由上到下拼接</span>
+                </div>
+
+                {imageList.length === 0 ? (
+                  <div 
+                    onClick={() => multiFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-3xl p-12 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/20 shadow-sm"
+                  >
+                    <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                      <Plus className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold text-slate-700">选择要拼接的跨页错题多图</span>
+                    <span className="text-[11px] text-slate-400 mt-1.5 max-w-xs leading-relaxed">
+                      支持一次框选上传多张。上传后可以进行上移/下移排序、旋转校正以及删除。
+                    </span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {imageList.map((item, index) => (
+                      <div key={item.id} className="bg-slate-50/50 border border-slate-200 rounded-2xl p-2.5 flex flex-col relative group">
+                        <div className="relative aspect-[3/4] rounded-lg overflow-hidden border border-slate-200 bg-white">
+                          <img src={item.url} alt="thumbnail" className="w-full h-full object-contain" />
+                          <span className="absolute top-1.5 left-1.5 bg-slate-900/70 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">
+                            {index + 1}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between gap-1.5 mt-2.5">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => {
+                              const next = [...imageList];
+                              [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                              setImageList(next);
+                            }}
+                            className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 disabled:opacity-40 p-1.5 rounded-lg flex-1 flex justify-center cursor-pointer font-bold text-xs"
+                            title="上移"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === imageList.length - 1}
+                            onClick={() => {
+                              const next = [...imageList];
+                              [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                              setImageList(next);
+                            }}
+                            className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 disabled:opacity-40 p-1.5 rounded-lg flex-1 flex justify-center cursor-pointer font-bold text-xs"
+                            title="下移"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRotateInList(index)}
+                            className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 p-1.5 rounded-lg flex-1 flex justify-center cursor-pointer"
+                            title="顺时针旋转90°"
+                          >
+                            <RotateCw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = imageList.filter((_, i) => i !== index);
+                              setImageList(next);
+                            }}
+                            className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-650 p-1.5 rounded-lg flex-1 flex justify-center cursor-pointer"
+                            title="移除此图"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Add More button */}
+                    <div 
+                      onClick={() => multiFileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/20 aspect-[3/4] h-full justify-self-center min-w-[120px] justify-center"
+                    >
+                      <Plus className="w-5 h-5 text-slate-400" />
+                      <span className="text-[10px] font-bold text-slate-500 mt-1">追加上传下一页</span>
+                    </div>
+                  </div>
+                )}
+                
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  ref={multiFileInputRef}
+                  onChange={handleMultiFileChange}
+                />
               </div>
 
-              {!analyzing ? (
-                <button
-                  onClick={extractQuestions}
-                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition"
-                >
-                  <Sparkles className="w-5 h-5" /> 开始 AI 切题提取文本
-                </button>
-              ) : (
-                <div className="bg-white p-8 rounded-2xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
-                  <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                  <p className="text-slate-700 font-semibold tracking-wide animate-pulse">AI 正在精准分析图片并提取题干与手写答题内容...</p>
-                </div>
+              {imageList.length > 0 && (
+                <>
+                  {!analyzing ? (
+                    <button
+                      onClick={extractQuestions}
+                      className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition text-sm cursor-pointer"
+                    >
+                      <Sparkles className="w-4.5 h-4.5" /> 合并拼接并提取文本
+                    </button>
+                  ) : (
+                    <div className="bg-white p-8 rounded-3xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
+                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                      <p className="text-slate-750 font-bold tracking-wide animate-pulse text-xs">正在将多张图片在 Canvas 中拼接，并开始 AI 长图文本提取，请稍候...</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -549,10 +837,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
                   <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                    原始试卷图片对照
+                    对照参考原图
                   </span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2.5 py-0.5 rounded-full">
-                    对照预览
+                    {uploadMode === 'crossPage' ? '拼接长图' : '单页图'}
                   </span>
                 </div>
                 {imageStr && (
@@ -560,13 +848,13 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                     <img
                       src={imageStr}
                       alt="Uploaded Original"
-                      className="w-full h-auto object-contain max-h-none transition-transform duration-200"
+                      className="w-full h-auto object-contain max-h-none transition-transform duration-205"
                     />
                     <button
                       onClick={() => setIsZoomed(true)}
                       className="absolute bottom-3 right-3 bg-slate-900/80 hover:bg-slate-900 text-white p-2.5 rounded-full transition shadow-md flex items-center gap-1 text-[10px] font-bold select-none cursor-pointer"
                     >
-                      <span>🔍 放大对照图片</span>
+                      <span>🔍 放大对照原图</span>
                     </button>
                   </div>
                 )}
@@ -578,13 +866,13 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
               {extractedQuestions.map((eq, idx) => (
                 <div key={idx} className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-sm relative">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <span className="text-sm font-black text-slate-900 font-sans">题目卡片 #{idx + 1}</span>
+                    <span className="text-xs font-black text-slate-900 font-sans">题目卡片 #{idx + 1}</span>
 
                     <div className="flex items-center gap-3">
                       <select
                         value={eq.subject}
                         onChange={e => handleUpdateExtracted(idx, 'subject', e.target.value)}
-                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"
+                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none"
                       >
                         <option value="数学">数学</option>
                         <option value="物理">物理</option>
@@ -595,8 +883,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       </select>
 
                       <button
-                        onClick={() => handleDeleteQuestion(idx)}
-                        className="text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                        onClick={() => handleDeleteQuestionCard(idx)}
+                        className="text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
                         title="删除此题"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -604,13 +892,12 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                     </div>
                   </div>
 
-                  {/* Original Question Textarea */}
+                  {/* Question Textarea */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500">题干内容 (印刷体文本，公式使用 $ 符号包围)：</label>
+                    <label className="text-[11px] font-bold text-slate-500">题干内容 (印刷体文字，LaTeX公式使用 $ 符号包围)：</label>
 
-                    {/* LaTeX Preview */}
                     {eq.originalText && (
-                      <div className="w-full p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm leading-relaxed text-slate-700">
+                      <div className="w-full p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs leading-relaxed text-slate-700 font-medium">
                         <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide block mb-1">渲染预览</span>
                         <FormattedMath text={eq.originalText} />
                       </div>
@@ -620,19 +907,18 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       rows={4}
                       value={eq.originalText}
                       onChange={e => handleUpdateExtracted(idx, 'originalText', e.target.value)}
-                      className="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y font-mono"
-                      placeholder="输入本题的题干内容..."
+                      className="w-full p-3.5 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y font-mono"
+                      placeholder="输入该题目的题干内容..."
                     />
                   </div>
 
                   {/* Student Answer Textarea */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500">学生作答内容 (手写提取文本，留空则无需步骤批改)：</label>
+                    <label className="text-[11px] font-bold text-slate-500">学生作答 (手写提取文本，留空则无需步骤诊断批改)：</label>
 
-                    {/* LaTeX 实时公式预览 */}
                     {eq.studentAnswer && (
-                      <div className="w-full p-3 bg-rose-50/30 border border-rose-100/50 rounded-xl text-sm leading-relaxed text-slate-700">
-                        <span className="text-[10px] font-bold text-rose-450 uppercase tracking-wide block mb-1">学生作答实时渲染预览</span>
+                      <div className="w-full p-3 bg-rose-50/30 border border-rose-100/50 rounded-xl text-xs leading-relaxed text-slate-700 font-medium">
+                        <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wide block mb-1">学生作答实时渲染预览</span>
                         <FormattedMath text={eq.studentAnswer} />
                       </div>
                     )}
@@ -641,8 +927,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       rows={3}
                       value={eq.studentAnswer}
                       onChange={e => handleUpdateExtracted(idx, 'studentAnswer', e.target.value)}
-                      className="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
-                      placeholder="如：解：第1步...（若学生未作答可置空）"
+                      className="w-full p-3.5 bg-slate-50/50 border border-slate-200 rounded-2xl text-xs font-semibold leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
+                      placeholder="如：解：由题意可得... (如果无学生作答此字段可留空)"
                     />
                   </div>
                 </div>
@@ -650,10 +936,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
               <div className="flex gap-4">
                 <button
-                  onClick={handleAddQuestion}
-                  className="flex-1 bg-white hover:bg-slate-50 text-slate-700 py-3.5 border-2 border-dashed border-slate-200 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                  onClick={handleAddNewQuestionCard}
+                  className="flex-1 bg-white hover:bg-slate-50 text-slate-700 py-3.5 border-2 border-dashed border-slate-200 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> 添加一道题目
+                  <Plus className="w-4 h-4" /> 追加手动添加一道题目
                 </button>
               </div>
             </div>
@@ -662,14 +948,14 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           <div className="flex gap-4 pt-4">
             <button
               onClick={() => setStep(1)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-4.5 rounded-2xl font-bold text-sm flex items-center gap-1.5 transition"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-4.5 rounded-2xl font-bold text-sm flex items-center gap-1.5 transition cursor-pointer"
             >
-              <ChevronLeft className="w-4 h-4" /> 返回重选
+              <ChevronLeft className="w-4 h-4" /> 返回重选图片
             </button>
 
             <button
               onClick={diagnoseAll}
-              className="flex-1 bg-blue-600 text-white py-4.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 hover:bg-blue-700 transition text-sm"
+              className="flex-1 bg-blue-600 text-white py-4.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 hover:bg-blue-700 transition text-sm cursor-pointer"
             >
               <Check className="w-4 h-4" /> 确认文本无误，开始智能诊断
             </button>
@@ -680,28 +966,28 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       {/* STEP 3: Diagnose Progress & Results */}
       {step === 3 && (
         <div className="space-y-6">
-          {/* Progress List */}
+          {/* Progress Loading List */}
           {!parsedData && (
             <div className="bg-white p-8 rounded-3xl border border-slate-200 space-y-4 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900 mb-3">AI 诊断进度详情</h3>
+              <h3 className="text-xs font-black text-slate-900 mb-3 uppercase tracking-wider">AI 名师诊断进度详情</h3>
               <div className="space-y-3">
                 {extractedQuestions?.map((item, idx) => {
                   const status = diagnosing[idx] || 'pending';
                   return (
-                    <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl text-xs border border-slate-150">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-700">题目 #{idx + 1}</span>
+                    <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-150 rounded-2xl text-xs font-semibold">
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-bold text-slate-750">题目 #{idx + 1}</span>
                         <span className="text-[10px] text-slate-400 max-w-[200px] truncate">({item.originalText})</span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 font-bold">
+                      <div className="flex items-center gap-1.5 font-bold text-[11px]">
                         {status === 'pending' && (
                           <span className="text-slate-400">等待诊断...</span>
                         )}
                         {status === 'loading' && (
                           <>
                             <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                            <span className="text-blue-600">正在分析诊断...</span>
+                            <span className="text-blue-600">正在分析诊断步骤...</span>
                           </>
                         )}
                         {status === 'success' && (
@@ -744,23 +1030,23 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                     <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                       <div className="flex items-center gap-3">
                         <input
-                          type="checkbox"
-                          checked={isSelected && !isExcluded}
-                          disabled={isExcluded}
-                          onChange={() => toggleSelectedIndex(idx)}
-                          className="w-5 h-5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                           type="checkbox"
+                           checked={isSelected && !isExcluded}
+                           disabled={isExcluded}
+                           onChange={() => toggleSelectedIndex(idx)}
+                           className="w-5 h-5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         />
-                        <span className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-900 flex items-center gap-2 font-sans">
                           题目 #{idx + 1}
                           {isExcluded && (
-                            <span className="text-[10px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-lg border border-rose-100 font-bold">不纳入归档</span>
+                            <span className="text-[10px] bg-rose-50 text-rose-650 px-2 py-0.5 rounded-lg border border-rose-100 font-bold">不纳入归档</span>
                           )}
                           {q.score !== undefined && !isExcluded && (
                             <span className={`text-[10px] px-2.5 py-0.5 rounded-lg border font-black ${q.score >= 90
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                                 : q.score >= 60
                                   ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                  : 'bg-rose-50 text-rose-700 border-rose-100'
+                                  : 'bg-rose-50 text-rose-750 border-rose-100'
                               }`}>
                               AI 评卷得分: {q.score}分
                             </span>
@@ -774,14 +1060,14 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
                     {/* Question Text */}
                     <div className="space-y-2">
-                      <FormattedMath text={q.originalText} className="text-slate-900 font-bold" />
+                      <FormattedMath text={q.originalText} className="text-slate-900 font-bold text-xs" />
                     </div>
 
                     {/* Knowledge Points */}
                     {q.knowledgePoints && q.knowledgePoints.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {q.knowledgePoints.map((p, pIdx) => (
-                          <span key={pIdx} className="text-[10px] bg-slate-50 text-slate-500 px-2.5 py-1 rounded-xl border border-slate-100 font-bold">
+                          <span key={pIdx} className="text-[10px] bg-slate-50 text-slate-555 px-2.5 py-1 rounded-xl border border-slate-100 font-bold">
                             # {p}
                           </span>
                         ))}
@@ -793,52 +1079,52 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       <div className="pt-4 border-t border-slate-100">
                         <button
                           onClick={() => toggleSolutionExpanded(idx)}
-                          className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition outline-none"
+                          className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition outline-none cursor-pointer"
                         >
                           <span>{expandedSolutions[idx] ? '▼ 收起本题名师精解' : '▶ 展开本题名师精解'}</span>
                         </button>
                         {expandedSolutions[idx] && (
-                          <div className="mt-3 p-4 bg-slate-50/50 border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-800">
+                          <div className="mt-3 p-4 bg-slate-50/50 border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-800 font-medium">
                             <FormattedMath text={q.solution} />
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Step diagnosis specific to this question */}
+                    {/* Step Diagnosis */}
                     {q.errorDiagnosis && q.errorDiagnosis.length > 0 && (
                       <div className="pt-4 border-t border-slate-100 space-y-3">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                          <span>📝</span> 本题手写作答 AI 步骤诊断批改
+                          <span>📝</span> 手写作答 AI 步骤诊断批改
                         </h4>
                         <div className="grid grid-cols-1 gap-3">
-                          {q.errorDiagnosis.map((step: any) => {
+                          {q.errorDiagnosis.map((stepItem: any) => {
                             let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
                             let statusIcon = "✅";
                             let statusText = "正确";
 
-                            if (step.status === 'incorrect') {
+                            if (stepItem.status === 'incorrect') {
                               statusColor = "bg-rose-50 border-rose-100 text-rose-800";
                               statusIcon = "❌";
                               statusText = "首次出现错误";
-                            } else if (step.status === 'consequential_error') {
+                            } else if (stepItem.status === 'consequential_error') {
                               statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
                               statusIcon = "⚠️";
                               statusText = "受前面错误波及";
                             }
 
                             return (
-                              <div key={step.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1`}>
+                              <div key={stepItem.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1.5`}>
                                 <div className="flex items-center justify-between text-xs font-extrabold">
-                                  <span>步骤 {step.stepNumber} {statusIcon}</span>
+                                  <span>步骤 {stepItem.stepNumber} {statusIcon}</span>
                                   <span>{statusText}</span>
                                 </div>
-                                <div className="text-sm font-semibold leading-relaxed">
-                                  <FormattedMath text={step.stepContent} />
+                                <div className="text-xs font-semibold leading-relaxed">
+                                  <FormattedMath text={stepItem.stepContent} />
                                 </div>
-                                {step.comment && (
-                                  <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
-                                    诊断说明：{step.comment}
+                                {stepItem.comment && (
+                                  <div className="text-xs mt-2 pt-2 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                    诊断说明：{stepItem.comment}
                                   </div>
                                 )}
                               </div>
@@ -848,7 +1134,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       </div>
                     )}
 
-                    {/* Individual Error Reason Selection */}
+                    {/* Reason Selection */}
                     <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
                       <label className="text-xs font-bold text-slate-450 whitespace-nowrap">归档错误原因：</label>
                       <select
@@ -871,14 +1157,14 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
               <div className="flex gap-4 pt-4">
                 <button
                   onClick={() => setStep(2)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-4.5 rounded-2xl font-bold text-sm flex items-center gap-1.5 transition"
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-4.5 rounded-2xl font-bold text-sm flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> 重新编辑文本
                 </button>
 
                 <button
                   onClick={handleSave}
-                  className="flex-1 bg-slate-900 hover:bg-slate-955 text-white py-4.5 rounded-2xl font-bold transition shadow-lg shadow-slate-900/10 text-sm"
+                  className="flex-1 bg-slate-900 hover:bg-slate-950 text-white py-4.5 rounded-2xl font-bold transition shadow-lg shadow-slate-900/10 text-sm cursor-pointer"
                 >
                   保存并批量归档选中的错题 ({selectedIndexes.size} 道)
                 </button>
@@ -888,7 +1174,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         </div>
       )}
 
-      {/* 原始图片放大平滑缩放与拖拽弹窗 */}
+      {/* zoom overlay modal */}
       {isZoomed && (
         <div className="fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 select-none">
           <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
@@ -914,7 +1200,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
               onClick={() => { setIsZoomed(false); setScale(1); setPosition({ x: 0, y: 0 }); }}
               className="bg-rose-600 hover:bg-rose-700 text-white px-4 h-9 rounded-xl font-bold flex items-center justify-center transition text-xs cursor-pointer"
             >
-              关闭 (ESC)
+              关闭
             </button>
           </div>
 

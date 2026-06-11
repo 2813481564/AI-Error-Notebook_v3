@@ -72,14 +72,17 @@ export const saveSystemSettings = (req: express.Request, res: express.Response) 
     ];
     
     let isAiChanged = false;
+    console.log("[DEBUG Save Settings] Comparing AI Keys:");
     for (const key of keysToCheck) {
       const newValue = settings[key] !== undefined ? String(settings[key]) : "";
       const oldValue = current[key] || "";
+      console.log(` - Key [${key}]: Front newValue="${newValue}" vs DB oldValue="${oldValue}"`);
       if (newValue !== oldValue) {
+        console.log(`   -> Change detected on key: ${key}!`);
         isAiChanged = true;
-        break;
       }
     }
+    console.log(`[DEBUG Save Settings] isAiChanged = ${isAiChanged}, remark = "${remark}"`);
     
     // 使用事务保障原子性
     const tx = db.transaction(() => {
@@ -96,6 +99,7 @@ export const saveSystemSettings = (req: express.Request, res: express.Response) 
         const visionModel = String(settings.AI_VISION_MODEL || "");
         const geminiModel = String(settings.GEMINI_MODEL || "");
         
+        console.log("[DEBUG Save Settings] Inserting to ai_setting_history...");
         db.prepare(`
           INSERT INTO ai_setting_history (
             provider, apiBaseUrl, apiKey, geminiApiKey, model, visionModel, geminiModel, remark, createdAt

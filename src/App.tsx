@@ -9,8 +9,10 @@ import PublicQuestionLibrary from './components/PublicQuestionLibrary';
 import VipCenter from './components/VipCenter';
 import SystemSettings from './components/SystemSettings';
 import AnnouncementManagement from './components/AnnouncementManagement';
+import CreatePaperExercise from './components/CreatePaperExercise';
+import SavedPapers from './components/SavedPapers';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'publicLibrary' | 'vipCenter' | 'settings' | 'announcements';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'publicLibrary' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -217,12 +219,12 @@ export default function App() {
   if (!token) {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f4f6f9] font-sans text-slate-700 p-4 md:p-6 overflow-y-auto">
-        
+
         {/* Main Card Container */}
         <div className="w-full max-w-[960px] min-h-[560px] bg-white rounded-[24px] shadow-xl shadow-slate-200/50 flex overflow-hidden border border-slate-100/80">
-          
+
           {/* Left Intro Pane (Hidden on Mobile) */}
-          <div 
+          <div
             className="hidden md:flex w-[42%] flex-col justify-between p-10 bg-[#f0f6ff] relative select-none shrink-0"
             style={{
               backgroundImage: 'radial-gradient(#c7dffc 1.2px, transparent 1.2px)',
@@ -298,7 +300,7 @@ export default function App() {
           {/* Right Form Pane */}
           <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-white">
             <div className="w-full max-w-[360px] mx-auto space-y-6">
-              
+
               {/* Form Header */}
               <div>
                 <h2 className="text-[26px] font-black text-slate-800 tracking-tight">
@@ -327,7 +329,7 @@ export default function App() {
               {isRegisterMode ? (
                 // ================= 注册表单 =================
                 <form onSubmit={handleRegister} className="space-y-4">
-                  
+
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 pl-1 block">
                       QQ 邮箱
@@ -405,7 +407,7 @@ export default function App() {
               ) : (
                 // ================= 登录表单 =================
                 <form onSubmit={handleAuth} className="space-y-4">
-                  
+
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 pl-1 block">
                       用户名
@@ -523,7 +525,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1.5">
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <button
             onClick={() => setCurrentView('dashboard')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'dashboard'
@@ -532,21 +534,8 @@ export default function App() {
               }`}
           >
             <Home className="w-4 h-4" />
-            <span>首页统计</span>
+            <span>首页</span>
           </button>
-
-          {role !== 'student' && (
-            <button
-              onClick={() => setCurrentView('add')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'add'
-                ? 'bg-blue-50 text-blue-700 shadow-sm'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`}
-            >
-              <Camera className="w-4 h-4" />
-              <span>拍照录题</span>
-            </button>
-          )}
 
           <button
             onClick={() => setCurrentView('library')}
@@ -556,7 +545,40 @@ export default function App() {
               }`}
           >
             <Database className="w-4 h-4" />
-            <span>错题库管理</span>
+            <span>我的错题本</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('add')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'add'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+          >
+            <Camera className="w-4 h-4" />
+            <span>上传错题</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('exercise')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'exercise'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>组卷练习</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('papers')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'papers'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>我的试卷</span>
           </button>
 
           {role !== 'student' && (
@@ -632,11 +654,8 @@ export default function App() {
             <div className="absolute right-3 top-3.5 text-white/40 group-hover:text-white transition-colors">
               <HelpCircle className="w-4 h-4" />
             </div>
-            <p className="text-[10px] tracking-wider font-bold text-slate-400 uppercase mb-1">SQLite 数据库</p>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <p className="text-xs font-semibold">存储状态: 已连接 (多用户隔离)</p>
-            </div>
+            <p className="text-[10px] tracking-wider font-bold text-slate-400 uppercase mb-1">智能错题本</p>
+
             <div className="mt-2.5 pt-2.5 border-t border-white/10 flex flex-col gap-0.5 text-[10px]">
               <div className="flex justify-between">
                 <span className="text-slate-400">账号:</span>
@@ -711,6 +730,26 @@ export default function App() {
                 }}
               />
             )}
+            {currentView === 'exercise' && (
+              <CreatePaperExercise
+                onNavigate={setCurrentView}
+                onGeneratePaper={(selected) => {
+                  setPaperQuestions(selected);
+                  setPaperSourceView('exercise');
+                  setCurrentView('paper');
+                }}
+              />
+            )}
+            {currentView === 'papers' && (
+              <SavedPapers
+                onNavigate={setCurrentView}
+                onOpenPaper={(selected) => {
+                  setPaperQuestions(selected);
+                  setPaperSourceView('papers');
+                  setCurrentView('paper');
+                }}
+              />
+            )}
             {currentView === 'publicLibrary' && role !== 'student' && (
               <PublicQuestionLibrary
                 onNavigate={setCurrentView}
@@ -753,7 +792,7 @@ export default function App() {
               active={currentView === 'users'}
               onClick={() => setCurrentView('users')}
             />
-          ) : role !== 'student' ? (
+          ) : (
             <div className="relative -top-5">
               <button
                 onClick={() => setCurrentView('add')}
@@ -762,7 +801,7 @@ export default function App() {
                 <Camera className="w-6 h-6" />
               </button>
             </div>
-          ) : null}
+          )}
           <NavItem
             icon={<Database className="w-5 h-5" />} label="错题库"
             active={currentView === 'library'}
