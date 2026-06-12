@@ -337,26 +337,27 @@ const saveFinalQuestionsToLibrary = async (
   imageUrl: string, 
   notebookId: string | null
 ) => {
-  if (diagnosedQuestions.length === 0) return;
+  const activeQuestions = diagnosedQuestions.filter(q => q.errorReason !== '不纳入归档');
+  if (activeQuestions.length === 0) return;
 
   // 合并为一条错题记录保存
-  const mergedOriginalText = diagnosedQuestions.map((q, idx) => {
+  const mergedOriginalText = activeQuestions.map((q, idx) => {
     const text = q.originalText.trim();
     const hasNumberPrefix = /^(?:[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六极九十]+）)/.test(text);
     return hasNumberPrefix ? text : `${idx + 1}. ${text}`;
   }).join('\n\n');
 
-  const mergedStudentAnswer = diagnosedQuestions.map((q, idx) => {
+  const mergedStudentAnswer = activeQuestions.map((q, idx) => {
     if (!q.studentAnswer) return '';
     return `### 第${idx + 1}题学生作答\n${q.studentAnswer.trim()}`;
   }).filter(Boolean).join('\n\n');
 
-  const mergedSolution = diagnosedQuestions.map((q, idx) => `### 第${idx + 1}题解析\n${q.solution.trim()}`).join('\n\n');
-  const mergedKp = Array.from(new Set(diagnosedQuestions.flatMap(q => q.knowledgePoints || [])));
+  const mergedSolution = activeQuestions.map((q, idx) => `### 第${idx + 1}题解析\n${q.solution.trim()}`).join('\n\n');
+  const mergedKp = Array.from(new Set(activeQuestions.flatMap(q => q.knowledgePoints || [])));
 
   const mergedDiagnosis: any[] = [];
   let stepCount = 1;
-  diagnosedQuestions.forEach((q, qIdx) => {
+  activeQuestions.forEach((q, qIdx) => {
     if (q.errorDiagnosis && q.errorDiagnosis.length > 0) {
       q.errorDiagnosis.forEach((step: any) => {
         mergedDiagnosis.push({
@@ -369,8 +370,9 @@ const saveFinalQuestionsToLibrary = async (
     }
   });
 
-  const scores = diagnosedQuestions.map(q => q.score).filter(s => s !== undefined) as number[];
+  const scores = activeQuestions.map(q => q.score).filter(s => s !== undefined) as number[];
   const mergedScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const mergedErrorReason = Array.from(new Set(activeQuestions.map(q => q.errorReason || '概念不清'))).join(', ');
 
   const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString();
 
@@ -385,9 +387,9 @@ const saveFinalQuestionsToLibrary = async (
     userId,
     imageUrl || null,
     mergedOriginalText,
-    diagnosedQuestions[0].subject || '数学',
+    activeQuestions[0].subject || '数学',
     JSON.stringify(mergedKp),
-    '概念不清',
+    mergedErrorReason,
     mergedSolution,
     Date.now(),
     mergedStudentAnswer,

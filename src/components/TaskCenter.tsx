@@ -31,6 +31,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
   const [reviewStep, setReviewStep] = useState<2 | 3 | null>(null);
   const [reviewPayload, setReviewPayload] = useState<any>(null);
   const [selectedNotebook, setSelectedNotebook] = useState<string>('');
+  const [expandedSolutions, setExpandedSolutions] = useState<Record<number, boolean>>({});
 
   const fetchTasks = async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -102,6 +103,11 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
         : [];
       setReviewPayload(diagnosedList);
       setSelectedNotebook(task.notebookId || '');
+      const expanded: Record<number, boolean> = {};
+      diagnosedList.forEach((_, i) => {
+        expanded[i] = i === 0;
+      });
+      setExpandedSolutions(expanded);
     }
   };
 
@@ -110,6 +116,16 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
     const next = [...reviewPayload];
     next[idx] = { ...next[idx], [field]: val };
     setReviewPayload(next);
+  };
+
+  const handleUpdateErrorReason = (idx: number, val: string) => {
+    const next = [...reviewPayload];
+    next[idx] = { ...next[idx], errorReason: val };
+    setReviewPayload(next);
+  };
+
+  const toggleSolutionExpanded = (idx: number) => {
+    setExpandedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
   const handleAddNewCard = () => {
@@ -503,7 +519,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       {/* ================= STEP 3: 诊断结果与归档确认 Modal ================= */}
       {reviewStep === 3 && activeReviewTask && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-6xl w-full flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -519,64 +535,182 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Select Notebook Container */}
-              <div className="bg-blue-50/50 border border-blue-100/80 p-4.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-slate-800">
-                  <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
-                  <span className="text-xs font-bold">归档错题本选择 (必选)</span>
-                </div>
-                <select
-                  value={selectedNotebook}
-                  onChange={(e) => setSelectedNotebook(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 min-w-[200px]"
-                >
-                  <option value="">-- 请选择要归档的错题本 --</option>
-                  {notebooks.map(nb => (
-                    <option key={nb.id} value={nb.id}>{nb.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* diagnosed list */}
-              <div className="space-y-6">
-                {reviewPayload && reviewPayload.map((item: any, idx: number) => (
-                  <div key={idx} className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-black text-indigo-600 uppercase tracking-wider">
-                        题目 #{idx + 1} ({item.subject})
-                      </span>
-                      <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                        估分: {item.score}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h5 className="text-xs font-bold text-slate-500">题干内容</h5>
-                      <p className="bg-white p-3 border border-slate-100 rounded-xl text-xs font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">
-                        {item.originalText}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h5 className="text-xs font-bold text-slate-500">AI 标准解析步骤</h5>
-                      <p className="bg-white p-3 border border-slate-100 rounded-xl text-xs font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">
-                        {item.solution}
-                      </p>
-                    </div>
-
-                    {item.knowledgePoints && item.knowledgePoints.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-bold text-slate-400">考点标签:</span>
-                        {item.knowledgePoints.map((kp: string, kIdx: number) => (
-                          <span key={kIdx} className="bg-indigo-50 border border-indigo-100/50 text-indigo-600 text-[10px] font-extrabold px-2 py-0.5 rounded-md">
-                            {kp}
-                          </span>
-                        ))}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Left Column: Task Source Image */}
+                <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-0">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                    <span className="text-xs font-black text-slate-500 tracking-wider block">对照参考原图</span>
+                    {activeReviewTask.payload.imageBase64 ? (
+                      <div className="overflow-auto max-h-[60vh] rounded-xl border border-slate-200/60 flex justify-center bg-slate-100 relative group">
+                        <img 
+                          src={activeReviewTask.payload.imageBase64} 
+                          alt="Task Source" 
+                          className="w-full h-auto object-contain max-h-none"
+                        />
                       </div>
+                    ) : (
+                      <div className="py-20 text-center text-slate-400 text-xs">无可用对照图片</div>
                     )}
                   </div>
-                ))}
+                </div>
+
+                {/* Right Column: Diagnosed Question Cards and Notebook Selector */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Select Notebook Container */}
+                  <div className="bg-blue-50/50 border border-blue-100/80 p-4.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-slate-800">
+                      <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
+                      <span className="text-xs font-bold">归档错题本选择 (必选)</span>
+                    </div>
+                    <select
+                      value={selectedNotebook}
+                      onChange={(e) => setSelectedNotebook(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 min-w-[200px]"
+                    >
+                      <option value="">-- 请选择要归档的错题本 --</option>
+                      {notebooks.map(nb => (
+                        <option key={nb.id} value={nb.id}>{nb.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* diagnosed list */}
+                  <div className="space-y-6">
+                    {reviewPayload && reviewPayload.map((item: any, idx: number) => {
+                      const isExcluded = item.errorReason === '不纳入归档';
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`bg-slate-50/70 p-5 rounded-2xl border transition-all duration-300 space-y-4 relative ${
+                            isExcluded
+                              ? 'border-slate-150 bg-slate-50/40 opacity-55'
+                              : 'border-slate-200/60'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center pb-2 border-b border-slate-200/40">
+                            <span className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2">
+                              题目 #{idx + 1} ({item.subject})
+                              {isExcluded && (
+                                <span className="text-[10px] bg-rose-50 text-rose-650 px-2 py-0.5 rounded-lg border border-rose-100 font-bold">不纳入归档</span>
+                              )}
+                            </span>
+                            {item.score !== undefined && !isExcluded && (
+                              <span className={`text-[10px] px-2.5 py-0.5 rounded-lg border font-black ${item.score >= 90
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                  : item.score >= 60
+                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                    : 'bg-rose-50 text-rose-750 border-rose-100'
+                                }`}>
+                                AI 评卷得分: {item.score}分
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Question Text */}
+                          <div className="space-y-1.5">
+                            <h5 className="text-xs font-bold text-slate-505">题干内容</h5>
+                            <div className="bg-white p-3.5 border border-slate-100 rounded-xl text-xs font-medium text-slate-900 leading-relaxed">
+                              <FormattedMath text={item.originalText || '无题干内容'} />
+                            </div>
+                          </div>
+
+                          {/* Standard Solution */}
+                          {item.solution && (
+                            <div className="pt-2 border-t border-slate-200/30">
+                              <button
+                                type="button"
+                                onClick={() => toggleSolutionExpanded(idx)}
+                                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition outline-none cursor-pointer"
+                              >
+                                <span>{expandedSolutions[idx] ? '▼ 收起本题名师精解' : '▶ 展开本题名师精解'}</span>
+                              </button>
+                              {expandedSolutions[idx] && (
+                                <div className="mt-3 p-4 bg-white border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-800 font-medium">
+                                  <FormattedMath text={item.solution} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Step Diagnosis */}
+                          {item.errorDiagnosis && item.errorDiagnosis.length > 0 && !isExcluded && (
+                            <div className="pt-4 border-t border-slate-200/40 space-y-3">
+                              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                <span>📝</span> 手写作答 AI 步骤诊断批改
+                              </h4>
+                              <div className="grid grid-cols-1 gap-3">
+                                {item.errorDiagnosis.map((stepItem: any) => {
+                                  let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                                  let statusIcon = "✅";
+                                  let statusText = "正确";
+
+                                  if (stepItem.status === 'incorrect') {
+                                    statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                                    statusIcon = "❌";
+                                    statusText = "首次出现错误";
+                                  } else if (stepItem.status === 'consequential_error') {
+                                    statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                                    statusIcon = "⚠️";
+                                    statusText = "受前面错误波及";
+                                  }
+
+                                  return (
+                                    <div key={stepItem.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1.5`}>
+                                      <div className="flex items-center justify-between text-xs font-extrabold">
+                                        <span>步骤 {stepItem.stepNumber} {statusIcon}</span>
+                                        <span>{statusText}</span>
+                                      </div>
+                                      <div className="text-xs font-semibold leading-relaxed">
+                                        <FormattedMath text={stepItem.stepContent} />
+                                      </div>
+                                      {stepItem.comment && (
+                                        <div className="text-xs mt-2 pt-2 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                          诊断说明：{stepItem.comment}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Knowledge Points */}
+                          {item.knowledgePoints && item.knowledgePoints.length > 0 && !isExcluded && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-2">
+                              <span className="text-[10px] font-bold text-slate-400">考点标签:</span>
+                              {item.knowledgePoints.map((kp: string, kIdx: number) => (
+                                <span key={kIdx} className="bg-indigo-50 border border-indigo-100/50 text-indigo-600 text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                                  #{kp}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Error Reason Dropdown */}
+                          <div className="pt-4 border-t border-slate-200/40 flex items-center gap-3">
+                            <label className="text-xs font-bold text-slate-450 whitespace-nowrap">归档错误原因：</label>
+                            <select
+                              value={item.errorReason || '概念不清'}
+                              onChange={e => handleUpdateErrorReason(idx, e.target.value)}
+                              className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-xs font-bold text-slate-700 cursor-pointer"
+                            >
+                              <option value="概念不清">概念不清</option>
+                              <option value="粗心大意">粗心大意</option>
+                              <option value="思路错误">思路错误</option>
+                              <option value="完全不会">完全不会</option>
+                              <option value="其他">其他</option>
+                              <option value="不纳入归档">不纳入归档 (学生完全做对 / 无需录入)</option>
+                            </select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
               </div>
             </div>
 
