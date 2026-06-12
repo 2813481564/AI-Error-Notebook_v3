@@ -220,6 +220,16 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
     else if (currentRole === 'admin') limit = Infinity;
     else limit = parseInt(getSetting("LIMIT_USER", "30"));
 
+    // 计算错题容量上限 (0表示无限制)
+    let capacityLimit = 50;
+    if (currentRole === 'admin') capacityLimit = 0;
+    else if (currentRole === 'svip') capacityLimit = parseInt(getSetting("CAPACITY_SVIP", "0"));
+    else if (currentRole === 'vip') capacityLimit = parseInt(getSetting("CAPACITY_VIP", "500"));
+    else capacityLimit = parseInt(getSetting("CAPACITY_USER", "50"));
+
+    const countRow = db.prepare("SELECT COUNT(*) as count FROM questions WHERE userId = ?").get(username) as { count: number } | undefined;
+    const questionCount = countRow ? countRow.count : 0;
+
     // 如果天数变了，使用次数今天重置
     let usedToday = user.aiUsedToday;
     if (user.lastAiResetDate !== today) {
@@ -233,6 +243,8 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
       aiUsedToday: usedToday,
       aiLimit: limit,
       aiRemaining: limit === Infinity ? "无限" : Math.max(0, limit - usedToday),
+      capacityLimit,
+      questionCount,
       nickname: user.nickname || null,
       avatar: user.avatar || null
     });
@@ -273,6 +285,10 @@ export const getVipContact = (req: express.Request, res: express.Response) => {
     const limitVip = getSetting("LIMIT_VIP", "100");
     const limitSvip = getSetting("LIMIT_SVIP", "300");
 
+    const capacityUser = getSetting("CAPACITY_USER", "50");
+    const capacityVip = getSetting("CAPACITY_VIP", "500");
+    const capacitySvip = getSetting("CAPACITY_SVIP", "0");
+
     res.json({
       wechatQr,
       wechatId,
@@ -286,7 +302,10 @@ export const getVipContact = (req: express.Request, res: express.Response) => {
       priceSvipMonth,
       priceSvipYear,
       limitVip,
-      limitSvip
+      limitSvip,
+      capacityUser,
+      capacityVip,
+      capacitySvip
     });
   } catch (error: any) {
     console.error("Get Vip Contact Error:", error);

@@ -134,9 +134,9 @@ export default function WeeklyReportModal({ username, onClose }: WeeklyReportMod
   const masteryRate = currentWeek.total > 0 ? Math.round((currentWeek.mastered / currentWeek.total) * 100) : 0;
 
   // 计算学科占比
-  const sortedSubjects = Object.entries(currentWeek.bySubject)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({ name, count }));
+  const sortedSubjects: { name: string; count: number }[] = Object.entries(currentWeek.bySubject || {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([name, count]) => ({ name, count: Number(count) }));
   
   const colors = [
     { bg: 'bg-gradient-to-r from-blue-500 to-cyan-400', dot: 'bg-blue-500' },

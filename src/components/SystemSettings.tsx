@@ -17,6 +17,9 @@ interface SystemSettingsData {
   LIMIT_VIP: string;
   LIMIT_SVIP: string;
   ALLOW_STUDENT_AI: string;
+  CAPACITY_USER: string;
+  CAPACITY_VIP: string;
+  CAPACITY_SVIP: string;
 }
 
 interface AiSettingHistoryItem {
@@ -49,6 +52,9 @@ export default function SystemSettings() {
     LIMIT_VIP: '100',
     LIMIT_SVIP: '300',
     ALLOW_STUDENT_AI: 'true',
+    CAPACITY_USER: '50',
+    CAPACITY_VIP: '500',
+    CAPACITY_SVIP: '0',
   });
 
   const [loading, setLoading] = useState(true);
@@ -615,19 +621,18 @@ export default function SystemSettings() {
               </div>
             )}
 
-            {/* 会员额度与限制配置 */}
             {activeTab === 'limits' && (
               <div className="space-y-6">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-800">使用额度与安全限流</h3>
-                  <p className="text-xs text-slate-400">全局分配和管控不同等级会员的每日 AI 分析次数上限</p>
+                  <p className="text-xs text-slate-400">全局分配和管控不同等级会员的每日 AI 分析次数与错题保存容量上限</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
                   {/* Limits */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500">普通用户 (User) 每日限额</label>
+                      <label className="text-xs font-bold text-slate-500">普通用户 (User) 每日 AI 限额</label>
                       <input
                         type="number"
                         value={settings.LIMIT_USER}
@@ -636,7 +641,7 @@ export default function SystemSettings() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500">黄金会员 (VIP) 每日限额</label>
+                      <label className="text-xs font-bold text-slate-500">黄金会员 (VIP) 每日 AI 限额</label>
                       <input
                         type="number"
                         value={settings.LIMIT_VIP}
@@ -645,11 +650,42 @@ export default function SystemSettings() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500">钻石会员 (SVIP) 每日限额</label>
+                      <label className="text-xs font-bold text-slate-500">钻石会员 (SVIP) 每日 AI 限额</label>
                       <input
                         type="number"
                         value={settings.LIMIT_SVIP}
                         onChange={(e) => handleInputChange('LIMIT_SVIP', e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Capacities */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500">普通用户 (User) 错题容量上限</label>
+                      <input
+                        type="number"
+                        value={settings.CAPACITY_USER}
+                        onChange={(e) => handleInputChange('CAPACITY_USER', e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500">黄金会员 (VIP) 错题容量上限</label>
+                      <input
+                        type="number"
+                        value={settings.CAPACITY_VIP}
+                        onChange={(e) => handleInputChange('CAPACITY_VIP', e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500">钻石会员 (SVIP) 错题容量上限 (0为无限)</label>
+                      <input
+                        type="number"
+                        value={settings.CAPACITY_SVIP}
+                        onChange={(e) => handleInputChange('CAPACITY_SVIP', e.target.value)}
                         className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
                       />
                     </div>

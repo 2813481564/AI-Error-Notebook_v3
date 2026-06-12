@@ -362,6 +362,9 @@ try {
   stmt.run("LIMIT_VIP", "100");
   stmt.run("LIMIT_SVIP", "300");
   stmt.run("ALLOW_STUDENT_AI", "true");
+  stmt.run("CAPACITY_USER", "50");
+  stmt.run("CAPACITY_VIP", "500");
+  stmt.run("CAPACITY_SVIP", "0");
 
   // 初始化 VIP 客服配置默认值及自定义页面文案价格等
   stmt.run("VIP_CARD_TAG", "智能错题本会员");

@@ -2,6 +2,7 @@ import express from "express";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { hashPassword } from "./authController";
+import { getSetting } from "../services/settingService";
 
 // ================= 错题管理 =================
 
@@ -86,6 +87,26 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
     // 如果错题已存在且不属于当前用户，非管理员不可修改
     if (existing && existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限修改该错题" });
+    }
+
+    // 容量上限控制
+    if (!existing && user.role !== 'admin') {
+      let capacity = 50;
+      if (user.role === 'svip') {
+        capacity = parseInt(getSetting("CAPACITY_SVIP", "0"));
+      } else if (user.role === 'vip') {
+        capacity = parseInt(getSetting("CAPACITY_VIP", "500"));
+      } else {
+        capacity = parseInt(getSetting("CAPACITY_USER", "50"));
+      }
+
+      if (capacity > 0) {
+        const countRow = db.prepare("SELECT COUNT(*) as count FROM questions WHERE userId = ?").get(req.userId) as { count: number } | undefined;
+        const currentCount = countRow ? countRow.count : 0;
+        if (currentCount >= capacity) {
+          return res.status(403).json({ error: `您的错题保存容量已达上限 (${capacity} 题)，请升级会员或清理已有错题。` });
+        }
+      }
     }
 
     const targetUserId = existing ? existing.userId : req.userId;

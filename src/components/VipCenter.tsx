@@ -9,6 +9,8 @@ interface VipCenterProps {
     aiUsedToday: number;
     aiLimit: number;
     aiRemaining: string | number;
+    capacityLimit?: number;
+    questionCount?: number;
   } | null;
   onRefresh: () => void;
   onNavigate: (view: any) => void;
@@ -28,6 +30,9 @@ interface VipContact {
   priceSvipYear?: string;
   limitVip?: string;
   limitSvip?: string;
+  capacityUser?: string;
+  capacityVip?: string;
+  capacitySvip?: string;
 }
 
 export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: VipCenterProps) {
@@ -294,7 +299,7 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
                   <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 font-bold">错题容量</span>
                     <span className="text-xs font-bold text-slate-700 mt-0.5">
-                      {userInfo?.role.toLowerCase() === 'svip' || userInfo?.role.toLowerCase() === 'admin' ? '无限' : userInfo?.role.toLowerCase() === 'vip' ? '500 题' : '50 题'}
+                      {userInfo?.capacityLimit === 0 ? `已用 ${userInfo?.questionCount || 0} / 无限制` : `已用 ${userInfo?.questionCount || 0} / ${userInfo?.capacityLimit || 50} 题`}
                     </span>
                   </div>
                 </div>
@@ -386,8 +391,12 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               {/* 错题容量 */}
               <tr>
                 <td className="p-4">错题容量</td>
-                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">无限</td>
-                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">500 题</td>
+                <td className="p-4 text-center bg-blue-50/20 text-blue-700 font-extrabold">
+                  {contact.capacitySvip === '0' || !contact.capacitySvip ? '无限' : `${contact.capacitySvip} 题`}
+                </td>
+                <td className="p-4 text-center bg-amber-50/10 text-amber-700 font-extrabold">
+                  {contact.capacityVip || '500'} 题
+                </td>
               </tr>
 
               {/* 错题本数量 */}
@@ -465,7 +474,7 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               </div>
               <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-700">错题 500 题</span>
+                <span className="text-[11px] font-bold text-slate-700">错题 {contact.capacityVip || '500'} 题</span>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2">
                 <Crown className="w-4 h-4 text-purple-600 fill-purple-200 shrink-0" />
@@ -538,7 +547,9 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               </div>
               <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-700">错题 无限</span>
+                <span className="text-[11px] font-bold text-slate-700">
+                  错题 {contact.capacitySvip === '0' || !contact.capacitySvip ? '无限' : `${contact.capacitySvip} 题`}
+                </span>
               </div>
               <div className="p-3 bg-blue-50/30 rounded-xl flex items-center gap-2">
                 <Crown className="w-4 h-4 text-purple-600 fill-purple-200 shrink-0" />
