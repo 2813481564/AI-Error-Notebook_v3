@@ -281,6 +281,111 @@ export const adminGetUsers = (req: express.Request, res: express.Response) => {
   }
 };
 
+// 8.5 获取特定用户的周度错题统计数据 (仅 admin)
+export const adminGetUserWeeklyStats = (req: express.Request, res: express.Response) => {
+  try {
+    const { username } = req.params;
+    
+    // 检查用户是否存在
+    const userExists = db.prepare("SELECT username FROM users WHERE username = ?").get(username);
+    if (!userExists) {
+      return res.status(404).json({ error: "目标用户不存在" });
+    }
+
+    // 获取该用户所有的错题
+    const stmt = db.prepare(`
+      SELECT createdAt, masteryStatus, subject 
+      FROM questions 
+      WHERE userId = ? 
+      ORDER BY createdAt DESC
+    `);
+    const rows = stmt.all(username) as { createdAt: number, masteryStatus: string, subject: string }[];
+
+    // 自然周计算辅助函数 (周一 00:00:00 至 周日 23:59:59)
+    const getMondayDateString = (timestamp: number) => {
+      const date = new Date(timestamp);
+      const day = date.getDay(); // 0 是周日, 1-6 是周一到周六
+      
+      const diffToMonday = date.getDate() - (day === 0 ? 6 : day - 1);
+      const monday = new Date(date.getTime());
+      monday.setDate(diffToMonday);
+      monday.setHours(0, 0, 0, 0);
+      
+      const sunday = new Date(monday.getTime());
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      
+      const formatDate = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dateVal = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dateVal}`;
+      };
+      
+      const mondayStr = formatDate(monday);
+      const sundayStr = formatDate(sunday);
+      const label = `${mondayStr.replace(/-/g, '.')} ~ ${sundayStr.slice(5).replace(/-/g, '.')}`;
+      
+      return {
+        key: mondayStr,
+        label,
+        start: monday.getTime(),
+        end: sunday.getTime()
+      };
+    };
+
+    interface WeeklyStatItem {
+      weekKey: string;
+      weekLabel: string;
+      weekStart: number;
+      weekEnd: number;
+      total: number;
+      mastered: number;
+      notMastered: number;
+      bySubject: Record<string, number>;
+    }
+
+    const statsMap = new Map<string, WeeklyStatItem>();
+
+    for (const row of rows) {
+      const createdAt = row.createdAt || Date.now();
+      const masteryStatus = row.masteryStatus || 'not_mastered';
+      const subject = row.subject || '其他';
+
+      const { key, label, start, end } = getMondayDateString(createdAt);
+      
+      if (!statsMap.has(key)) {
+        statsMap.set(key, {
+          weekKey: key,
+          weekLabel: label,
+          weekStart: start,
+          weekEnd: end,
+          total: 0,
+          mastered: 0,
+          notMastered: 0,
+          bySubject: {}
+        });
+      }
+      
+      const stat = statsMap.get(key)!;
+      stat.total += 1;
+      if (masteryStatus === 'mastered') {
+        stat.mastered += 1;
+      } else {
+        stat.notMastered += 1;
+      }
+      
+      stat.bySubject[subject] = (stat.bySubject[subject] || 0) + 1;
+    }
+
+    const result = Array.from(statsMap.values()).sort((a, b) => b.weekStart - a.weekStart);
+    res.json(result);
+  } catch (error: any) {
+    console.error("Admin Get User Weekly Stats Error:", error);
+    res.status(500).json({ error: error.message || "获取用户周报统计失败" });
+  }
+};
+
 // 9. 添加用户 (仅 admin)
 export const adminCreateUser = (req: express.Request, res: express.Response) => {
   try {

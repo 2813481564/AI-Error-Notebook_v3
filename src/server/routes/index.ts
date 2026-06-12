@@ -59,6 +59,7 @@ router.get("/admin/users", requireAdmin, qCtrl.adminGetUsers);
 router.post("/admin/users", requireAdmin, qCtrl.adminCreateUser);
 router.put("/admin/users/:username", requireAdmin, qCtrl.adminUpdateUser);
 router.delete("/admin/users/:username", requireAdmin, qCtrl.adminDeleteUser);
+router.get("/admin/users/:username/weekly-stats", requireAdmin, qCtrl.adminGetUserWeeklyStats);
 
 router.post("/admin/generate-code", requireAdmin, adminCtrl.generateCode);
 router.get("/admin/redemption-codes", requireAdmin, adminCtrl.getRedemptionCodes);

@@ -679,11 +679,11 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
               已支持支付宝自助开通；如需人工协助、对公或发票，请添加客服并备注注册邮箱。
             </p>
 
-            <div className="flex flex-wrap gap-2.5 pt-2">
+            {/* <div className="flex flex-wrap gap-2.5 pt-2">
               <span className="bg-slate-50 text-slate-500 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-150">
                 当前账号: {localStorage.getItem('errorbook_username') || '未知'}
               </span>
-            </div>
+            </div> */}
 
             {/* 客服文本详情 */}
             <div className="space-y-3 w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 mt-2">

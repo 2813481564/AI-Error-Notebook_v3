@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Edit2, Trash2, X, ShieldAlert, Award, Key, Calendar, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Users, Edit2, Trash2, X, ShieldAlert, Award, Key, Calendar, Zap, FileBarChart2 } from 'lucide-react';
+import WeeklyReportModal from './WeeklyReportModal';
 
 interface UserItem {
   username: string;
@@ -17,6 +18,9 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 错题周报状态
+  const [weeklyStatsUser, setWeeklyStatsUser] = useState<string | null>(null);
 
   // 编辑模态框状态
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -460,6 +464,13 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                           <td className="py-4 px-6 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button
+                                onClick={() => setWeeklyStatsUser(user.username)}
+                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                                title="生成错题周报"
+                              >
+                                <FileBarChart2 className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={() => handleEditClick(user)}
                                 className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"
                                 title="修改账户与权限"
@@ -866,6 +877,10 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
             </form>
           </div>
         </div>
+      )}
+
+      {weeklyStatsUser && (
+        <WeeklyReportModal username={weeklyStatsUser} onClose={() => setWeeklyStatsUser(null)} />
       )}
     </div>
   );
