@@ -150,7 +150,7 @@ function NormalSegment({ text }: { text: string; key?: any }) {
   );
 }
 
-function InlineContent({ text }: { text: string }) {
+export function InlineContent({ text }: { text: string }) {
   // Parse inline math $...$
   const inlineMathSegments = text.split(/(\$.*?\$)/g);
 

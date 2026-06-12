@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
-import FormattedMath from './FormattedMath';
+import FormattedMath, { InlineContent } from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
 
@@ -1200,7 +1200,7 @@ function QuestionDetail({
                              </div>
                              {step.comment && (
                                <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
-                                 错因说明：{step.comment}
+                                 错因说明：<InlineContent text={step.comment} />
                                </div>
                              )}
                            </div>
@@ -1513,7 +1513,7 @@ function ReadOnlyDetail({
                       </div>
                       {step.comment && (
                         <div className="text-xs mt-1.5 pt-1.5 border-t border-current/10 font-bold opacity-90 text-rose-700">
-                          错因说明：{step.comment}
+                          错因说明：<InlineContent text={step.comment} />
                         </div>
                       )}
                     </div>
@@ -1666,7 +1666,7 @@ function ReadOnlyDetail({
                               </div>
                               {step.comment && (
                                 <div className="text-[10px] mt-1 pt-1 border-t border-current/10 font-bold opacity-90 text-rose-700">
-                                  错因说明：{step.comment}
+                                  错因说明：<InlineContent text={step.comment} />
                                 </div>
                               )}
                             </div>
