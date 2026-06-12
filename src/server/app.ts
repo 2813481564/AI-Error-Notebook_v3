@@ -1,8 +1,12 @@
 import express from "express";
 import dotenv from "dotenv";
 import router from "./routes";
+import { initTaskQueue } from "./controllers/taskController";
 
 dotenv.config();
+
+// 初始化异步后台任务队列
+initTaskQueue();
 
 const app = express();
 

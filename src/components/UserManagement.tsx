@@ -140,7 +140,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
         c.code,
         c.role.toUpperCase(),
         c.days,
-        c.status === 0 ? "未使用" : "已使用",
+        c.status === 'unused' ? "未使用" : "已使用",
         c.usedBy || "-",
         c.usedAt || "-",
         c.createdAt
@@ -593,7 +593,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
                         <td className="py-2 px-4 uppercase text-[10px]">{c.role}</td>
                         <td className="py-2 px-4">{c.days}天</td>
                         <td className="py-2 px-4">
-                          {c.status === 0 ? (
+                          {c.status === 'unused' ? (
                             <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px]">未使用</span>
                           ) : (
                             <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md text-[10px]">已使用</span>

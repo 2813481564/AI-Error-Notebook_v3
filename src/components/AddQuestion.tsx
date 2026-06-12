@@ -56,12 +56,19 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   // 跨页多图模式下的图片队列状态
   const [imageList, setImageList] = useState<{ id: string; url: string; mimeType: string }[]>([]);
 
+  // 跨页多图拼接后的提取模式：'multi'（识别出多道题）或 'single'（识别为单道长题）
+  const [crossPageExtractMode, setCrossPageExtractMode] = useState<'single' | 'multi'>('multi');
+
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 错题本相关状态
   const [notebooks, setNotebooks] = useState<{ id: string; name: string }[]>([]);
   const [selectedNotebook, setSelectedNotebook] = useState<string>('');
+
+  // 后台异步任务选项
+  const [enableBgTask, setEnableBgTask] = useState(true);
+  const [autoRun, setAutoRun] = useState(true);
 
   // 原始图片放大查看状态
   const [isZoomed, setIsZoomed] = useState(false);
@@ -229,6 +236,52 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
       }
 
       const token = localStorage.getItem('errorbook_token');
+
+      if (enableBgTask) {
+        // 后台异步任务录题
+        const taskName = `错题录入_${new Date().toLocaleDateString().replace(/\//g, '')}_${new Date().toTimeString().slice(0, 5).replace(/:/g, '')}`;
+        const extractMode = uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single');
+        
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            taskName,
+            autoRun: autoRun ? 1 : 0,
+            uploadMode,
+            notebookId: selectedNotebook || undefined,
+            payload: {
+              imageBase64: finalImageStr,
+              mimeType: finalMimeType,
+              extractMode
+            }
+          })
+        });
+
+        if (res.status === 401) {
+          localStorage.removeItem('errorbook_token');
+          localStorage.removeItem('errorbook_username');
+          window.location.reload();
+          throw new Error('登录已过期，请重新登录');
+        }
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
+
+        alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
+        
+        // 清理当前上传状态，以便连续上传
+        setImageStr(null);
+        setImageList([]);
+        setExtractedQuestions(null);
+        setParsedData(null);
+        setStep(1);
+        return;
+      }
+
       const res = await fetch('/api/extract', {
         method: 'POST',
         headers: {
@@ -238,7 +291,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         body: JSON.stringify({
           imageBase64: finalImageStr,
           mimeType: finalMimeType,
-          mode: uploadMode === 'multi' ? 'multi' : 'single'
+          mode: uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single')
         })
       });
 
@@ -568,6 +621,60 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
             </div>
           </div>
 
+          {/* 后台异步任务选项卡 */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-5">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span>⚙️</span> 后台录题设置
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 异步排队开关 */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">开启后台任务排队</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">上传图片后立即返回，由后台静默提取与诊断</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEnableBgTask(!enableBgTask)}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${
+                    enableBgTask ? 'bg-blue-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span 
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      enableBgTask ? 'transform translate-x-6' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* 审核模式开关，仅当开启后台任务时可见 */}
+              <div className={`flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl transition-all duration-300 ${
+                enableBgTask ? 'opacity-100 pointer-events-auto' : 'opacity-40 pointer-events-none'
+              }`}>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">全自动归档 (免审核)</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">跳过所有人工核对，AI 识别诊断完毕后自动入库</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!enableBgTask}
+                  onClick={() => setAutoRun(!autoRun)}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${
+                    autoRun ? 'bg-emerald-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span 
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      autoRun ? 'transform translate-x-6' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Mode Selector Tab */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
@@ -681,7 +788,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       onClick={extractQuestions}
                       className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition text-sm cursor-pointer"
                     >
-                      <Sparkles className="w-4.5 h-4.5" /> 开始 AI 切题提取文本
+                      <Sparkles className="w-4.5 h-4.5" /> {enableBgTask ? "提交至后台排队提取" : "开始 AI 切题提取文本"}
                     </button>
                   ) : (
                     <div className="bg-white p-8 rounded-3xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
@@ -802,12 +909,41 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
               {imageList.length > 0 && (
                 <>
+                  {/* 跨页拼接后的识别模式选择 */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 mb-4">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">拼接后提取模式</label>
+                    <div className="grid grid-cols-2 gap-2 bg-white p-1 rounded-xl border border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setCrossPageExtractMode('multi')}
+                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          crossPageExtractMode === 'multi'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-555 hover:text-slate-800'
+                        }`}
+                      >
+                        <span>提取多道题 (多张试卷/多题)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCrossPageExtractMode('single')}
+                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          crossPageExtractMode === 'single'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-555 hover:text-slate-800'
+                        }`}
+                      >
+                        <span>提取单道长题 (跨页单题)</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {!analyzing ? (
                     <button
                       onClick={extractQuestions}
                       className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition text-sm cursor-pointer"
                     >
-                      <Sparkles className="w-4.5 h-4.5" /> 合并拼接并提取文本
+                      <Sparkles className="w-4.5 h-4.5" /> {enableBgTask ? "合并拼接并提交后台提取" : "合并拼接并提取文本"}
                     </button>
                   ) : (
                     <div className="bg-white p-8 rounded-3xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">

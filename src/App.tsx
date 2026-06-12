@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -10,8 +10,9 @@ import SystemSettings from './components/SystemSettings';
 import AnnouncementManagement from './components/AnnouncementManagement';
 import CreatePaperExercise from './components/CreatePaperExercise';
 import SavedPapers from './components/SavedPapers';
+import TaskCenter from './components/TaskCenter';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -83,6 +84,29 @@ export default function App() {
     if (token) {
       fetchUserInfo();
     }
+  }, [token]);
+
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    const updateTasksCount = () => {
+      fetch('/api/tasks', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const count = data.filter(t => t.status === 'pending_extract_review' || t.status === 'pending_diagnose_review').length;
+            setPendingTasksCount(count);
+          }
+        })
+        .catch(err => console.error("Error fetching tasks count:", err));
+    };
+
+    updateTasksCount();
+    const timer = setInterval(updateTasksCount, 8000);
+    return () => clearInterval(timer);
   }, [token]);
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -561,6 +585,24 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setCurrentView('tasks')}
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'tasks'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+          >
+            <div className="flex items-center gap-3">
+              <Clock className="w-4 h-4" />
+              <span>后台任务</span>
+            </div>
+            {pendingTasksCount > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0">
+                {pendingTasksCount}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setCurrentView('exercise')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'exercise'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
@@ -714,6 +756,7 @@ export default function App() {
           <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
             {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
+            {currentView === 'tasks' && <TaskCenter onNavigate={setCurrentView} />}
             {currentView === 'library' && (
               <QuestionLibrary
                 onNavigate={setCurrentView}

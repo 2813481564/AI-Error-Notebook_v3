@@ -6,6 +6,7 @@ import * as aiCtrl from "../controllers/aiController";
 import * as qCtrl from "../controllers/questionController";
 import * as adminCtrl from "../controllers/adminController";
 import * as userCtrl from "../controllers/userController";
+import * as taskCtrl from "../controllers/taskController";
 
 const router = express.Router();
 
@@ -80,5 +81,11 @@ router.get("/admin/announcements", requireAdmin, adminCtrl.getAnnouncements);
 router.post("/admin/announcements", requireAdmin, adminCtrl.saveAnnouncement);
 router.delete("/admin/announcements/:id", requireAdmin, adminCtrl.deleteAnnouncement);
 router.post("/admin/vip/contact", requireAdmin, adminCtrl.saveVipContact);
+
+// ================= 后台任务路由 =================
+router.post("/tasks", requireAuth, checkAiLimit, taskCtrl.createTask);
+router.get("/tasks", requireAuth, taskCtrl.getTasks);
+router.post("/tasks/:id/review", requireAuth, checkAiLimit, taskCtrl.submitReview);
+router.delete("/tasks/:id", requireAuth, taskCtrl.deleteTask);
 
 export default router;

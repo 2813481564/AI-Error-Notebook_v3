@@ -133,6 +133,23 @@ db.exec(`
     status TEXT DEFAULT 'active',
     createdAt INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS background_tasks (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    taskName TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    autoRun INTEGER DEFAULT 1,
+    uploadMode TEXT NOT NULL,
+    notebookId TEXT,
+    payload TEXT,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    errorMsg TEXT
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_background_tasks_userId ON background_tasks(userId);
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段

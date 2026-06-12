@@ -231,6 +231,78 @@ export const db = {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '删除试卷失败');
     }
+  },
+
+  async getTasks(): Promise<any[]> {
+    const res = await fetch('/api/tasks', {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取任务列表失败');
+    }
+    return res.json();
+  },
+
+  async createTask(taskData: { taskName: string; autoRun: number; uploadMode: string; notebookId?: string; payload: any }): Promise<{ success: boolean; taskId: string }> {
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(taskData)
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '创建后台任务失败');
+    }
+    return res.json();
+  },
+
+  async submitTaskReview(taskId: string, reviewData: { step: 2 | 3; payload: any }): Promise<{ success: boolean }> {
+    const res = await fetch(`/api/tasks/${taskId}/review`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(reviewData)
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '提交任务审核失败');
+    }
+    return res.json();
+  },
+
+  async deleteTask(taskId: string): Promise<void> {
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '删除任务失败');
+    }
   }
 };
 

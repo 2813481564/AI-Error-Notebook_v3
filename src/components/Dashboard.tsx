@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, TrendingUp, Database, Camera, FileText, Award, Users, Settings, Megaphone } from 'lucide-react';
+import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, TrendingUp, Database, Camera, FileText, Award, Users, Settings, Megaphone, Clock } from 'lucide-react';
 
 export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
@@ -18,6 +18,15 @@ export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void
       iconBg: 'bg-blue-50 text-blue-600 border border-blue-100/50',
       hoverBorder: 'hover:border-blue-200 hover:shadow-blue-500/5',
       view: 'library',
+      show: true,
+    },
+    {
+      title: '后台任务',
+      desc: '查看异步录题进度并进行人工校对审核',
+      icon: Clock,
+      iconBg: 'bg-amber-50 text-amber-600 border border-amber-100/50',
+      hoverBorder: 'hover:border-amber-200 hover:shadow-amber-500/5',
+      view: 'tasks',
       show: true,
     },
     {
