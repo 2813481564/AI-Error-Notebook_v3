@@ -1,4 +1,4 @@
-import React, { useState, ReactNode, useEffect } from 'react';
+import React, { useState, ReactNode, useEffect, useRef } from 'react';
 import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
@@ -86,7 +86,25 @@ export default function App() {
     }
   }, [token]);
 
+  interface TaskNotification {
+    id: string;
+    taskId: string;
+    taskName: string;
+    status: string;
+    type: 'success' | 'warning' | 'info' | 'error';
+    title: string;
+    message: string;
+  }
+
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [notifications, setNotifications] = useState<TaskNotification[]>([]);
+  const alertedKeys = useRef<Set<string>>(new Set());
+
+  // 当 Token 变更时清理通知记录
+  useEffect(() => {
+    alertedKeys.current = new Set();
+    setNotifications([]);
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -99,13 +117,58 @@ export default function App() {
           if (Array.isArray(data)) {
             const count = data.filter(t => t.status === 'pending_extract_review' || t.status === 'pending_diagnose_review').length;
             setPendingTasksCount(count);
+
+            // 全局通知提醒逻辑
+            data.forEach(task => {
+              if (['pending_extract_review', 'pending_diagnose_review', 'completed', 'failed'].includes(task.status)) {
+                const alertKey = `${task.id}_${task.status}`;
+                if (!alertedKeys.current.has(alertKey)) {
+                  let type: 'success' | 'warning' | 'info' | 'error' = 'info';
+                  let title = '';
+                  let message = '';
+                  let shouldShow = true;
+
+                  if (task.status === 'pending_extract_review') {
+                    type = 'warning';
+                    title = '🔍 错题文本待校对';
+                    message = `任务《${task.taskName}》OCR识别完成，请核对文字。`;
+                  } else if (task.status === 'pending_diagnose_review') {
+                    type = 'info';
+                    title = '📝 诊断结果待归档';
+                    message = `任务《${task.taskName}》智能解析已生成，请确认并归档错题本。`;
+                  } else if (task.status === 'completed') {
+                    type = 'success';
+                    title = '✅ 错题录入成功';
+                    message = `任务《${task.taskName}》已全自动诊断完成并归档入库。`;
+                  } else if (task.status === 'failed') {
+                    type = 'error';
+                    title = '❌ 录题任务失败';
+                    message = `任务《${task.taskName}》处理失败：${task.errorMsg || '未知错误'}`;
+                  }
+
+                  if (shouldShow) {
+                    const newNotification: TaskNotification = {
+                      id: `${task.id}_${task.status}_${Date.now()}`,
+                      taskId: task.id,
+                      taskName: task.taskName,
+                      status: task.status,
+                      type,
+                      title,
+                      message
+                    };
+                    setNotifications(prev => [...prev, newNotification]);
+                    alertedKeys.current.add(alertKey);
+                  }
+                }
+              }
+            });
           }
         })
-        .catch(err => console.error("Error fetching tasks count:", err));
+        .catch(err => console.error("Error fetching tasks count & notifications:", err));
     };
 
     updateTasksCount();
-    const timer = setInterval(updateTasksCount, 8000);
+    const timer = setInterval(updateTasksCount, 6000); // 缩短为 6 秒以提供更及时的反馈
     return () => clearInterval(timer);
   }, [token]);
 
@@ -889,6 +952,82 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 全局持久任务通知悬浮容器 */}
+      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            className={`pointer-events-auto w-full bg-white/95 backdrop-blur-md border rounded-2xl p-4 shadow-xl flex gap-3 transform translate-x-0 transition-all duration-300 animate-in slide-in-from-right duration-350 ${
+              n.type === 'success' ? 'border-emerald-200 bg-emerald-50/20' :
+              n.type === 'warning' ? 'border-amber-200 bg-amber-50/20' :
+              n.type === 'error' ? 'border-rose-250 bg-rose-50/20' :
+              'border-blue-200 bg-blue-50/20'
+            }`}
+          >
+            {/* Status Icons */}
+            <div className="shrink-0 pt-0.5">
+              {n.type === 'success' && <span className="text-xl">✅</span>}
+              {n.type === 'warning' && <span className="text-xl">🔍</span>}
+              {n.type === 'error' && <span className="text-xl">❌</span>}
+              {n.type === 'info' && <span className="text-xl">📝</span>}
+            </div>
+
+            <div className="flex-1 space-y-1">
+              <h4 className="text-xs font-black text-slate-800 leading-tight flex items-center justify-between">
+                <span>{n.title}</span>
+              </h4>
+              <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+                {n.message}
+              </p>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-2">
+                {['pending_extract_review', 'pending_diagnose_review', 'failed'].includes(n.status) ? (
+                  <button
+                    onClick={() => {
+                      setCurrentView('tasks');
+                      setNotifications(prev => prev.filter(item => item.id !== n.id));
+                    }}
+                    className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :
+                      n.type === 'info' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' :
+                      'bg-slate-800 hover:bg-slate-900 text-white'
+                    }`}
+                  >
+                    {n.status === 'pending_extract_review' ? '立即校对' : n.status === 'pending_diagnose_review' ? '立即归档' : '去排查'}
+                  </button>
+                ) : n.status === 'completed' ? (
+                  <button
+                    onClick={() => {
+                      setCurrentView('library');
+                      setNotifications(prev => prev.filter(item => item.id !== n.id));
+                    }}
+                    className="text-[10px] font-black px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer shadow-sm"
+                  >
+                    查看错题
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+                  className="text-[10px] font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg border border-slate-200 bg-white transition cursor-pointer"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+
+            {/* Top right close icon */}
+            <button
+              onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+              className="text-slate-350 hover:text-slate-500 shrink-0 self-start text-xs font-black cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
 
     </div>
   );
