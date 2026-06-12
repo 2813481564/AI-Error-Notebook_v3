@@ -19,7 +19,7 @@ const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{
   };
 
   const imgs = await Promise.all(list.map(item => loadImg(item.url)));
-  
+
   // 计算合并后的 Canvas 宽度（取所有图片的最大宽度）和高度（所有图片高度累加）
   const maxWidth = Math.max(...imgs.map(img => img.width));
   const totalHeight = imgs.reduce((sum, img) => sum + img.height, 0);
@@ -48,7 +48,7 @@ const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{
 export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
-  
+
   // 单图/多题下的单张图片状态
   const [imageStr, setImageStr] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
@@ -241,7 +241,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         // 后台异步任务录题
         const taskName = `错题录入_${new Date().toLocaleDateString().replace(/\//g, '')}_${new Date().toTimeString().slice(0, 5).replace(/:/g, '')}`;
         const extractMode = uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single');
-        
+
         const res = await fetch('/api/tasks', {
           method: 'POST',
           headers: {
@@ -272,7 +272,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
 
         alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
-        
+
         // 清理当前上传状态，以便连续上传
         setImageStr(null);
         setImageList([]);
@@ -596,7 +596,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <span>📓</span> 错题本归属设置
             </h3>
-            
+
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择错题本</label>
               <div className="flex gap-2 items-center">
@@ -626,7 +626,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
             <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <span>⚙️</span> 后台录题设置
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* 异步排队开关 */}
               <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
@@ -637,22 +637,19 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 <button
                   type="button"
                   onClick={() => setEnableBgTask(!enableBgTask)}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${
-                    enableBgTask ? 'bg-blue-600' : 'bg-slate-300'
-                  }`}
-                >
-                  <span 
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      enableBgTask ? 'transform translate-x-6' : ''
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${enableBgTask ? 'bg-blue-600' : 'bg-slate-300'
                     }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${enableBgTask ? 'transform translate-x-6' : ''
+                      }`}
                   />
                 </button>
               </div>
 
               {/* 审核模式开关，仅当开启后台任务时可见 */}
-              <div className={`flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl transition-all duration-300 ${
-                enableBgTask ? 'opacity-100 pointer-events-auto' : 'opacity-40 pointer-events-none'
-              }`}>
+              <div className={`flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl transition-all duration-300 ${enableBgTask ? 'opacity-100 pointer-events-auto' : 'opacity-40 pointer-events-none'
+                }`}>
                 <div>
                   <h4 className="text-xs font-bold text-slate-800">全自动归档 (免审核)</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">跳过所有人工核对，AI 识别诊断完毕后自动入库</p>
@@ -661,14 +658,12 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   type="button"
                   disabled={!enableBgTask}
                   onClick={() => setAutoRun(!autoRun)}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${
-                    autoRun ? 'bg-emerald-600' : 'bg-slate-300'
-                  }`}
-                >
-                  <span 
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      autoRun ? 'transform translate-x-6' : ''
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${autoRun ? 'bg-emerald-600' : 'bg-slate-300'
                     }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoRun ? 'transform translate-x-6' : ''
+                      }`}
                   />
                 </button>
               </div>
@@ -678,7 +673,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           {/* Mode Selector Tab */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
-            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+            <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
               <button
                 type="button"
                 onClick={() => {
@@ -686,11 +681,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   setImageStr(null);
                   setImageList([]);
                 }}
-                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  uploadMode === 'single'
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${uploadMode === 'single'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                     : 'text-slate-555 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <span>单题录入</span>
               </button>
@@ -701,31 +695,30 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   setImageStr(null);
                   setImageList([]);
                 }}
-                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  uploadMode === 'multi'
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${uploadMode === 'multi'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                     : 'text-slate-555 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <span>多题录入</span>
               </button>
-              <button
+              {/* 暂且隐藏跨页合并录入按钮 */}
+              {/* <button
                 type="button"
                 onClick={() => {
                   setUploadMode('crossPage');
                   setImageStr(null);
                   setImageList([]);
                 }}
-                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  uploadMode === 'crossPage'
+                className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${uploadMode === 'crossPage'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                     : 'text-slate-555 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <span>跨页合并录入</span>
-              </button>
+              </button> */}
             </div>
-            
+
             <p className="text-[10px] text-slate-400 pl-0.5 leading-relaxed">
               {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，AI 将以单题最高精度和聚焦深度提取题干与公式。'}
               {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，AI 会自动寻找题号并进行切题分题，供您挑选。'}
@@ -813,7 +806,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 </div>
 
                 {imageList.length === 0 ? (
-                  <div 
+                  <div
                     onClick={() => multiFileInputRef.current?.click()}
                     className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-3xl p-12 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/20 shadow-sm"
                   >
@@ -835,7 +828,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                             {index + 1}
                           </span>
                         </div>
-                        
+
                         <div className="flex justify-between gap-1.5 mt-2.5">
                           <button
                             type="button"
@@ -885,9 +878,9 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                         </div>
                       </div>
                     ))}
-                    
+
                     {/* Add More button */}
-                    <div 
+                    <div
                       onClick={() => multiFileInputRef.current?.click()}
                       className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/20 aspect-[3/4] h-full justify-self-center min-w-[120px] justify-center"
                     >
@@ -896,7 +889,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                     </div>
                   </div>
                 )}
-                
+
                 <input
                   type="file"
                   multiple
@@ -916,22 +909,20 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       <button
                         type="button"
                         onClick={() => setCrossPageExtractMode('multi')}
-                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          crossPageExtractMode === 'multi'
+                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${crossPageExtractMode === 'multi'
                             ? 'bg-blue-600 text-white shadow-sm'
                             : 'text-slate-555 hover:text-slate-800'
-                        }`}
+                          }`}
                       >
                         <span>提取多道题 (多张试卷/多题)</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setCrossPageExtractMode('single')}
-                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          crossPageExtractMode === 'single'
+                        className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${crossPageExtractMode === 'single'
                             ? 'bg-blue-600 text-white shadow-sm'
                             : 'text-slate-555 hover:text-slate-800'
-                        }`}
+                          }`}
                       >
                         <span>提取单道长题 (跨页单题)</span>
                       </button>
@@ -1159,18 +1150,18 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   <div
                     key={idx}
                     className={`bg-white rounded-3xl border p-6 md:p-8 space-y-6 shadow-sm transition-all duration-300 ${isExcluded
-                        ? 'border-slate-150 bg-slate-50/40 opacity-50'
-                        : isSelected ? 'border-slate-200' : 'border-slate-100 opacity-60'
+                      ? 'border-slate-150 bg-slate-50/40 opacity-50'
+                      : isSelected ? 'border-slate-200' : 'border-slate-100 opacity-60'
                       }`}
                   >
                     <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                       <div className="flex items-center gap-3">
                         <input
-                           type="checkbox"
-                           checked={isSelected && !isExcluded}
-                           disabled={isExcluded}
-                           onChange={() => toggleSelectedIndex(idx)}
-                           className="w-5 h-5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          type="checkbox"
+                          checked={isSelected && !isExcluded}
+                          disabled={isExcluded}
+                          onChange={() => toggleSelectedIndex(idx)}
+                          className="w-5 h-5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         />
                         <span className="text-sm font-black text-slate-900 flex items-center gap-2 font-sans">
                           题目 #{idx + 1}
@@ -1179,10 +1170,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                           )}
                           {q.score !== undefined && !isExcluded && (
                             <span className={`text-[10px] px-2.5 py-0.5 rounded-lg border font-black ${q.score >= 90
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                : q.score >= 60
-                                  ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                  : 'bg-rose-50 text-rose-750 border-rose-100'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                              : q.score >= 60
+                                ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                : 'bg-rose-50 text-rose-750 border-rose-100'
                               }`}>
                               AI 评卷得分: {q.score}分
                             </span>
