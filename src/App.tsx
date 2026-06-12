@@ -49,6 +49,8 @@ export default function App() {
     aiUsedToday: number;
     aiLimit: number;
     aiRemaining: string | number;
+    capacityLimit?: number;
+    questionCount?: number;
   } | null>(null);
 
   // 定时器用于验证码倒计时
@@ -663,6 +665,10 @@ export default function App() {
                 <span className="text-slate-400">今日AI:</span>
                 <span className="font-bold text-slate-200">{userInfo?.aiRemaining === "无限" ? "无限制" : `${userInfo?.aiUsedToday || 0} / ${userInfo?.aiLimit || 30}`}</span>
               </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-slate-400">错题容量:</span>
+                <span className="font-bold text-slate-200">{userInfo?.capacityLimit === 0 ? `${userInfo?.questionCount || 0} / 无限制` : `${userInfo?.questionCount || 0} / ${userInfo?.capacityLimit || 50}`}</span>
+              </div>
             </div>
           </button>
 
@@ -807,26 +813,26 @@ export default function App() {
               ✕
             </button>
             <div className="mb-4 flex items-center gap-2 text-blue-600 font-bold">
-              <HardDrive className="w-5 h-5" />
-              <h3 className="text-lg">多用户 SQLite 存储信息</h3>
+              <Globe className="w-5 h-5" />
+              <h3 className="text-lg">智能错题本云同步说明</h3>
             </div>
 
             <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
               <p>
-                您的错题数据已经由前端的 <strong>IndexedDB (浏览器本地存储)</strong> 成功迁移至服务端的 <strong>SQLite 物理数据库 (questions.db)</strong> 中。
+                您的错题本现已全面升级，支持<strong>云端账号同步与安全保存</strong>服务。
               </p>
               <p>
                 <strong>安全与隔离设计：</strong>
               </p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  所有用户的密码都经过高强度密码哈希算法保护，确保密码安全。
+                  <strong>账号数据隔离：</strong> 每个用户都拥有独立的账号空间，不同用户的数据完全独立、互不干扰。
                 </li>
                 <li>
-                  数据绑定独立账号归属（<code>userId</code>），不同用户间数据从物理层面绝对隔离。
+                  <strong>安全密码加密：</strong> 所有账号密码都经过安全加密处理，切实保障您的账号安全。
                 </li>
                 <li>
-                  只要在一台支持互联网访问的多终端设备上登录相同账号，错题即可完美同步。
+                  <strong>多端实时同步：</strong> 只要在不同的设备上登录同一个账号，您的错题数据即可完美同步。
                 </li>
               </ul>
             </div>
