@@ -4,6 +4,7 @@ import {
   Clock, CheckCircle2, AlertCircle, XCircle, Trash2, 
   ChevronRight, ArrowRight, Eye, RefreshCw, Plus, Trash, BookOpen
 } from 'lucide-react';
+import FormattedMath from './FormattedMath';
 
 interface Task {
   id: string;
@@ -344,7 +345,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       {/* ================= STEP 2: OCR 文本校对审核 Modal ================= */}
       {reviewStep === 2 && activeReviewTask && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-6xl w-full flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -360,93 +361,123 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Task Image Preview */}
-              {activeReviewTask.payload.imageBase64 && (
-                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 max-h-[220px] flex justify-center">
-                  <img 
-                    src={activeReviewTask.payload.imageBase64} 
-                    alt="Task Source" 
-                    className="object-contain max-h-full"
-                  />
-                </div>
-              )}
-
-              {/* Questions Edit list */}
-              <div className="space-y-6">
-                {reviewPayload && reviewPayload.map((item: any, idx: number) => (
-                  <div key={idx} className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60 relative">
-                    <button
-                      onClick={() => handleDeleteCard(idx)}
-                      className="absolute top-4 right-4 text-slate-400 hover:text-rose-600 transition"
-                      title="删除此题"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
-                    
-                    <span className="text-xs font-black text-indigo-600 uppercase tracking-wider pl-1">
-                      题目 #{idx + 1}
-                    </span>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-500">学科</label>
-                        <select
-                          value={item.subject}
-                          onChange={(e) => handleUpdateExtracted(idx, 'subject', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
-                        >
-                          <option value="数学">数学</option>
-                          <option value="物理">物理</option>
-                          <option value="化学">化学</option>
-                          <option value="生物">生物</option>
-                          <option value="语文">语文</option>
-                          <option value="英语">英语</option>
-                        </select>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Left Column: Task Source Image */}
+                <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-0">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                    <span className="text-xs font-black text-slate-500 tracking-wider block">对照参考原图</span>
+                    {activeReviewTask.payload.imageBase64 ? (
+                      <div className="overflow-auto max-h-[60vh] rounded-xl border border-slate-200/60 flex justify-center bg-slate-100 relative group">
+                        <img 
+                          src={activeReviewTask.payload.imageBase64} 
+                          alt="Task Source" 
+                          className="w-full h-auto object-contain max-h-none transition-transform duration-200"
+                        />
                       </div>
-                    </div>
-
-                    <div className="space-y-1.5 mt-4">
-                      <label className="text-xs font-bold text-slate-500">题干正文 (支持 LaTeX)</label>
-                      <textarea
-                        value={item.originalText}
-                        onChange={(e) => handleUpdateExtracted(idx, 'originalText', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-24"
-                        placeholder="请输入识别的题目正文..."
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 mt-4">
-                      <label className="text-xs font-bold text-slate-500">学生作答 (可选)</label>
-                      <textarea
-                        value={item.studentAnswer}
-                        onChange={(e) => handleUpdateExtracted(idx, 'studentAnswer', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-16"
-                        placeholder="请输入手写作答（若无则留空）"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 mt-4">
-                      <label className="text-xs font-bold text-slate-500">参考标准答案 (可选)</label>
-                      <textarea
-                        value={item.standardAnswer}
-                        onChange={(e) => handleUpdateExtracted(idx, 'standardAnswer', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-16"
-                        placeholder="标准答案，支持 LaTeX（若无则留空）"
-                      />
-                    </div>
+                    ) : (
+                      <div className="py-20 text-center text-slate-400 text-xs">无可用对照图片</div>
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
 
-              {/* Add card button */}
-              <button
-                onClick={handleAddNewCard}
-                className="w-full border border-dashed border-slate-300 hover:border-blue-500 hover:text-blue-600 text-slate-500 py-3 rounded-xl transition flex items-center justify-center gap-1 text-xs font-bold cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                手动追加新题目卡片
-              </button>
+                {/* Right Column: Editable Question Cards */}
+                <div className="lg:col-span-7 space-y-6">
+                  <div className="space-y-6">
+                    {reviewPayload && reviewPayload.map((item: any, idx: number) => (
+                      <div key={idx} className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60 relative space-y-4">
+                        <button
+                          onClick={() => handleDeleteCard(idx)}
+                          className="absolute top-4 right-4 text-slate-400 hover:text-rose-600 transition"
+                          title="删除此题"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-black text-indigo-600 uppercase tracking-wider">
+                            题目 #{idx + 1}
+                          </span>
+                          <select
+                            value={item.subject}
+                            onChange={(e) => handleUpdateExtracted(idx, 'subject', e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 outline-none"
+                          >
+                            <option value="数学">数学</option>
+                            <option value="物理">物理</option>
+                            <option value="化学">化学</option>
+                            <option value="生物">生物</option>
+                            <option value="语文">语文</option>
+                            <option value="英语">英语</option>
+                          </select>
+                        </div>
+
+                        {/* Question Textarea with FormattedMath */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-500">题干正文 (印刷体文字，LaTeX公式使用 $ 符号包围)：</label>
+                          {item.originalText && (
+                            <div className="w-full p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs leading-relaxed text-slate-700 font-medium">
+                              <span className="text-[10px] font-bold text-blue-405 uppercase tracking-wide block mb-1">渲染预览</span>
+                              <FormattedMath text={item.originalText} />
+                            </div>
+                          )}
+                          <textarea
+                            value={item.originalText}
+                            onChange={(e) => handleUpdateExtracted(idx, 'originalText', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-28 font-mono leading-relaxed"
+                            placeholder="请输入识别的题目正文..."
+                          />
+                        </div>
+
+                        {/* Student Answer Textarea with FormattedMath */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-500">学生作答 (手写提取文本，留空则无需步骤诊断批改)：</label>
+                          {item.studentAnswer && (
+                            <div className="w-full p-3 bg-rose-50/30 border border-rose-100/50 rounded-xl text-xs leading-relaxed text-slate-700 font-medium">
+                              <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wide block mb-1">学生作答实时渲染预览</span>
+                              <FormattedMath text={item.studentAnswer} />
+                            </div>
+                          )}
+                          <textarea
+                            value={item.studentAnswer}
+                            onChange={(e) => handleUpdateExtracted(idx, 'studentAnswer', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-20"
+                            placeholder="请输入手写作答（若无则留空）"
+                          />
+                        </div>
+
+                        {/* Standard Answer Textarea with FormattedMath */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-500">参考标准答案 (可选，支持 LaTeX)：</label>
+                          {item.standardAnswer && (
+                            <div className="w-full p-3 bg-emerald-50/30 border border-emerald-100/50 rounded-xl text-xs leading-relaxed text-slate-700 font-medium">
+                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide block mb-1">标准答案实时预览</span>
+                              <FormattedMath text={item.standardAnswer} />
+                            </div>
+                          )}
+                          <textarea
+                            value={item.standardAnswer}
+                            onChange={(e) => handleUpdateExtracted(idx, 'standardAnswer', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 h-20"
+                            placeholder="标准答案，支持 LaTeX（若无则留空）"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add card button */}
+                  <button
+                    onClick={handleAddNewCard}
+                    className="w-full border border-dashed border-slate-350 hover:border-blue-500 hover:text-blue-600 text-slate-500 py-3.5 rounded-xl transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer bg-white"
+                  >
+                    <Plus className="w-4 h-4" />
+                    手动追加新题目卡片
+                  </button>
+                </div>
+
+              </div>
             </div>
 
             {/* Modal Footer */}

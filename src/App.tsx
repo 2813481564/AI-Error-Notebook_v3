@@ -94,17 +94,33 @@ export default function App() {
     type: 'success' | 'warning' | 'info' | 'error';
     title: string;
     message: string;
+    alertKey: string;
   }
 
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [notifications, setNotifications] = useState<TaskNotification[]>([]);
   const alertedKeys = useRef<Set<string>>(new Set());
 
-  // 当 Token 变更时清理通知记录
+  // 当 Token 或 Username 变更时加载已读记录
   useEffect(() => {
-    alertedKeys.current = new Set();
+    const key = `alerted_keys_${username || 'global'}`;
+    try {
+      const saved = localStorage.getItem(key);
+      const parsed = saved ? JSON.parse(saved) : [];
+      alertedKeys.current = new Set(Array.isArray(parsed) ? parsed : []);
+    } catch (e) {
+      alertedKeys.current = new Set();
+    }
     setNotifications([]);
-  }, [token]);
+  }, [token, username]);
+
+  const handleDismissNotification = (id: string, alertKey: string) => {
+    setNotifications(prev => prev.filter(item => item.id !== id));
+    alertedKeys.current.add(alertKey);
+    const key = `alerted_keys_${username || 'global'}`;
+    const savedKeys = Array.from(alertedKeys.current);
+    localStorage.setItem(key, JSON.stringify(savedKeys));
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -115,7 +131,7 @@ export default function App() {
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
-            const count = data.filter(t => t.status === 'pending_extract_review' || t.status === 'pending_diagnose_review').length;
+            const count = data.filter(t => t.status !== 'completed' && t.status !== 'failed').length;
             setPendingTasksCount(count);
 
             // 全局通知提醒逻辑
@@ -154,7 +170,8 @@ export default function App() {
                       status: task.status,
                       type,
                       title,
-                      message
+                      message,
+                      alertKey
                     };
                     setNotifications(prev => [...prev, newNotification]);
                     alertedKeys.current.add(alertKey);
@@ -817,7 +834,7 @@ export default function App() {
         {/* Content Area */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
-            {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
+            {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
             {currentView === 'tasks' && <TaskCenter onNavigate={setCurrentView} />}
             {currentView === 'library' && (
@@ -987,7 +1004,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setCurrentView('tasks');
-                      setNotifications(prev => prev.filter(item => item.id !== n.id));
+                      handleDismissNotification(n.id, n.alertKey);
                     }}
                     className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                       n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :
@@ -1001,7 +1018,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setCurrentView('library');
-                      setNotifications(prev => prev.filter(item => item.id !== n.id));
+                      handleDismissNotification(n.id, n.alertKey);
                     }}
                     className="text-[10px] font-black px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer shadow-sm"
                   >
@@ -1010,7 +1027,7 @@ export default function App() {
                 ) : null}
 
                 <button
-                  onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+                  onClick={() => handleDismissNotification(n.id, n.alertKey)}
                   className="text-[10px] font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg border border-slate-200 bg-white transition cursor-pointer"
                 >
                   关闭
@@ -1020,7 +1037,7 @@ export default function App() {
 
             {/* Top right close icon */}
             <button
-              onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+              onClick={() => handleDismissNotification(n.id, n.alertKey)}
               className="text-slate-350 hover:text-slate-500 shrink-0 self-start text-xs font-black cursor-pointer"
             >
               ✕

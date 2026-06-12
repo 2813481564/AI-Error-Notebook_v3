@@ -3,7 +3,7 @@ import { db, ErrorQuestion } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, TrendingUp, Database, Camera, FileText, Award, Users, Settings, Megaphone, Clock } from 'lucide-react';
 
-export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
+export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNavigate: (v: any) => void, pendingTasksCount?: number }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -249,8 +249,13 @@ export default function Dashboard({ onNavigate }: { onNavigate: (v: any) => void
               >
                 <div>
                   <div className="flex items-center justify-between">
-                    <div className={`p-2.5 rounded-xl ${card.iconBg} flex items-center justify-center`}>
+                    <div className={`p-2.5 rounded-xl ${card.iconBg} flex items-center justify-center relative`}>
                       <Icon className="w-5 h-5" />
+                      {card.view === 'tasks' && pendingTasksCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center animate-pulse shadow-sm">
+                          {pendingTasksCount}
+                        </span>
+                      )}
                     </div>
                     <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
                   </div>
