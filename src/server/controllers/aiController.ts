@@ -378,10 +378,11 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
       return res.status(403).json({ error: "权限不足，学生角色无法生成同类题" });
     }
 
-    const { originalText, subject, knowledgePoints } = req.body;
+    const { originalText, subject, knowledgePoints, count, grade } = req.body;
+    const numQuestions = Math.min(3, Math.max(1, count || 1));
 
     const prompt = `
-你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出一道【相似度约80%】的同类练习题。
+你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出 ${numQuestions} 道【相似度约80%】的同类练习题。
 
 【原题信息】
 - 学科: ${subject}
@@ -392,8 +393,10 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
 1. 核心知识点与原题完全相同。
 2. 题型、步骤数量、公式类型与原题保持一致。
 3. 修改具体数值/已知条件/情境背景，使题目全新（约20%差异）。
-4. 知识点/图形/公式均不超出高中范围。
+4. 知识点/图形/公式均不超出原题所述学段水平。
 5. 数学公式必须用标准 $ 或 $$ 包围。
+6. 【极度重要】：保持与原题完全一致的年级和学段级别（例如原题如果是小学六年级，生成的同类题也必须是小学六年级水平；原题如果是高一，生成的题也必须是高一水平。若指定了年级为：${grade || '自动识别原题年级'}，请严格按照该年级设计，绝对不能超纲或降纲）。
+7. 【数量要求】：你必须生成且只能生成正好 ${numQuestions} 道题目。
 
 【几何图形数据规范（必须填写 geometry 字段）】
 根据题目类型填写 geometry.type：
@@ -433,7 +436,8 @@ circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#3741
 point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
 label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
 
-请严格按以下 JSON 格式返回，不要包含 Markdown 代码块标记：
+${numQuestions === 1 ? `
+请严格按以下单个 JSON 对象格式返回，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
 {
   "questionText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
   "solution": "详细解题步骤（含LaTeX公式，每步用1. 2. 3.标注）",
@@ -449,20 +453,17 @@ label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"midd
     "solids": []
   }
 }
-
-立体几何题示例（圆柱切割）：
-{
-  "questionText": "一个圆柱体...",
-  "solution": "...",
-  "geometry": {
-    "type": "solid_3d",
-    "shapes": [],
-    "solids": [
-      {"type":"cylinder","cx":150,"cy":60,"rx":60,"ry":20,"h":160,"fill":"#dbeafe","stroke":"#374151","cuts":[80]},
-      {"type":"label_3d","text":"图1","x":150,"y":250,"color":"#374151"}
-    ]
-  }
-}
+` : `
+请严格按以下 JSON 数组格式返回，包含 ${numQuestions} 个元素对象，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
+[
+  {
+    "questionText": "第1道新题目的完整文字...",
+    "solution": "第1道新题的详细解题步骤...",
+    "geometry": { ... }
+  },
+  ...
+]
+`}
 `;
 
     const response = await generateContentWithFallback({

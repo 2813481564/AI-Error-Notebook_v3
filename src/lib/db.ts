@@ -20,7 +20,7 @@ export interface ErrorQuestion {
   errorReason: string;
   solution: string;
   createdAt: number;
-  similarQuestion?: SimilarQuestion;
+  similarQuestion?: SimilarQuestion | SimilarQuestion[];
   studentId?: string;
   status?: 'pending' | 'audited';
   masteryStatus?: 'not_mastered' | 'mastered';
