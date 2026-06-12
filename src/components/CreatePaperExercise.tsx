@@ -465,6 +465,11 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                           {q.notebookName && (
                             <span className="bg-indigo-50 text-indigo-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
                           )}
+                          {q.errorReason === 'AI变式题' && (
+                            <span className="bg-amber-50 text-amber-750 text-[9px] font-extrabold px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-0.5">
+                              <span>✨</span> AI变式题
+                            </span>
+                          )}
                         </div>
                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border ${
                           q.masteryStatus === 'mastered' 

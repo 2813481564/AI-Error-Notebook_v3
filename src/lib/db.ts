@@ -1,6 +1,7 @@
 export interface SimilarQuestion {
   questionText: string;
   solution: string;
+  geometry?: any;
 }
 
 export interface DiagnosisStep {

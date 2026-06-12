@@ -186,7 +186,7 @@ export default function TestPaper({
         text: q.originalText,
         solution: q.solution,
         errorReason: q.errorReason,
-        geometry: undefined
+        geometry: q.similarQuestion?.geometry
       }))
     : variants.map((v, idx) => ({
         id: `variant-${idx}`,

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
-import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
+import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
@@ -748,6 +748,43 @@ function QuestionDetail({
   const [similarTabActive, setSimilarTabActive] = useState(false);
   const [similarData, setSimilarData] = useState<{questionText: string, solution: string, geometry?: GeometryData} | null>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
+  const [isSimilarSaved, setIsSimilarSaved] = useState(false);
+
+  useEffect(() => {
+    setIsSimilarSaved(false);
+  }, [similarData]);
+
+  const handleSaveSimilarAsNewQuestion = async () => {
+    if (!similarData) return;
+    try {
+      const newId = "q_similar_" + Math.random().toString(36).substring(2, 9);
+      const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
+      const newQuestion: ErrorQuestion = {
+        id: newId,
+        originalText: similarData.questionText,
+        subject: question.subject,
+        knowledgePoints: [...question.knowledgePoints, "AI变式题"],
+        errorReason: "AI变式题",
+        solution: similarData.solution,
+        createdAt: Date.now(),
+        notebookId: question.notebookId,
+        notebookName: selectedNbObj ? selectedNbObj.name : undefined,
+        masteryStatus: "not_mastered",
+        status: "audited",
+        similarQuestion: {
+          questionText: similarData.questionText,
+          solution: similarData.solution,
+          geometry: similarData.geometry
+        }
+      };
+      
+      await db.saveQuestion(newQuestion);
+      setIsSimilarSaved(true);
+      window.alert("成功将该举一反三题目保存至错题库！您可以直接在“组卷练习”中进行添加。");
+    } catch (err: any) {
+      window.alert(err.message || "保存失败，请重试");
+    }
+  };
   
   const isStudent = !isAdmin;
 
@@ -1224,14 +1261,34 @@ function QuestionDetail({
                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                    <p className="text-slate-600 font-bold tracking-wide animate-pulse">AI 正在深度关联题库，为您生成相似巩固练习题...</p>
                  </div>
-               ) : similarData ? (
+) : similarData ? (
                  <div className="space-y-6">
                      <div className="flex items-center justify-between mb-4">
                        <div className="flex items-center gap-2 text-blue-800 font-bold">
                          <span className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center text-xs">练</span>
                          <h4 className="text-sm font-extrabold">高频错点相似强化训练题</h4>
                        </div>
-                       
+                       <button
+                         onClick={handleSaveSimilarAsNewQuestion}
+                         disabled={isSimilarSaved}
+                         className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                           isSimilarSaved
+                             ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default'
+                             : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                         }`}
+                       >
+                         {isSimilarSaved ? (
+                           <>
+                             <Check className="w-3.5 h-3.5 text-emerald-600" />
+                             <span>已存入错题库</span>
+                           </>
+                         ) : (
+                           <>
+                             <PlusCircle className="w-3.5 h-3.5 text-white" />
+                             <span>保存至错题库</span>
+                           </>
+                         )}
+                       </button>
                      </div>
                      {similarData.geometry && similarData.geometry.type !== 'none' && (
                        <div className="py-2">
@@ -1339,6 +1396,11 @@ function ReadOnlyDetail({
         </div>
         <div>
           <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
+          {question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
+            <div className="py-2">
+              <GeometryRenderer geometry={question.similarQuestion.geometry} />
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap gap-1.5">
             {question.knowledgePoints.map((p: string) => (
               <span key={p} className="text-xs bg-slate-50 text-slate-705 px-3 py-1 rounded-lg border border-slate-100 font-bold"># {p}</span>
