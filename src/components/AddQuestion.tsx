@@ -120,7 +120,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   };
 
   // Stage 2 states (extracted questions for review)
-  const [extractedQuestions, setExtractedQuestions] = useState<{ subject: string; originalText: string; studentAnswer: string }[] | null>(null);
+  const [extractedQuestions, setExtractedQuestions] = useState<{ subject: string; originalText: string; studentAnswer: string; standardAnswer?: string }[] | null>(null);
 
   // Stage 3 states (diagnosed results)
   const [diagnosing, setDiagnosing] = useState<Record<number, 'pending' | 'loading' | 'success' | 'error'>>({});
@@ -392,7 +392,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           errorDiagnosis: data.errorDiagnosis || [],
           notebookId: selectedNotebook || undefined,
           score: data.score !== undefined ? data.score : undefined,
-          masteryStatus: 'not_mastered'
+          masteryStatus: 'not_mastered',
+          standardAnswer: item.standardAnswer
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'success' }));
       } catch (err: any) {
@@ -410,7 +411,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           errorDiagnosis: [],
           notebookId: selectedNotebook || undefined,
           score: 0,
-          masteryStatus: 'not_mastered'
+          masteryStatus: 'not_mastered',
+          standardAnswer: item.standardAnswer
         };
         setDiagnosing(prev => ({ ...prev, [idx]: 'error' }));
       }
@@ -479,64 +481,33 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
     try {
       if (selectedQuestions.length > 0) {
-        // 合并所有勾选题目为 1 条错题记录
-        const mergedOriginalText = selectedQuestions.map((q, idx) => {
-          const text = q.originalText.trim();
-          const hasNumberPrefix = /^(?:[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六极九十]+）)/.test(text);
-          return hasNumberPrefix ? text : `${idx + 1}. ${text}`;
-        }).join('\n\n');
-        const mergedStudentAnswer = selectedQuestions.map((q, idx) => {
-          if (!q.studentAnswer) return '';
-          return `### 第${idx + 1}题学生作答\n${q.studentAnswer.trim()}`;
-        }).filter(Boolean).join('\n\n');
-        const mergedSolution = selectedQuestions.map((q, idx) => `### 第${idx + 1}题解析\n${q.solution.trim()}`).join('\n\n');
-        const mergedStandardAnswer = selectedQuestions.map((q, idx) => {
-          if (!q.standardAnswer) return '';
-          return `### 第${idx + 1}题标准答案\n${q.standardAnswer.trim()}`;
-        }).filter(Boolean).join('\n\n');
-        const mergedKp: string[] = Array.from(new Set(selectedQuestions.flatMap(q => (q.knowledgePoints || []) as string[])));
-        const mergedErrorReason = Array.from(new Set(selectedQuestions.map(q => {
+        // 循环保存每个勾选的题目为独立的错题记录
+        for (let i = 0; i < selectedQuestions.length; i++) {
+          const q = selectedQuestions[i];
           const itemIdx = parsedData.indexOf(q);
-          return errorReasons[itemIdx] || '概念不清';
-        }))).join(', ');
+          const reason = errorReasons[itemIdx] || '概念不清';
 
-        const mergedDiagnosis: any[] = [];
-        let stepCount = 1;
-        selectedQuestions.forEach((q, qIdx) => {
-          if (q.errorDiagnosis && q.errorDiagnosis.length > 0) {
-            q.errorDiagnosis.forEach((step) => {
-              mergedDiagnosis.push({
-                stepNumber: stepCount++,
-                stepContent: `(第${qIdx + 1}题) ${step.stepContent}`,
-                status: step.status,
-                comment: step.comment || ''
-              });
-            });
-          }
-        });
+          const singleQuestion: ErrorQuestion = {
+            id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
+            imageUrl: imageStr || undefined,
+            originalText: q.originalText,
+            subject: q.subject || '数学',
+            knowledgePoints: q.knowledgePoints || [],
+            errorReason: reason,
+            solution: q.solution || '',
+            createdAt: Date.now() + i, // 稍微错开时间戳以保证排序相对顺序
+            studentAnswer: q.studentAnswer || '',
+            errorDiagnosis: q.errorDiagnosis || [],
+            notebookId: selectedNotebook || undefined,
+            score: q.score,
+            status: 'pending',
+            masteryStatus: 'not_mastered',
+            standardAnswer: q.standardAnswer || undefined
+          };
 
-        const scores = selectedQuestions.map(q => q.score).filter(s => s !== undefined) as number[];
-        const mergedScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : undefined;
-
-        const mergedQuestion: ErrorQuestion = {
-          id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
-          imageUrl: imageStr || undefined,
-          originalText: mergedOriginalText,
-          subject: selectedQuestions[0].subject || '数学',
-          knowledgePoints: mergedKp,
-          errorReason: mergedErrorReason,
-          solution: mergedSolution,
-          createdAt: Date.now(),
-          studentAnswer: mergedStudentAnswer,
-          errorDiagnosis: mergedDiagnosis,
-          notebookId: selectedNotebook || undefined,
-          score: mergedScore,
-          status: 'pending',
-          masteryStatus: 'not_mastered'
-        };
-
-        await db.saveQuestion(mergedQuestion);
-        alert('已成功归档保存为 1 条整卷错题记录！');
+          await db.saveQuestion(singleQuestion);
+        }
+        alert(`已成功归档保存为 ${selectedQuestions.length} 条独立的错题记录！`);
       } else {
         alert('选中的题目均标记为“不纳入归档”，未写入错题本。');
       }

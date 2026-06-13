@@ -753,9 +753,18 @@ function QuestionDetail({
   const [similarCount, setSimilarCount] = useState<number>(1);
   const [savedStatus, setSavedStatus] = useState<Record<number, boolean>>({});
 
+  // 解析题干中包含的子题
+  const parsedQs = parseIndividualQuestions(question.originalText);
+  const [selectedSubQIndex, setSelectedSubQIndex] = useState<number>(0);
+
   useEffect(() => {
     setSavedStatus({});
   }, [similarData]);
+
+  useEffect(() => {
+    setSelectedSubQIndex(0);
+    setSimilarData(question.similarQuestion || null);
+  }, [question]);
 
   const handleSaveSimilarItem = async (item: any, idx: number) => {
     try {
@@ -819,6 +828,11 @@ function QuestionDetail({
       const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
       const originalGrade = selectedNbObj?.grade;
 
+      let targetText = question.originalText;
+      if (parsedQs.length > 1 && selectedSubQIndex >= 0 && selectedSubQIndex < parsedQs.length) {
+        targetText = parsedQs[selectedSubQIndex].content;
+      }
+
       const res = await fetch('/api/similar', {
         method: 'POST',
         headers: { 
@@ -826,7 +840,7 @@ function QuestionDetail({
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          originalText: question.originalText,
+          originalText: targetText,
           subject: question.subject,
           knowledgePoints: question.knowledgePoints,
           count: similarCount,
@@ -1345,6 +1359,29 @@ function QuestionDetail({
                           系统已自动锁定当前原题的难度水平、考查知识点与所属年级学段，将为您精确定制出高质量的相似变式题，用于针对性强化巩固。
                         </p>
                       </div>
+
+                      {parsedQs.length > 1 && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成推荐题的子题</label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {parsedQs.map((qItem, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setSelectedSubQIndex(idx)}
+                                className={`p-3 text-left text-xs font-semibold rounded-xl border transition-all ${
+                                  selectedSubQIndex === idx
+                                    ? 'bg-blue-50 border-blue-500 text-blue-805 ring-1 ring-blue-500 shadow-sm'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="font-bold text-slate-800 mb-0.5">{qItem.number || `第 ${idx + 1} 题`}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{qItem.content}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成题目数量</label>

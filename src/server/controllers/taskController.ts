@@ -324,7 +324,8 @@ ${standardAnswerSection}
       errorDiagnosis: resultObj.errorDiagnosis || [],
       notebookId: notebookId || undefined,
       score: resultObj.score !== undefined ? resultObj.score : 0,
-      masteryStatus: 'not_mastered'
+      masteryStatus: 'not_mastered',
+      standardAnswer: item.standardAnswer || null
     });
   }
 
@@ -340,63 +341,33 @@ const saveFinalQuestionsToLibrary = async (
   const activeQuestions = diagnosedQuestions.filter(q => q.errorReason !== '不纳入归档');
   if (activeQuestions.length === 0) return;
 
-  // 合并为一条错题记录保存
-  const mergedOriginalText = activeQuestions.map((q, idx) => {
-    const text = q.originalText.trim();
-    const hasNumberPrefix = /^(?:[0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六极九十]+）)/.test(text);
-    return hasNumberPrefix ? text : `${idx + 1}. ${text}`;
-  }).join('\n\n');
-
-  const mergedStudentAnswer = activeQuestions.map((q, idx) => {
-    if (!q.studentAnswer) return '';
-    return `### 第${idx + 1}题学生作答\n${q.studentAnswer.trim()}`;
-  }).filter(Boolean).join('\n\n');
-
-  const mergedSolution = activeQuestions.map((q, idx) => `### 第${idx + 1}题解析\n${q.solution.trim()}`).join('\n\n');
-  const mergedKp = Array.from(new Set(activeQuestions.flatMap(q => q.knowledgePoints || [])));
-
-  const mergedDiagnosis: any[] = [];
-  let stepCount = 1;
-  activeQuestions.forEach((q, qIdx) => {
-    if (q.errorDiagnosis && q.errorDiagnosis.length > 0) {
-      q.errorDiagnosis.forEach((step: any) => {
-        mergedDiagnosis.push({
-          stepNumber: stepCount++,
-          stepContent: `(第${qIdx + 1}题) ${step.stepContent}`,
-          status: step.status,
-          comment: step.comment || ''
-        });
-      });
-    }
-  });
-
-  const scores = activeQuestions.map(q => q.score).filter(s => s !== undefined) as number[];
-  const mergedScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-  const mergedErrorReason = Array.from(new Set(activeQuestions.map(q => q.errorReason || '概念不清'))).join(', ');
-
-  const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString();
-
   const stmt = db.prepare(`
     INSERT INTO questions (
-      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, notebookId, score, masteryStatus
-    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered')
+      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, notebookId, score, masteryStatus, standardAnswer
+    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?)
   `);
 
-  stmt.run(
-    id,
-    userId,
-    imageUrl || null,
-    mergedOriginalText,
-    activeQuestions[0].subject || '数学',
-    JSON.stringify(mergedKp),
-    mergedErrorReason,
-    mergedSolution,
-    Date.now(),
-    mergedStudentAnswer,
-    JSON.stringify(mergedDiagnosis),
-    notebookId || null,
-    mergedScore
-  );
+  for (let i = 0; i < activeQuestions.length; i++) {
+    const q = activeQuestions[i];
+    const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString();
+
+    stmt.run(
+      id,
+      userId,
+      imageUrl || null,
+      q.originalText,
+      q.subject || '数学',
+      JSON.stringify(q.knowledgePoints || []),
+      q.errorReason || '概念不清',
+      q.solution || '',
+      Date.now() + i, // 稍微错开时间戳以保证排序相对顺序
+      q.studentAnswer || '',
+      JSON.stringify(q.errorDiagnosis || []),
+      notebookId || null,
+      q.score !== undefined ? q.score : null,
+      q.standardAnswer || null
+    );
+  }
 };
 
 
