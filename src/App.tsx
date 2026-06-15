@@ -11,8 +11,11 @@ import AnnouncementManagement from './components/AnnouncementManagement';
 import CreatePaperExercise from './components/CreatePaperExercise';
 import SavedPapers from './components/SavedPapers';
 import TaskCenter from './components/TaskCenter';
+import { db } from './lib/db';
 
 type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks';
+
+const API_PREFIX = '/api';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -99,27 +102,16 @@ export default function App() {
 
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [notifications, setNotifications] = useState<TaskNotification[]>([]);
-  const alertedKeys = useRef<Set<string>>(new Set());
+  const notifiedTaskKeys = useRef<Set<string>>(new Set());
 
   // 当 Token 或 Username 变更时加载已读记录
   useEffect(() => {
-    const key = `alerted_keys_${username || 'global'}`;
-    try {
-      const saved = localStorage.getItem(key);
-      const parsed = saved ? JSON.parse(saved) : [];
-      alertedKeys.current = new Set(Array.isArray(parsed) ? parsed : []);
-    } catch (e) {
-      alertedKeys.current = new Set();
-    }
+    notifiedTaskKeys.current.clear();
     setNotifications([]);
   }, [token, username]);
 
   const handleDismissNotification = (id: string, alertKey: string) => {
     setNotifications(prev => prev.filter(item => item.id !== id));
-    alertedKeys.current.add(alertKey);
-    const key = `alerted_keys_${username || 'global'}`;
-    const savedKeys = Array.from(alertedKeys.current);
-    localStorage.setItem(key, JSON.stringify(savedKeys));
   };
 
   useEffect(() => {
@@ -138,7 +130,8 @@ export default function App() {
             data.forEach(task => {
               if (['pending_extract_review', 'pending_diagnose_review', 'completed', 'failed'].includes(task.status)) {
                 const alertKey = `${task.id}_${task.status}`;
-                if (!alertedKeys.current.has(alertKey)) {
+                // 仅当后端标记为未通知，且前端此轮没有处理过该状态时
+                if (task.isNotified === 0 && !notifiedTaskKeys.current.has(alertKey)) {
                   let type: 'success' | 'warning' | 'info' | 'error' = 'info';
                   let title = '';
                   let message = '';
@@ -174,7 +167,10 @@ export default function App() {
                       alertKey
                     };
                     setNotifications(prev => [...prev, newNotification]);
-                    alertedKeys.current.add(alertKey);
+                    notifiedTaskKeys.current.add(alertKey);
+
+                    // 立即标记后端为已发送通知
+                    db.setTaskNotified(task.id).catch(err => console.error("Error setting task notified status:", err));
                   }
                 }
               }
@@ -199,7 +195,7 @@ export default function App() {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_PREFIX}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -231,7 +227,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', {
+      await fetch(`${API_PREFIX}/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -259,7 +255,7 @@ export default function App() {
     setAuthError(null);
     setRegSuccess(null);
     try {
-      const res = await fetch('/api/auth/send-code', {
+      const res = await fetch(`${API_PREFIX}/auth/send-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: regEmail.trim() })
@@ -288,7 +284,7 @@ export default function App() {
     setAuthError(null);
     setRegSuccess(null);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_PREFIX}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -817,14 +813,14 @@ export default function App() {
           <div className="flex gap-2">
             <button
               onClick={() => setShowSqlTip(true)}
-              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-3 py-1.5 font-bold transition-colors flex items-center gap-1"
+              className="text-[0.625rem] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-3 py-1.5 font-bold transition-colors flex items-center gap-1"
             >
               <HardDrive className="w-3 h-3" />
               存储说明
             </button>
             <button
               onClick={handleLogout}
-              className="text-[10px] bg-rose-50 text-rose-600 rounded-full px-3 py-1.5 font-bold hover:bg-rose-100 transition-colors"
+              className="text-[0.625rem] bg-rose-50 text-rose-600 rounded-full px-3 py-1.5 font-bold hover:bg-rose-100 transition-colors"
             >
               退出
             </button>
@@ -994,7 +990,7 @@ export default function App() {
               <h4 className="text-xs font-black text-slate-800 leading-tight flex items-center justify-between">
                 <span>{n.title}</span>
               </h4>
-              <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+              <p className="text-[0.6875rem] text-slate-500 font-semibold leading-relaxed">
                 {n.message}
               </p>
               
@@ -1006,7 +1002,7 @@ export default function App() {
                       setCurrentView('tasks');
                       handleDismissNotification(n.id, n.alertKey);
                     }}
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    className={`text-[0.625rem] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                       n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :
                       n.type === 'info' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' :
                       'bg-slate-800 hover:bg-slate-900 text-white'
@@ -1020,7 +1016,7 @@ export default function App() {
                       setCurrentView('library');
                       handleDismissNotification(n.id, n.alertKey);
                     }}
-                    className="text-[10px] font-black px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer shadow-sm"
+                    className="text-[0.625rem] font-black px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer shadow-sm"
                   >
                     查看错题
                   </button>
@@ -1028,7 +1024,7 @@ export default function App() {
 
                 <button
                   onClick={() => handleDismissNotification(n.id, n.alertKey)}
-                  className="text-[10px] font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg border border-slate-200 bg-white transition cursor-pointer"
+                  className="text-[0.625rem] font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg border border-slate-200 bg-white transition cursor-pointer"
                 >
                   关闭
                 </button>
@@ -1057,7 +1053,7 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode, label: str
       className={`flex flex-col items-center justify-center w-full py-3 ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-950'}`}
     >
       <div className="w-5 h-5 mb-1">{icon}</div>
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[0.625rem] font-medium">{label}</span>
     </button>
   );
 }

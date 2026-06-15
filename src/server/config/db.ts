@@ -146,10 +146,12 @@ db.exec(`
     payload TEXT,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
-    errorMsg TEXT
+    errorMsg TEXT,
+    isNotified INTEGER DEFAULT 0
   );
   
   CREATE INDEX IF NOT EXISTS idx_background_tasks_userId ON background_tasks(userId);
+  CREATE INDEX IF NOT EXISTS idx_background_tasks_user_created ON background_tasks(userId, createdAt DESC);
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -344,6 +346,20 @@ try {
   }
 } catch (err) {
   console.error("orders 数据库迁移检查失败:", err);
+}
+
+// 数据库迁移逻辑：检测 background_tasks 表是否缺少 isNotified 字段
+try {
+  const tableInfo = db.pragma("table_info(background_tasks)") as any[];
+  if (tableInfo.length > 0) {
+    const hasIsNotified = tableInfo.some(col => col.name === 'isNotified');
+    if (!hasIsNotified) {
+      console.log("正在升级 background_tasks 表以支持 isNotified 字段...");
+      db.exec("ALTER TABLE background_tasks ADD COLUMN isNotified INTEGER DEFAULT 0");
+    }
+  }
+} catch (err) {
+  console.error("background_tasks 数据库迁移检查失败:", err);
 }
 
 // 自动初始化 admin 用户

@@ -16,5 +16,6 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // 挂载所有以 /api 开头的路由
 app.use("/api", router);
+app.use("/notebook/api", router);
 
 export default app;

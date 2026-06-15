@@ -34,6 +34,7 @@ router.post("/paper/variant/regenerate", requireAuth, checkAiLimit, aiCtrl.paper
 
 // ================= 错题 / 公共题库 / 学生路由 =================
 router.get("/questions", requireAuth, qCtrl.getQuestions);
+router.get("/questions/unclassified-count", requireAuth, qCtrl.getUnclassifiedQuestionsCount);
 router.post("/questions", requireAuth, qCtrl.saveQuestion);
 router.delete("/questions/:id", requireAuth, qCtrl.deleteQuestion);
 router.put("/questions/:id/mastery", requireAuth, qCtrl.updateQuestionMastery);
@@ -85,7 +86,9 @@ router.post("/admin/vip/contact", requireAdmin, adminCtrl.saveVipContact);
 // ================= 后台任务路由 =================
 router.post("/tasks", requireAuth, checkAiLimit, taskCtrl.createTask);
 router.get("/tasks", requireAuth, taskCtrl.getTasks);
+router.get("/tasks/:id", requireAuth, taskCtrl.getTaskById);
 router.post("/tasks/:id/review", requireAuth, checkAiLimit, taskCtrl.submitReview);
 router.delete("/tasks/:id", requireAuth, taskCtrl.deleteTask);
+router.post("/tasks/:id/notified", requireAuth, taskCtrl.updateTaskNotified);
 
 export default router;

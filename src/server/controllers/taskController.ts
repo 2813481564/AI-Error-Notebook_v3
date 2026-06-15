@@ -71,7 +71,7 @@ const processTask = async (id: string) => {
 
     // 第一阶段：如果是在 queued 状态，进行 OCR 识别文本提取
     if (task.status === 'queued') {
-      db.prepare("UPDATE background_tasks SET status = 'extracting', progress = 20, updatedAt = ? WHERE id = ?").run(Date.now(), id);
+      db.prepare("UPDATE background_tasks SET status = 'extracting', progress = 20, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
       console.log(`[TaskQueue] [${id}] 进入文本提取阶段`);
       
       const extracted = await runAiExtract(payload.imageBase64, payload.mimeType, payload.extractMode || task.uploadMode);
@@ -81,7 +81,7 @@ const processTask = async (id: string) => {
 
       if (task.autoRun === 0) {
         // 需要人工审核：变更状态为待校对，挂起任务
-        db.prepare("UPDATE background_tasks SET status = 'pending_extract_review', progress = 50, updatedAt = ? WHERE id = ?").run(Date.now(), id);
+        db.prepare("UPDATE background_tasks SET status = 'pending_extract_review', progress = 50, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
         console.log(`[TaskQueue] [${id}] 需要人工校对，挂起任务`);
         return;
       } else {
@@ -92,7 +92,7 @@ const processTask = async (id: string) => {
 
     // 第二阶段：文本提取成功后，进行诊断
     if (task.status === 'extracting') {
-      db.prepare("UPDATE background_tasks SET status = 'diagnosing', progress = 60, updatedAt = ? WHERE id = ?").run(Date.now(), id);
+      db.prepare("UPDATE background_tasks SET status = 'diagnosing', progress = 60, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
       console.log(`[TaskQueue] [${id}] 进入 AI 智能诊断阶段`);
 
       const diagnosed = await runAiDiagnoseAll(payload.extractedQuestions, payload.imageBase64, task.notebookId);
@@ -102,19 +102,19 @@ const processTask = async (id: string) => {
 
       if (task.autoRun === 0) {
         // 需要审核诊断：变更状态为待确认，挂起任务
-        db.prepare("UPDATE background_tasks SET status = 'pending_diagnose_review', progress = 80, updatedAt = ? WHERE id = ?").run(Date.now(), id);
+        db.prepare("UPDATE background_tasks SET status = 'pending_diagnose_review', progress = 80, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
         console.log(`[TaskQueue] [${id}] 需要人工确认诊断，挂起任务`);
         return;
       } else {
         // 全自动：直接归档保存
         await saveFinalQuestionsToLibrary(task.userId, diagnosed, payload.imageBase64, task.notebookId);
-        db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, updatedAt = ? WHERE id = ?").run(Date.now(), id);
+        db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
         console.log(`[TaskQueue] [${id}] 全自动处理成功并归档完毕！`);
       }
     }
   } catch (error: any) {
     console.error(`[TaskQueue] [${id}] 执行失败:`, error);
-    db.prepare("UPDATE background_tasks SET status = 'failed', errorMsg = ?, updatedAt = ? WHERE id = ?")
+    db.prepare("UPDATE background_tasks SET status = 'failed', errorMsg = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
       .run(error.message || "未知错误", Date.now(), id);
   }
 };
@@ -386,8 +386,8 @@ export const createTask = async (req: AuthenticatedRequest, res: express.Respons
 
     const stmt = db.prepare(`
       INSERT INTO background_tasks (
-        id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt
-      ) VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?, ?)
+        id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt, isNotified
+      ) VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?, ?, 0)
     `);
 
     stmt.run(
@@ -413,10 +413,81 @@ export const createTask = async (req: AuthenticatedRequest, res: express.Respons
   }
 };
 
-// 2. 获取任务列表 (仅自己)
+// 2. 获取任务列表 (仅自己，不包含 payload 字段以提升性能)
 export const getTasks = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const stmt = db.prepare("SELECT * FROM background_tasks WHERE userId = ? ORDER BY createdAt DESC");
+    const pageParam = req.query.page;
+    const limitParam = req.query.limit;
+
+    if (pageParam !== undefined && limitParam !== undefined) {
+      const page = parseInt(pageParam as string) || 1;
+      const limit = parseInt(limitParam as string) || 10;
+      const offset = (page - 1) * limit;
+
+      const countStmt = db.prepare("SELECT COUNT(*) as count FROM background_tasks WHERE userId = ?");
+      const countRow = countStmt.get(req.userId) as { count: number };
+      const total = countRow.count;
+
+      const statsStmt = db.prepare(`
+        SELECT 
+          COUNT(CASE WHEN status IN ('queued', 'extracting', 'diagnosing') THEN 1 END) as runningCount,
+          COUNT(CASE WHEN status = 'pending_extract_review' THEN 1 END) as pendingOcrCount,
+          COUNT(CASE WHEN status = 'pending_diagnose_review' THEN 1 END) as pendingDiagCount,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) as completedCount
+        FROM background_tasks WHERE userId = ?
+      `);
+      const statsRow = statsStmt.get(req.userId) as {
+        runningCount: number;
+        pendingOcrCount: number;
+        pendingDiagCount: number;
+        completedCount: number;
+      };
+
+      const stmt = db.prepare(`
+        SELECT id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, createdAt, updatedAt, errorMsg, isNotified 
+        FROM background_tasks 
+        WHERE userId = ? 
+        ORDER BY createdAt DESC 
+        LIMIT ? OFFSET ?
+      `);
+      const rows = stmt.all(req.userId, limit, offset) as any[];
+
+      const tasks = rows.map(row => ({
+        id: row.id,
+        userId: row.userId,
+        taskName: row.taskName,
+        status: row.status,
+        progress: row.progress,
+        autoRun: row.autoRun,
+        uploadMode: row.uploadMode,
+        notebookId: row.notebookId || undefined,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        errorMsg: row.errorMsg || undefined,
+        isNotified: row.isNotified !== undefined ? row.isNotified : 0
+      }));
+
+      return res.json({
+        total,
+        page,
+        limit,
+        tasks,
+        stats: {
+          running: statsRow.runningCount,
+          pendingOcr: statsRow.pendingOcrCount,
+          pendingDiag: statsRow.pendingDiagCount,
+          completed: statsRow.completedCount
+        }
+      });
+    }
+
+    // 兼容原本无分页时的调用
+    const stmt = db.prepare(`
+      SELECT id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, createdAt, updatedAt, errorMsg, isNotified 
+      FROM background_tasks 
+      WHERE userId = ? 
+      ORDER BY createdAt DESC
+    `);
     const rows = stmt.all(req.userId) as any[];
 
     const tasks = rows.map(row => ({
@@ -428,16 +499,46 @@ export const getTasks = async (req: AuthenticatedRequest, res: express.Response)
       autoRun: row.autoRun,
       uploadMode: row.uploadMode,
       notebookId: row.notebookId || undefined,
-      payload: row.payload ? JSON.parse(row.payload) : {},
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      errorMsg: row.errorMsg || undefined
+      errorMsg: row.errorMsg || undefined,
+      isNotified: row.isNotified !== undefined ? row.isNotified : 0
     }));
 
     res.json(tasks);
   } catch (error: any) {
     console.error("Get Tasks Error:", error);
     res.status(500).json({ error: error.message || "获取任务列表失败" });
+  }
+};
+
+// 2.5 获取单个任务详情 (包含 payload)
+export const getTaskById = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const task = db.prepare("SELECT * FROM background_tasks WHERE id = ? AND userId = ?").get(id, req.userId) as any;
+    if (!task) {
+      return res.status(404).json({ error: "任务不存在" });
+    }
+
+    res.json({
+      id: task.id,
+      userId: task.userId,
+      taskName: task.taskName,
+      status: task.status,
+      progress: task.progress,
+      autoRun: task.autoRun,
+      uploadMode: task.uploadMode,
+      notebookId: task.notebookId || undefined,
+      payload: task.payload ? JSON.parse(task.payload) : {},
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      errorMsg: task.errorMsg || undefined,
+      isNotified: task.isNotified !== undefined ? task.isNotified : 0
+    });
+  } catch (error: any) {
+    console.error("Get Task Detail Error:", error);
+    res.status(500).json({ error: error.message || "获取任务详情失败" });
   }
 };
 
@@ -464,7 +565,7 @@ export const submitReview = async (req: AuthenticatedRequest, res: express.Respo
       
       db.prepare(`
         UPDATE background_tasks 
-        SET status = 'extracting', payload = ?, updatedAt = ? 
+        SET status = 'extracting', payload = ?, updatedAt = ?, isNotified = 0 
         WHERE id = ?
       `).run(JSON.stringify(taskPayload), Date.now(), id);
 
@@ -486,7 +587,7 @@ export const submitReview = async (req: AuthenticatedRequest, res: express.Respo
 
       db.prepare(`
         UPDATE background_tasks 
-        SET status = 'completed', progress = 100, updatedAt = ? 
+        SET status = 'completed', progress = 100, updatedAt = ?, isNotified = 0 
         WHERE id = ?
       `).run(Date.now(), id);
 
@@ -521,5 +622,23 @@ export const deleteTask = async (req: AuthenticatedRequest, res: express.Respons
   } catch (error: any) {
     console.error("Delete Task Error:", error);
     res.status(500).json({ error: error.message || "删除任务失败" });
+  }
+};
+
+// 5. 标记后台任务已发送通知
+export const updateTaskNotified = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const stmt = db.prepare("UPDATE background_tasks SET isNotified = 1 WHERE id = ? AND userId = ?");
+    const result = stmt.run(id, req.userId);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "任务不存在或无权操作" });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Update Task Notified Error:", error);
+    res.status(500).json({ error: error.message || "更新任务已通知状态失败" });
   }
 };

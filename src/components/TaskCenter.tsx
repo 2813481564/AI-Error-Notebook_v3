@@ -15,7 +15,7 @@ interface Task {
   autoRun: number;
   uploadMode: string;
   notebookId?: string;
-  payload: any;
+  payload?: any;
   createdAt: number;
   updatedAt: number;
   errorMsg?: string;
@@ -26,6 +26,17 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
   const [loading, setLoading] = useState(true);
   const [notebooks, setNotebooks] = useState<any[]>([]);
   
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [taskStats, setTaskStats] = useState({
+    running: 0,
+    pendingOcr: 0,
+    pendingDiag: 0,
+    completed: 0
+  });
+  const pageSize = 10;
+
   // 审核状态控制
   const [activeReviewTask, setActiveReviewTask] = useState<Task | null>(null);
   const [reviewStep, setReviewStep] = useState<2 | 3 | null>(null);
@@ -33,12 +44,15 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
   const [selectedNotebook, setSelectedNotebook] = useState<string>('');
   const [expandedSolutions, setExpandedSolutions] = useState<Record<number, boolean>>({});
 
-  const fetchTasks = async (showLoading = false) => {
+  const fetchTasks = async (page = 1, showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await db.getTasks();
-      if (Array.isArray(data)) {
-        setTasks(data);
+      const res = await db.getPaginatedTasks(page, pageSize);
+      setTasks(res.tasks);
+      setTotalTasks(res.total);
+      setCurrentPage(res.page);
+      if (res.stats) {
+        setTaskStats(res.stats);
       }
     } catch (err) {
       console.error('获取后台任务失败:', err);
@@ -65,49 +79,59 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
 
   // 轮询机制
   useEffect(() => {
-    fetchTasks(true);
+    fetchTasks(1, true);
     fetchNotebooks();
+  }, []);
 
+  useEffect(() => {
     const interval = setInterval(() => {
-      fetchTasks(false);
+      fetchTasks(currentPage, false);
     }, 4000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [currentPage]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('确定要删除这个后台任务吗？')) return;
     try {
       await db.deleteTask(id);
-      fetchTasks(false);
+      fetchTasks(currentPage, false);
     } catch (err: any) {
       alert(err.message || '删除任务失败');
     }
   };
 
-  // 展开审核弹窗
-  const startReview = (task: Task) => {
-    setActiveReviewTask(task);
-    if (task.status === 'pending_extract_review') {
-      setReviewStep(2);
-      // 深度拷贝 payload 里的提取题目
-      const qList = task.payload.extractedQuestions 
-        ? JSON.parse(JSON.stringify(task.payload.extractedQuestions))
-        : [{ subject: '数学', originalText: '', studentAnswer: '', standardAnswer: '' }];
-      setReviewPayload(qList);
-    } else if (task.status === 'pending_diagnose_review') {
-      setReviewStep(3);
-      const diagnosedList = task.payload.diagnosedQuestions
-        ? JSON.parse(JSON.stringify(task.payload.diagnosedQuestions))
-        : [];
-      setReviewPayload(diagnosedList);
-      setSelectedNotebook(task.notebookId || '');
-      const expanded: Record<number, boolean> = {};
-      diagnosedList.forEach((_, i) => {
-        expanded[i] = i === 0;
-      });
-      setExpandedSolutions(expanded);
+  // 展开审核弹窗 (按需异步拉取大字段 payload)
+  const startReview = async (task: Task) => {
+    setLoading(true);
+    try {
+      const detail = await db.getTaskDetail(task.id);
+      setActiveReviewTask(detail);
+      if (detail.status === 'pending_extract_review') {
+        setReviewStep(2);
+        // 深度拷贝 payload 里的提取题目
+        const qList = detail.payload.extractedQuestions 
+          ? JSON.parse(JSON.stringify(detail.payload.extractedQuestions))
+          : [{ subject: '数学', originalText: '', studentAnswer: '', standardAnswer: '' }];
+        setReviewPayload(qList);
+      } else if (detail.status === 'pending_diagnose_review') {
+        setReviewStep(3);
+        const diagnosedList = detail.payload.diagnosedQuestions
+          ? JSON.parse(JSON.stringify(detail.payload.diagnosedQuestions))
+          : [];
+        setReviewPayload(diagnosedList);
+        setSelectedNotebook(detail.notebookId || '');
+        const expanded: Record<number, boolean> = {};
+        diagnosedList.forEach((_, i) => {
+          expanded[i] = i === 0;
+        });
+        setExpandedSolutions(expanded);
+      }
+    } catch (err: any) {
+      alert(err.message || '获取任务详情失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -151,7 +175,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       setActiveReviewTask(null);
       setReviewStep(null);
       setReviewPayload(null);
-      fetchTasks(false);
+      fetchTasks(currentPage, false);
     } catch (err: any) {
       alert(err.message || '提交校对失败');
     }
@@ -172,7 +196,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       setActiveReviewTask(null);
       setReviewStep(null);
       setReviewPayload(null);
-      fetchTasks(false);
+      fetchTasks(currentPage, false);
     } catch (err: any) {
       alert(err.message || '归档失败');
     }
@@ -200,11 +224,56 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
     }
   };
 
-  // 概览卡片统计
-  const statPendingOcr = tasks.filter(t => t.status === 'pending_extract_review').length;
-  const statPendingDiag = tasks.filter(t => t.status === 'pending_diagnose_review').length;
-  const statRunning = tasks.filter(t => ['queued', 'extracting', 'diagnosing'].includes(t.status)).length;
-  const statCompleted = tasks.filter(t => t.status === 'completed').length;
+  const renderPageNumbers = () => {
+    const totalPages = Math.ceil(totalTasks / pageSize);
+    const pages: (number | string)[] = [];
+    
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) {
+        pages.push('...');
+      }
+      
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      if (currentPage < totalPages - 2) {
+        pages.push('...');
+      }
+      pages.push(totalPages);
+    }
+    
+    return pages.map((page, idx) => {
+      if (page === '...') {
+        return (
+          <span key={`ell-${idx}`} className="px-2 text-slate-400 font-bold text-xs select-none">
+            ...
+          </span>
+        );
+      }
+      
+      const isSelected = page === currentPage;
+      return (
+        <button
+          key={page}
+          onClick={() => fetchTasks(page as number, false)}
+          className={`w-9 h-9 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${
+            isSelected 
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' 
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+          }`}
+        >
+          {page}
+        </button>
+      );
+    });
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-12">
@@ -218,7 +287,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
           <p className="text-sm text-slate-500 mt-1">查看错题后台异步识别和诊断进度，并进行人工校对流转</p>
         </div>
         <button
-          onClick={() => fetchTasks(true)}
+          onClick={() => fetchTasks(currentPage, true)}
           className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition text-slate-600 hover:text-slate-900 cursor-pointer"
           title="强制刷新"
         >
@@ -230,19 +299,19 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-400">进行中</span>
-          <span className="text-2xl font-black text-blue-600 mt-1">{statRunning}</span>
+          <span className="text-2xl font-black text-blue-600 mt-1">{taskStats.running}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-400">待文本校对</span>
-          <span className="text-2xl font-black text-amber-600 mt-1">{statPendingOcr}</span>
+          <span className="text-2xl font-black text-amber-600 mt-1">{taskStats.pendingOcr}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-400">待归档确认</span>
-          <span className="text-2xl font-black text-orange-600 mt-1">{statPendingDiag}</span>
+          <span className="text-2xl font-black text-orange-600 mt-1">{taskStats.pendingDiag}</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-400">已自动归档</span>
-          <span className="text-2xl font-black text-emerald-600 mt-1">{statCompleted}</span>
+          <span className="text-2xl font-black text-emerald-600 mt-1">{taskStats.completed}</span>
         </div>
       </div>
 
@@ -354,6 +423,40 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalTasks > pageSize && (
+          <div className="p-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs text-slate-500 font-bold">
+              显示第 {(currentPage - 1) * pageSize + 1} 到 {Math.min(currentPage * pageSize, totalTasks)} 条，共 {totalTasks} 个后台任务
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => currentPage > 1 && fetchTasks(currentPage - 1, false)}
+                disabled={currentPage === 1}
+                className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${
+                  currentPage === 1 
+                    ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                上一页
+              </button>
+              {renderPageNumbers()}
+              <button
+                onClick={() => currentPage < Math.ceil(totalTasks / pageSize) && fetchTasks(currentPage + 1, false)}
+                disabled={currentPage === Math.ceil(totalTasks / pageSize)}
+                className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${
+                  currentPage === Math.ceil(totalTasks / pageSize)
+                    ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                下一页
+              </button>
+            </div>
           </div>
         )}
       </div>

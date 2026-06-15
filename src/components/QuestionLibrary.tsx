@@ -15,6 +15,7 @@ export default function QuestionLibrary({
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterSubject, setFilterSubject] = useState<string>('all');
   const [filterNotebook, setFilterNotebook] = useState<string>('all');
   const [filterMastery, setFilterMastery] = useState<'all' | 'not_mastered' | 'mastered'>('all');
@@ -27,15 +28,43 @@ export default function QuestionLibrary({
   
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [unclassifiedCount, setUnclassifiedCount] = useState(0);
+  const pageSize = 10;
   
   const userRole = localStorage.getItem('errorbook_role') || 'user';
   const isAdmin = userRole === 'admin';
   const isStudent = !isAdmin;
 
+  // 搜索框防抖
   useEffect(() => {
-    loadQuestions();
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  useEffect(() => {
     loadNotebooks();
+    loadUnclassifiedCount();
   }, []);
+
+  // 当筛选条件或防抖后的搜索内容变化时，且处于错题本内，刷新至第 1 页
+  useEffect(() => {
+    if (activeNotebookId !== null) {
+      loadQuestions(1);
+    }
+  }, [activeNotebookId, filterSubject, filterMastery, debouncedSearch]);
+
+  const loadUnclassifiedCount = () => {
+    db.getUnclassifiedCount().then(count => {
+      setUnclassifiedCount(count);
+    }).catch(console.error);
+  };
 
   const loadNotebooks = () => {
     const token = localStorage.getItem('errorbook_token');
@@ -51,6 +80,37 @@ export default function QuestionLibrary({
         }
       })
       .catch(console.error);
+  };
+
+  const loadQuestions = (page = 1) => {
+    if (activeNotebookId === null) return;
+    setLoadingQuestions(true);
+    db.getPaginatedQuestions({
+      page,
+      limit: pageSize,
+      subject: filterSubject,
+      notebookId: activeNotebookId,
+      masteryStatus: filterMastery,
+      search: debouncedSearch
+    }).then(res => {
+      setQuestions(res.questions);
+      setTotalQuestions(res.total);
+      setCurrentPage(res.page);
+    }).catch(err => {
+      console.error('获取分页错题失败:', err);
+    }).finally(() => {
+      setLoadingQuestions(false);
+    });
+  };
+
+  const handleBackToNotebooks = () => {
+    setActiveNotebookId(null);
+    setFilterNotebook('all');
+    setQuestions([]);
+    setTotalQuestions(0);
+    setCurrentPage(1);
+    loadNotebooks();
+    loadUnclassifiedCount();
   };
 
   const handleSaveNotebookSubmit = async () => {
@@ -72,6 +132,7 @@ export default function QuestionLibrary({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '创建失败');
         setNotebooks(prev => [data.notebook || data, ...prev]);
+        loadUnclassifiedCount();
       } else if (notebookPanel === 'edit' && editingNotebook) {
         const res = await fetch(`/api/notebooks/${editingNotebook.id}`, {
           method: 'PUT',
@@ -84,7 +145,9 @@ export default function QuestionLibrary({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '修改失败');
         setNotebooks(prev => prev.map(n => n.id === editingNotebook.id ? { ...n, ...nbForm } : n));
-        loadQuestions();
+        if (activeNotebookId !== null) {
+          loadQuestions(currentPage);
+        }
       }
       setNotebookPanel('list');
     } catch (err: any) {
@@ -97,7 +160,7 @@ export default function QuestionLibrary({
     const nextStatus = current === 'mastered' ? 'not_mastered' : 'mastered';
     try {
       await db.updateQuestionMastery(id, nextStatus);
-      loadQuestions();
+      loadQuestions(currentPage);
       if (selectedQuestion && selectedQuestion.id === id) {
         setSelectedQuestion(prev => prev ? { ...prev, masteryStatus: nextStatus } : null);
       }
@@ -109,7 +172,7 @@ export default function QuestionLibrary({
   const handleDeleteNotebook = async (id: string) => {
     const nbObj = notebooks.find(n => n.id === id);
     const nbName = nbObj ? nbObj.name : '此错题本';
-    const count = questions.filter(q => q.notebookId === id).length;
+    const count = nbObj ? (nbObj.questionCount || 0) : 0;
     
     const doubleCheck = window.confirm(
       `⚠️ 警告：错题本【${nbName}】内目前共包含 ${count} 道错题！\n` +
@@ -136,24 +199,20 @@ export default function QuestionLibrary({
       if (activeNotebookId === id) {
         setActiveNotebookId(null);
       }
-      loadQuestions();
+      loadUnclassifiedCount();
       window.alert('错题本及其内部错题已被彻底清理！');
     } catch (err: any) {
       window.alert(err.message);
     }
   };
 
-  const loadQuestions = () => {
-    db.getAllQuestions().then(data => {
-      setQuestions(data.sort((a, b) => b.createdAt - a.createdAt));
-    }).catch(console.error);
-  };
-
   const handleDelete = async (id: string) => {
     if (!window.confirm('确定要删除这道错题吗？')) return;
     await db.deleteQuestion(id);
     setSelectedQuestion(null);
-    loadQuestions();
+    loadQuestions(currentPage);
+    loadNotebooks();
+    loadUnclassifiedCount();
   };
 
   const toggleSelect = (id: string) => {
@@ -182,6 +241,57 @@ export default function QuestionLibrary({
     }
   };
 
+  const renderPageNumbers = () => {
+    const totalPages = Math.ceil(totalQuestions / pageSize);
+    const pages: (number | string)[] = [];
+    
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) {
+        pages.push('...');
+      }
+      
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      if (currentPage < totalPages - 2) {
+        pages.push('...');
+      }
+      pages.push(totalPages);
+    }
+    
+    return pages.map((page, idx) => {
+      if (page === '...') {
+        return (
+          <span key={`ell-${idx}`} className="px-2 text-slate-450 font-bold text-xs select-none">
+            ...
+          </span>
+        );
+      }
+      
+      const isSelected = page === currentPage;
+      return (
+        <button
+          key={page}
+          onClick={() => loadQuestions(page as number)}
+          className={`w-9 h-9 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer ${
+            isSelected 
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' 
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-55 hover:border-slate-350'
+          }`}
+        >
+          {page}
+        </button>
+      );
+    });
+  };
+
   if (selectedQuestion) {
     return <QuestionDetail 
       question={selectedQuestion} 
@@ -191,24 +301,15 @@ export default function QuestionLibrary({
       onDelete={() => handleDelete(selectedQuestion.id)}
       onUpdate={(updated) => {
         setSelectedQuestion(updated);
-        loadQuestions();
+        loadQuestions(currentPage);
+        loadNotebooks();
+        loadUnclassifiedCount();
       }}
     />;
   }
 
-  const subjects = Array.from(new Set(questions.map(q => q.subject)));
-  const filtered = questions.filter(q => {
-    if (filterSubject !== 'all' && q.subject !== filterSubject) return false;
-    if (filterNotebook === 'unclassified') {
-      if (q.notebookId) return false;
-    } else if (filterNotebook !== 'all' && q.notebookId !== filterNotebook) {
-      return false;
-    }
-    if (filterMastery === 'not_mastered' && q.masteryStatus === 'mastered') return false;
-    if (filterMastery === 'mastered' && q.masteryStatus !== 'mastered') return false;
-    if (search && !q.originalText.includes(search) && !q.knowledgePoints.some(p => p.includes(search))) return false;
-    return true;
-  });
+  const subjects = ['数学', '英语', '语文', '物理', '化学', '生物', '历史', '地理', '政治'];
+  const filtered = questions;
 
   const activeNotebook = notebooks.find(n => n.id === filterNotebook);
 
@@ -278,45 +379,40 @@ export default function QuestionLibrary({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {/* 默认未分类错题卡片 */}
-            {(() => {
-              const unclassifiedCount = questions.filter(q => !q.notebookId).length;
-              return (
-                <div 
-                  onClick={() => {
-                    setActiveNotebookId('unclassified');
-                    setFilterNotebook('unclassified');
-                  }}
-                  className="bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200 p-6 flex flex-col justify-between min-h-[180px] cursor-pointer group hover:border-slate-355"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs bg-slate-100 text-slate-600 font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">
-                        📁 默认系统本
-                      </span>
-                      <span className="text-2xl">📓</span>
-                    </div>
-                    <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors">
-                      未分类错题
-                    </h3>
-                    <p className="text-xs text-slate-400 font-semibold leading-relaxed line-clamp-2">
-                      所有未绑定具体错题本的零散错题，均会默认收录在此，方便进行后期归类。
-                    </p>
-                  </div>
-                  <div className="border-t border-slate-100 pt-4 mt-4 flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-extrabold">
-                      共收录 <span className="text-blue-600 font-black text-sm">{unclassifiedCount}</span> 道错题
-                    </span>
-                    <span className="text-[10px] text-blue-600 font-black flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      进入管理 →
-                    </span>
-                  </div>
+            <div 
+              onClick={() => {
+                setActiveNotebookId('unclassified');
+                setFilterNotebook('unclassified');
+              }}
+              className="bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200 p-6 flex flex-col justify-between min-h-[180px] cursor-pointer group hover:border-slate-355"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs bg-slate-100 text-slate-600 font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">
+                    📁 默认系统本
+                  </span>
+                  <span className="text-2xl">📓</span>
                 </div>
-              );
-            })()}
+                <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors">
+                  未分类错题
+                </h3>
+                <p className="text-xs text-slate-400 font-semibold leading-relaxed line-clamp-2">
+                  所有未绑定具体错题本的零散错题，均会默认收录在此，方便进行后期归类。
+                </p>
+              </div>
+              <div className="border-t border-slate-100 pt-4 mt-4 flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-extrabold">
+                  共收录 <span className="text-blue-600 font-black text-sm">{unclassifiedCount}</span> 道错题
+                </span>
+                <span className="text-[10px] text-blue-600 font-black flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  进入管理 →
+                </span>
+              </div>
+            </div>
 
             {/* 用户自定义错题本卡片 */}
             {notebooks.map(nb => {
-              const nbCount = questions.filter(q => q.notebookId === nb.id).length;
+              const nbCount = nb.questionCount || 0;
               return (
                 <div 
                   key={nb.id}
@@ -390,10 +486,7 @@ export default function QuestionLibrary({
       ) : (
         <div className="space-y-6">
           <button
-            onClick={() => {
-              setActiveNotebookId(null);
-              setFilterNotebook('all');
-            }}
+            onClick={handleBackToNotebooks}
             className="flex items-center gap-1.5 text-xs font-black text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-4 py-2.5 rounded-xl transition-all self-start cursor-pointer shadow-sm border border-slate-200"
           >
             <span>← 返回错题本列表</span>
@@ -486,101 +579,158 @@ export default function QuestionLibrary({
           )}
 
           {/* List */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map(q => {
-              const isSelected = selectedIds.has(q.id);
-              return (
-                <div key={q.id} className="relative group">
-                  <button 
-                    onClick={() => setSelectedQuestion(q)}
-                    className={`w-full bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between h-full ${
-                      isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:border-blue-400'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3.5 pr-8">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
-                          {q.notebookName ? (
-                            <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
-                          ) : (
-                            <span className="bg-slate-50 text-slate-500 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">未分类</span>
-                          )}
+          {loadingQuestions ? (
+            <div className="min-h-[300px] flex flex-col items-center justify-center space-y-4 bg-white rounded-3xl border border-slate-100 shadow-sm">
+              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <p className="text-slate-500 font-bold text-xs animate-pulse">正在加载错题数据，请稍候...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="bg-white rounded-3xl p-16 text-center border border-slate-200/60 shadow-sm flex flex-col items-center justify-center space-y-4">
+              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100">
+                <Book className="w-8 h-8 text-slate-350" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-slate-800">暂无符合条件的错题</h3>
+                <p className="text-slate-400 font-semibold text-xs max-w-sm mx-auto">
+                  在此筛选条件下，我们没有找到任何错题记录。您可以更换筛选条件、清除搜索框或去“录入新错题”。
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filtered.map(q => {
+                  const isSelected = selectedIds.has(q.id);
+                  return (
+                    <div key={q.id} className="relative group">
+                      <button 
+                        onClick={() => setSelectedQuestion(q)}
+                        className={`w-full bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between h-full ${
+                          isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:border-blue-400'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-3.5 pr-8">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
+                              {q.notebookName ? (
+                                <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
+                              ) : (
+                                <span className="bg-slate-50 text-slate-500 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">未分类</span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {format(new Date(q.createdAt), 'yyyy-MM-dd')}
+                            </span>
+                          </div>
+                          <p className="text-slate-800 font-bold line-clamp-2 leading-relaxed mb-4 text-sm">{q.originalText}</p>
                         </div>
-                        <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {format(new Date(q.createdAt), 'yyyy-MM-dd')}
-                        </span>
-                      </div>
-                      <p className="text-slate-800 font-bold line-clamp-2 leading-relaxed mb-4 text-sm">{q.originalText}</p>
-                    </div>
-                    
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-                      <div className="flex gap-1.5 flex-wrap items-center">
-                        {q.knowledgePoints.slice(0,2).map(p => (
-                          <span key={p} className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {p}</span>
-                        ))}
-                        <button
-                          onClick={(e) => handleToggleMastery(q.id, q.masteryStatus, e)}
-                          className={`text-[9px] font-extrabold px-2 py-0.5 rounded transition-all flex items-center gap-0.5 cursor-pointer border ${
-                            q.masteryStatus === 'mastered' 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-250 hover:bg-emerald-105' 
-                              : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-105'
-                          }`}
-                          title="点击一键切换掌握状态"
-                        >
-                          {q.masteryStatus === 'mastered' ? '✓ 已掌握' : '✗ 未掌握'}
-                        </button>
-                        <select
-                          value={q.notebookId || ''}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={async (e) => {
-                            e.stopPropagation();
-                            const targetNbId = e.target.value;
-                            const targetNb = notebooks.find(n => n.id === targetNbId);
-                            const updated = {
-                              ...q,
-                              notebookId: targetNbId || undefined,
-                              notebookName: targetNb ? targetNb.name : undefined
-                            };
-                            try {
-                              await db.saveQuestion(updated);
-                              setQuestions(prev => prev.map(item => item.id === q.id ? updated : item));
-                            } catch (err: any) {
-                              window.alert(err.message || '转移失败');
-                            }
-                          }}
-                          className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 outline-none cursor-pointer"
-                          title="快速转移所属错题本"
-                        >
-                          <option value="">未分类</option>
-                          {notebooks.map(nb => (
-                            <option key={nb.id} value={nb.id}>{nb.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </button>
+                        
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
+                          <div className="flex gap-1.5 flex-wrap items-center">
+                            {q.knowledgePoints.slice(0,2).map(p => (
+                              <span key={p} className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {p}</span>
+                            ))}
+                            <button
+                              onClick={(e) => handleToggleMastery(q.id, q.masteryStatus, e)}
+                              className={`text-[9px] font-extrabold px-2 py-0.5 rounded transition-all flex items-center gap-0.5 cursor-pointer border ${
+                                q.masteryStatus === 'mastered' 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-250 hover:bg-emerald-105' 
+                                  : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-105'
+                              }`}
+                              title="点击一键切换掌握状态"
+                            >
+                              {q.masteryStatus === 'mastered' ? '✓ 已掌握' : '✗ 未掌握'}
+                            </button>
+                            <select
+                              value={q.notebookId || ''}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={async (e) => {
+                                e.stopPropagation();
+                                const targetNbId = e.target.value;
+                                const targetNb = notebooks.find(n => n.id === targetNbId);
+                                const updated = {
+                                  ...q,
+                                  notebookId: targetNbId || undefined,
+                                  notebookName: targetNb ? targetNb.name : undefined
+                                };
+                                try {
+                                  await db.saveQuestion(updated);
+                                  loadQuestions(currentPage);
+                                  loadNotebooks();
+                                  loadUnclassifiedCount();
+                                } catch (err: any) {
+                                  window.alert(err.message || '转移失败');
+                                }
+                              }}
+                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 outline-none cursor-pointer"
+                              title="快速转移所属错题本"
+                            >
+                              <option value="">未分类</option>
+                              {notebooks.map(nb => (
+                                <option key={nb.id} value={nb.id}>{nb.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                        </div>
+                      </button>
 
-                  {!isStudent && (
-                    <div className="absolute right-4 top-4.5 z-10">
-                      <input 
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          toggleSelect(q.id);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
-                      />
+                      {!isStudent && (
+                        <div className="absolute right-4 top-4.5 z-10">
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleSelect(q.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                        </div>
+                      )}
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+
+              {/* 美观的分页组件 */}
+              {totalQuestions > pageSize && (
+                <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 pt-6 mt-4 gap-4">
+                  <div className="text-xs text-slate-500 font-bold">
+                    显示第 {(currentPage - 1) * pageSize + 1} 到 {Math.min(currentPage * pageSize, totalQuestions)} 条，共 {totalQuestions} 条错题
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => currentPage > 1 && loadQuestions(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${
+                        currentPage === 1 
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-55 hover:border-slate-300 cursor-pointer'
+                      }`}
+                    >
+                      上一页
+                    </button>
+                    {renderPageNumbers()}
+                    <button
+                      onClick={() => currentPage < Math.ceil(totalQuestions / pageSize) && loadQuestions(currentPage + 1)}
+                      disabled={currentPage === Math.ceil(totalQuestions / pageSize)}
+                      className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${
+                        currentPage === Math.ceil(totalQuestions / pageSize)
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' 
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-55 hover:border-slate-300 cursor-pointer'
+                      }`}
+                    >
+                      下一页
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -49,6 +49,8 @@ export interface SavedPaper {
 }
 
 
+const API_PREFIX = '/api';
+
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('errorbook_token');
   return {
@@ -60,7 +62,7 @@ function getHeaders(): HeadersInit {
 // Net wrapper around SQLite API endpoints
 export const db = {
   async getAllQuestions(): Promise<ErrorQuestion[]> {
-    const res = await fetch('/api/questions', {
+    const res = await fetch(`${API_PREFIX}/questions`, {
       headers: getHeaders()
     });
     if (res.status === 401) {
@@ -77,7 +79,7 @@ export const db = {
   },
 
   async saveQuestion(question: ErrorQuestion): Promise<void> {
-    const res = await fetch('/api/questions', {
+    const res = await fetch(`${API_PREFIX}/questions`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(question)
@@ -95,7 +97,7 @@ export const db = {
   },
 
   async updateQuestionMastery(id: string, masteryStatus: 'not_mastered' | 'mastered'): Promise<void> {
-    const res = await fetch(`/api/questions/${id}/mastery`, {
+    const res = await fetch(`${API_PREFIX}/questions/${id}/mastery`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({ masteryStatus })
@@ -113,7 +115,7 @@ export const db = {
   },
 
   async deleteQuestion(id: string): Promise<void> {
-    const res = await fetch(`/api/questions/${id}`, {
+    const res = await fetch(`${API_PREFIX}/questions/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -130,7 +132,7 @@ export const db = {
   },
 
   async getAllPublicQuestions(): Promise<ErrorQuestion[]> {
-    const res = await fetch('/api/public-questions', {
+    const res = await fetch(`${API_PREFIX}/public-questions`, {
       headers: getHeaders()
     });
     if (res.status === 401) {
@@ -147,7 +149,7 @@ export const db = {
   },
 
   async savePublicQuestion(question: Omit<ErrorQuestion, 'status' | 'studentId'>): Promise<void> {
-    const res = await fetch('/api/public-questions', {
+    const res = await fetch(`${API_PREFIX}/public-questions`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(question)
@@ -165,7 +167,7 @@ export const db = {
   },
 
   async deletePublicQuestion(id: string): Promise<void> {
-    const res = await fetch(`/api/public-questions/${id}`, {
+    const res = await fetch(`${API_PREFIX}/public-questions/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -182,7 +184,7 @@ export const db = {
   },
 
   async getAllPapers(): Promise<SavedPaper[]> {
-    const res = await fetch('/api/papers', {
+    const res = await fetch(`${API_PREFIX}/papers`, {
       headers: getHeaders()
     });
     if (res.status === 401) {
@@ -199,7 +201,7 @@ export const db = {
   },
 
   async savePaper(title: string, questionIds: string[], mode: 'original' | 'variant'): Promise<void> {
-    const res = await fetch('/api/papers', {
+    const res = await fetch(`${API_PREFIX}/papers`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ title, questionIds, mode })
@@ -217,7 +219,7 @@ export const db = {
   },
 
   async deletePaper(id: string): Promise<void> {
-    const res = await fetch(`/api/papers/${id}`, {
+    const res = await fetch(`${API_PREFIX}/papers/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -234,7 +236,7 @@ export const db = {
   },
 
   async getTasks(): Promise<any[]> {
-    const res = await fetch('/api/tasks', {
+    const res = await fetch(`${API_PREFIX}/tasks`, {
       headers: getHeaders()
     });
     if (res.status === 401) {
@@ -251,7 +253,7 @@ export const db = {
   },
 
   async createTask(taskData: { taskName: string; autoRun: number; uploadMode: string; notebookId?: string; payload: any }): Promise<{ success: boolean; taskId: string }> {
-    const res = await fetch('/api/tasks', {
+    const res = await fetch(`${API_PREFIX}/tasks`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(taskData)
@@ -270,7 +272,7 @@ export const db = {
   },
 
   async submitTaskReview(taskId: string, reviewData: { step: 2 | 3; payload: any }): Promise<{ success: boolean }> {
-    const res = await fetch(`/api/tasks/${taskId}/review`, {
+    const res = await fetch(`${API_PREFIX}/tasks/${taskId}/review`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(reviewData)
@@ -289,7 +291,7 @@ export const db = {
   },
 
   async deleteTask(taskId: string): Promise<void> {
-    const res = await fetch(`/api/tasks/${taskId}`, {
+    const res = await fetch(`${API_PREFIX}/tasks/${taskId}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -303,6 +305,119 @@ export const db = {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '删除任务失败');
     }
+  },
+
+  async setTaskNotified(taskId: string): Promise<void> {
+    const res = await fetch(`${API_PREFIX}/tasks/${taskId}/notified`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '设置任务通知状态失败');
+    }
+  },
+
+  async getPaginatedQuestions(params: {
+    page: number;
+    limit: number;
+    subject?: string;
+    notebookId?: string;
+    masteryStatus?: string;
+    search?: string;
+  }): Promise<{ total: number; page: number; limit: number; questions: ErrorQuestion[] }> {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      limit: String(params.limit),
+      ...(params.subject ? { subject: params.subject } : {}),
+      ...(params.notebookId ? { notebookId: params.notebookId } : {}),
+      ...(params.masteryStatus ? { masteryStatus: params.masteryStatus } : {}),
+      ...(params.search ? { search: params.search } : {})
+    }).toString();
+
+    const res = await fetch(`${API_PREFIX}/questions?${query}`, {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取分页错题失败');
+    }
+    return res.json();
+  },
+
+  async getUnclassifiedCount(): Promise<number> {
+    const res = await fetch(`${API_PREFIX}/questions/unclassified-count`, {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取未分类错题数失败');
+    }
+    const data = await res.json();
+    return data.count;
+  },
+
+  async getPaginatedTasks(page: number, limit: number): Promise<{ 
+    total: number; 
+    page: number; 
+    limit: number; 
+    tasks: any[]; 
+    stats?: {
+      running: number;
+      pendingOcr: number;
+      pendingDiag: number;
+      completed: number;
+    }
+  }> {
+    const res = await fetch(`${API_PREFIX}/tasks?page=${page}&limit=${limit}`, {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取任务列表失败');
+    }
+    return res.json();
+  },
+
+  async getTaskDetail(taskId: string): Promise<any> {
+    const res = await fetch(`${API_PREFIX}/tasks/${taskId}`, {
+      headers: getHeaders()
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('errorbook_token');
+      localStorage.removeItem('errorbook_username');
+      window.location.reload();
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '获取任务详情失败');
+    }
+    return res.json();
   }
 };
 

@@ -10,14 +10,115 @@ import { getSetting } from "../services/settingService";
 export const getQuestions = (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
-    let rows: any[];
-    
     if (!user) {
       return res.status(404).json({ error: "用户不存在" });
     }
 
+    const pageParam = req.query.page;
+    const limitParam = req.query.limit;
+
+    if (pageParam !== undefined && limitParam !== undefined) {
+      const page = parseInt(pageParam as string) || 1;
+      const limit = parseInt(limitParam as string) || 10;
+      const subject = (req.query.subject as string) || 'all';
+      const notebookId = (req.query.notebookId as string) || 'all';
+      const masteryStatus = (req.query.masteryStatus as string) || 'all';
+      const search = (req.query.search as string) || '';
+
+      const offset = (page - 1) * limit;
+
+      let whereClauses: string[] = [];
+      let params: any[] = [];
+
+      // 权限过滤
+      if (user.role !== 'admin') {
+        whereClauses.push("(q.userId = ? OR q.studentId = ?)");
+        params.push(req.userId, req.userId);
+      }
+
+      // 学科过滤
+      if (subject !== 'all') {
+        whereClauses.push("q.subject = ?");
+        params.push(subject);
+      }
+
+      // 错题本过滤
+      if (notebookId === 'unclassified') {
+        whereClauses.push("(q.notebookId IS NULL OR q.notebookId = '')");
+      } else if (notebookId !== 'all') {
+        whereClauses.push("q.notebookId = ?");
+        params.push(notebookId);
+      }
+
+      // 掌握状态过滤
+      if (masteryStatus !== 'all') {
+        whereClauses.push("q.masteryStatus = ?");
+        params.push(masteryStatus);
+      }
+
+      // 搜索文本过滤
+      if (search.trim() !== '') {
+        whereClauses.push("(q.originalText LIKE ? OR q.knowledgePoints LIKE ?)");
+        const searchTerm = `%${search.trim()}%`;
+        params.push(searchTerm, searchTerm);
+      }
+
+      const whereSql = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
+
+      // 查总数
+      const countQuery = `
+        SELECT COUNT(*) as count 
+        FROM questions q
+        ${whereSql}
+      `;
+      const countRow = db.prepare(countQuery).get(...params) as { count: number };
+      const total = countRow.count;
+
+      // 查分页数据
+      const dataQuery = `
+        SELECT q.*, n.name as notebookName 
+        FROM questions q
+        LEFT JOIN notebooks n ON q.notebookId = n.id
+        ${whereSql}
+        ORDER BY q.createdAt DESC
+        LIMIT ? OFFSET ?
+      `;
+      const rows = db.prepare(dataQuery).all(...params, limit, offset) as any[];
+
+      const questions = rows.map(row => ({
+        id: row.id,
+        userId: row.userId,
+        studentId: row.studentId || undefined,
+        status: row.status || 'pending',
+        imageUrl: row.imageUrl || undefined,
+        originalText: row.originalText,
+        subject: row.subject,
+        knowledgePoints: row.knowledgePoints ? JSON.parse(row.knowledgePoints) : [],
+        errorReason: row.errorReason || "",
+        solution: row.solution || "",
+        createdAt: row.createdAt,
+        similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined,
+        studentAnswer: row.studentAnswer || "",
+        errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : [],
+        paperName: row.paperName || undefined,
+        standardAnswer: row.standardAnswer || undefined,
+        score: row.score !== null && row.score !== undefined ? row.score : undefined,
+        notebookId: row.notebookId || undefined,
+        notebookName: row.notebookName || undefined,
+        masteryStatus: row.masteryStatus || 'not_mastered'
+      }));
+
+      return res.json({
+        total,
+        page,
+        limit,
+        questions
+      });
+    }
+
+    // 保持原本无分页时的兼容逻辑
+    let rows: any[];
     if (user.role === 'admin') {
-      // 管理员可以查看系统所有错题
       const stmt = db.prepare(`
         SELECT q.*, n.name as notebookName 
         FROM questions q
@@ -26,7 +127,6 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       `);
       rows = stmt.all() as any[];
     } else {
-      // 普通用户只能查看自己录入的（userId = 自己）或者被指派给自己的（studentId = 自己）
       const stmt = db.prepare(`
         SELECT q.*, n.name as notebookName 
         FROM questions q
@@ -568,12 +668,43 @@ export const adminDeleteUser = (req: express.Request, res: express.Response) => 
 // 12. 获取错题本列表
 export const getNotebooks = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const stmt = db.prepare("SELECT * FROM notebooks WHERE userId = ? ORDER BY createdAt DESC");
-    const rows = stmt.all(req.userId);
+    const stmt = db.prepare(`
+      SELECT n.*, COUNT(q.id) as questionCount 
+      FROM notebooks n 
+      LEFT JOIN questions q ON n.id = q.notebookId AND (q.userId = ? OR q.studentId = ?)
+      WHERE n.userId = ? 
+      GROUP BY n.id
+      ORDER BY n.createdAt DESC
+    `);
+    const rows = stmt.all(req.userId, req.userId, req.userId);
     res.json(rows);
   } catch (error: any) {
     console.error("Get Notebooks Error:", error);
     res.status(500).json({ error: error.message || "获取错题本失败" });
+  }
+};
+
+// 新增：获取未分类错题的总条数
+export const getUnclassifiedQuestionsCount = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    if (!user) {
+      return res.status(404).json({ error: "用户不存在" });
+    }
+
+    let stmt;
+    if (user.role === 'admin') {
+      stmt = db.prepare("SELECT COUNT(*) as count FROM questions WHERE notebookId IS NULL OR notebookId = ''");
+      const row = stmt.get() as { count: number };
+      res.json({ count: row.count });
+    } else {
+      stmt = db.prepare("SELECT COUNT(*) as count FROM questions WHERE (notebookId IS NULL OR notebookId = '') AND (userId = ? OR studentId = ?)");
+      const row = stmt.get(req.userId, req.userId) as { count: number };
+      res.json({ count: row.count });
+    }
+  } catch (error: any) {
+    console.error("Get Unclassified Count Error:", error);
+    res.status(500).json({ error: error.message || "获取未分类错题数失败" });
   }
 };
 

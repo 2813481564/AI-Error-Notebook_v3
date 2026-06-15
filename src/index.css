@@ -1,2 +1,6 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
+
+html {
+  font-size: 20.8px;
+}
