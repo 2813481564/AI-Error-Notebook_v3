@@ -973,12 +973,11 @@ export default function App() {
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`pointer-events-auto w-full bg-white/95 backdrop-blur-md border rounded-2xl p-4 shadow-xl flex gap-3 transform translate-x-0 transition-all duration-300 animate-in slide-in-from-right duration-350 ${
-              n.type === 'success' ? 'border-emerald-200 bg-emerald-50/20' :
-              n.type === 'warning' ? 'border-amber-200 bg-amber-50/20' :
-              n.type === 'error' ? 'border-rose-250 bg-rose-50/20' :
-              'border-blue-200 bg-blue-50/20'
-            }`}
+            className={`pointer-events-auto w-full bg-white/95 backdrop-blur-md border rounded-2xl p-4 shadow-xl flex gap-3 transform translate-x-0 transition-all duration-300 animate-in slide-in-from-right duration-350 ${n.type === 'success' ? 'border-emerald-200 bg-emerald-50/20' :
+                n.type === 'warning' ? 'border-amber-200 bg-amber-50/20' :
+                  n.type === 'error' ? 'border-rose-250 bg-rose-50/20' :
+                    'border-blue-200 bg-blue-50/20'
+              }`}
           >
             {/* Status Icons */}
             <div className="shrink-0 pt-0.5">
@@ -995,7 +994,7 @@ export default function App() {
               <p className="text-[0.6875rem] text-slate-500 font-semibold leading-relaxed">
                 {n.message}
               </p>
-              
+
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-2">
                 {['pending_extract_review', 'pending_diagnose_review', 'failed'].includes(n.status) ? (
@@ -1004,11 +1003,10 @@ export default function App() {
                       setCurrentView('tasks');
                       handleDismissNotification(n.id, n.alertKey);
                     }}
-                    className={`text-[0.625rem] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                      n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :
-                      n.type === 'info' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' :
-                      'bg-slate-800 hover:bg-slate-900 text-white'
-                    }`}
+                    className={`text-[0.625rem] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :
+                        n.type === 'info' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' :
+                          'bg-slate-800 hover:bg-slate-900 text-white'
+                      }`}
                   >
                     {n.status === 'pending_extract_review' ? '立即校对' : n.status === 'pending_diagnose_review' ? '立即归档' : '去排查'}
                   </button>

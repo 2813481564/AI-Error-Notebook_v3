@@ -186,7 +186,7 @@ export default function TestPaper({
         text: q.originalText,
         solution: q.solution,
         errorReason: q.errorReason,
-        geometry: q.similarQuestion 
+        geometry: (q.errorReason === 'AI变式题' && q.similarQuestion)
           ? (Array.isArray(q.similarQuestion) 
               ? q.similarQuestion[0]?.geometry 
               : q.similarQuestion.geometry)

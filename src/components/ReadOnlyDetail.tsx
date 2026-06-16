@@ -89,7 +89,7 @@ export default function ReadOnlyDetail({
         </div>
         <div>
           <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
-          {question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
+          {question.errorReason === 'AI变式题' && question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
             <div className="py-2">
               <GeometryRenderer geometry={question.similarQuestion.geometry} />
             </div>

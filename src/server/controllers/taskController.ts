@@ -244,6 +244,18 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
 const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookId: string | null) => {
   const diagnosedResults: any[] = [];
 
+  let grade = '';
+  if (notebookId) {
+    try {
+      const nb = db.prepare("SELECT grade FROM notebooks WHERE id = ?").get(notebookId) as { grade: string | null } | undefined;
+      if (nb && nb.grade) {
+        grade = nb.grade;
+      }
+    } catch (dbErr) {
+      console.warn("Failed to query notebook grade in background runAiDiagnoseAll:", dbErr);
+    }
+  }
+
   for (let idx = 0; idx < questions.length; idx++) {
     const item = questions[idx];
     
@@ -251,6 +263,10 @@ const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookI
     if (item.standardAnswer) {
       standardAnswerSection = `- 老师提供的参考标准答案: ${item.standardAnswer}\n`;
     }
+
+    const gradeConstraint = grade 
+      ? `本道题所属年级为：${grade}。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别（小学/初中/高中）完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`
+      : `请智能自动识别这道题目所属的实际年级和学段级别（从小学一年级到高中三年级）。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`;
 
     const prompt = `
 幕后名师AI诊断任务。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
@@ -260,6 +276,7 @@ const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookI
 - 题干: ${item.originalText}
 ${standardAnswerSection}
 - 学生作答内容: ${item.studentAnswer || '（无学生作答）'}
+- 难度与年级限制: ${gradeConstraint}
 
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点，最多列出 3 个，存入数组。

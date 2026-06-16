@@ -276,10 +276,25 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 诊断功能" });
     }
 
-    const { subject, originalText, studentAnswer, standardAnswer, thinkingMode } = req.body;
+    let { subject, originalText, studentAnswer, standardAnswer, thinkingMode, grade, notebookId } = req.body;
     if (!originalText) {
       return res.status(400).json({ error: "Missing originalText" });
     }
+
+    if (!grade && notebookId) {
+      try {
+        const nb = db.prepare("SELECT grade FROM notebooks WHERE id = ?").get(notebookId) as { grade: string | null } | undefined;
+        if (nb && nb.grade) {
+          grade = nb.grade;
+        }
+      } catch (dbErr) {
+        console.warn("Failed to query notebook grade in diagnose:", dbErr);
+      }
+    }
+
+    const gradeConstraint = grade 
+      ? `本道题所属年级为：${grade}。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别（小学/初中/高中）完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`
+      : `请智能自动识别这道题目所属的实际年级和学段级别（从小学一年级到高中三年级）。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`;
 
     let standardAnswerSection = '';
     if (standardAnswer) {
@@ -293,6 +308,7 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
 - 题干: ${originalText}
 ${standardAnswerSection}
 - 学生作答内容: ${studentAnswer || '（无学生作答）'}
+- 难度与年级限制: ${gradeConstraint}
 
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。

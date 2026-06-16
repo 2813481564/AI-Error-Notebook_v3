@@ -107,7 +107,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
   const [error, setError] = useState<string | null>(null);
 
   // 错题本相关状态
-  const [notebooks, setNotebooks] = useState<{ id: string; name: string }[]>([]);
+  const [notebooks, setNotebooks] = useState<{ id: string; name: string; grade?: string }[]>([]);
   const [selectedNotebook, setSelectedNotebook] = useState<string>('');
 
   // 后台异步任务选项
@@ -536,6 +536,9 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
     const results: ErrorQuestion[] = new Array(extractedQuestions.length);
 
+    const curNotebook = notebooks.find(nb => nb.id === selectedNotebook);
+    const grade = curNotebook?.grade;
+
     const tasks = extractedQuestions.map((item, idx) => async () => {
       setDiagnosing(prev => ({ ...prev, [idx]: 'loading' }));
       try {
@@ -548,6 +551,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           },
           body: JSON.stringify({
             ...item,
+            grade: grade || undefined,
+            notebookId: selectedNotebook || undefined,
             thinkingMode: 'disabled'
           })
         });

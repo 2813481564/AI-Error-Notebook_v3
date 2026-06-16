@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
-import { 
-  ArrowLeft, 
-  Trash2, 
-  Loader2, 
-  RefreshCw, 
-  Check, 
-  PlusCircle, 
+import {
+  ArrowLeft,
+  Trash2,
+  Loader2,
+  RefreshCw,
+  Check,
+  PlusCircle,
   ChevronRight,
   Sparkles
 } from 'lucide-react';
@@ -15,25 +15,25 @@ import GeometryRenderer from './GeometryRenderer';
 import ReadOnlyDetail, { BrainCircuitIcon } from './ReadOnlyDetail';
 import { parseIndividualQuestions } from '../lib/parser';
 
-export default function QuestionDetail({ 
-  question, 
+export default function QuestionDetail({
+  question,
   notebooks,
   isAdmin,
-  onBack, 
+  onBack,
   onDelete,
   onUpdate
-}: { 
-  question: ErrorQuestion, 
+}: {
+  question: ErrorQuestion,
   notebooks: { id: string; name: string; grade?: string }[],
   isAdmin: boolean,
-  onBack: () => void, 
+  onBack: () => void,
   onDelete: () => void,
   onUpdate?: (updated: ErrorQuestion) => void
 }) {
   const [similarTabActive, setSimilarTabActive] = useState(false);
   const [similarData, setSimilarData] = useState<any>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
-  
+
   // 用于支持多道题数量选择与保存状态跟踪
   const [similarCount, setSimilarCount] = useState<number>(1);
   const [savedStatus, setSavedStatus] = useState<Record<number, boolean>>({});
@@ -69,7 +69,7 @@ export default function QuestionDetail({
         status: "audited",
         similarQuestion: item
       };
-      
+
       await db.saveQuestion(newQuestion);
       setSavedStatus(prev => ({ ...prev, [idx]: true }));
       window.alert(`成功将变式题 ${idx + 1} 保存至错题库！您可以直接在“组卷练习”中进行添加。`);
@@ -77,7 +77,7 @@ export default function QuestionDetail({
       window.alert(err.message || "保存失败，请重试");
     }
   };
-  
+
   const isStudent = !isAdmin;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -91,7 +91,7 @@ export default function QuestionDetail({
   const [editedErrorAnalysis, setEditedErrorAnalysis] = useState(question.errorAnalysis || '');
   const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
   const [saving, setSaving] = useState(false);
-  
+
 
   useEffect(() => {
     setEditedText(question.originalText);
@@ -108,7 +108,7 @@ export default function QuestionDetail({
 
   const generateSimilar = async () => {
     if (generating) return;
-    
+
     setGenerating(true);
     try {
       const token = localStorage.getItem('errorbook_token');
@@ -122,7 +122,7 @@ export default function QuestionDetail({
 
       const res = await fetch('/api/similar', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
@@ -134,18 +134,18 @@ export default function QuestionDetail({
           grade: originalGrade
         })
       });
-      
+
       if (res.status === 401) {
         localStorage.removeItem('errorbook_token');
         localStorage.removeItem('errorbook_username');
         window.location.reload();
         throw new Error('登录已过期，请重新登录');
       }
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSimilarData(data);
-      
+
       const updatedQuestion = { ...question, similarQuestion: data };
       await db.saveQuestion(updatedQuestion);
       if (onUpdate) {
@@ -192,7 +192,7 @@ export default function QuestionDetail({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto">
-      
+
       <div className="flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-950 font-bold text-sm transition-colors">
           <ArrowLeft className="w-4 h-4" />
@@ -200,13 +200,12 @@ export default function QuestionDetail({
         </button>
         <div className="flex items-center gap-2">
           {!isStudent && (
-            <button 
-              onClick={() => setIsEditing(!isEditing)} 
-              className={`text-xs font-bold px-4 py-2 rounded-xl transition-all border ${
-                isEditing 
-                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
-                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-              }`}
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className={`text-xs font-bold px-4 py-2 rounded-xl transition-all border ${isEditing
+                ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
             >
               {isEditing ? '取消修改' : '编辑与审核推送'}
             </button>
@@ -220,392 +219,369 @@ export default function QuestionDetail({
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-         {question.imageUrl && (
-            <div className="w-full bg-slate-50/50 border-b border-slate-100 flex justify-center py-5 px-4">
-               <img 
-                 src={question.imageUrl} 
-                 alt="错题原图" 
-                 className="max-h-[380px] w-auto object-contain rounded-xl shadow-sm border border-slate-200/50 animate-in fade-in zoom-in-95 duration-300" 
-               />
+        {question.imageUrl && (
+          <div className="w-full bg-slate-50/50 border-b border-slate-100 flex justify-center py-5 px-4">
+            <img
+              src={question.imageUrl}
+              alt="错题原图"
+              className="max-h-[380px] w-auto object-contain rounded-xl shadow-sm border border-slate-200/50 animate-in fade-in zoom-in-95 duration-300"
+            />
+          </div>
+        )}
+
+        <div className="p-6 md:p-8 space-y-6">
+          {isEditing ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学科分类</label>
+                  <input
+                    type="text"
+                    value={editedSubject}
+                    onChange={e => setEditedSubject(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
+                  <select
+                    value={editedErrorReason}
+                    onChange={e => setEditedErrorReason(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  >
+                    <option value="概念不清">概念不清</option>
+                    <option value="粗心大意">粗心大意</option>
+                    <option value="思路错误">思路错误</option>
+                    <option value="完全不会">完全不会</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">题目完整文本 (LaTeX 数学公式请保持格式)</label>
+                <textarea
+                  value={editedText}
+                  onChange={e => setEditedText(e.target.value)}
+                  rows={6}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考查核心知识点 (用英文逗号分隔)</label>
+                <input
+                  type="text"
+                  value={editedKp}
+                  onChange={e => setEditedKp(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  placeholder="如：二次函数, 极值点"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">名师精解与步骤引导 (LaTeX 数学公式请保持格式)</label>
+                <textarea
+                  value={editedSolution}
+                  onChange={e => setEditedSolution(e.target.value)}
+                  rows={8}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生完整手写作答文本（OCR提取结果）</label>
+                <textarea
+                  value={editedStudentAnswer}
+                  onChange={e => setEditedStudentAnswer(e.target.value)}
+                  rows={4}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  placeholder="学生的完整手写作答过程文本"
+                />
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label></div><textarea value={editedErrorAnalysis} onChange={e => setEditedErrorAnalysis(e.target.value)} rows={5} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4" placeholder="请输入本题错因深度剖析..." /><div style={{ display: 'none' }}>
+                <div className="space-y-3">
+                  {editedErrorDiagnosis.map((step, idx) => (
+                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+                        <span>步骤 #{step.stepNumber || idx + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...editedErrorDiagnosis];
+                            updated.splice(idx, 1);
+                            updated.forEach((s, i) => s.stepNumber = i + 1);
+                            setEditedErrorDiagnosis(updated);
+                          }}
+                          className="text-rose-500 hover:text-rose-700 text-[10px] font-extrabold cursor-pointer"
+                        >
+                          删除此步骤
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="text-[9px] text-slate-400 font-bold uppercase">步骤内容</label>
+                          <input
+                            type="text"
+                            value={step.stepContent}
+                            onChange={(e) => {
+                              const updated = [...editedErrorDiagnosis];
+                              updated[idx].stepContent = e.target.value;
+                              setEditedErrorDiagnosis(updated);
+                            }}
+                            placeholder="步骤内容或公式，如：x + 1 = 2"
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-slate-400 font-bold uppercase">步骤状态</label>
+                          <select
+                            value={step.status}
+                            onChange={(e) => {
+                              const updated = [...editedErrorDiagnosis];
+                              updated[idx].status = e.target.value as any;
+                              setEditedErrorDiagnosis(updated);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700"
+                          >
+                            <option value="correct">✅ 正确</option>
+                            <option value="incorrect">❌ 首次错误</option>
+                            <option value="consequential_error">⚠️ 连带错误</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] text-slate-400 font-bold uppercase">步骤评语 / 诊断分析</label>
+                        <input
+                          type="text"
+                          value={step.comment || ''}
+                          onChange={(e) => {
+                            const updated = [...editedErrorDiagnosis];
+                            updated[idx].comment = e.target.value;
+                            setEditedErrorDiagnosis(updated);
+                          }}
+                          placeholder="如：计算错误，符号写错（非必须，建议在错误行填写）"
+                          className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 修改所属错题本分类 */}
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>📓</span> 调整归属错题本
+                    </h4>
+                    <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
+                  </div>
+                  <select
+                    value={selectedNotebook}
+                    onChange={e => setSelectedNotebook(e.target.value)}
+                    className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
+                  >
+                    <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
+                    {notebooks.map(nb => (
+                      <option key={nb.id} value={nb.id}>{nb.name}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
+                      onClick={() => handleSaveAndPush('audited')}
+                      disabled={saving}
+                      className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
+                    >
+                      {saving ? '正在保存...' : '审核通过并推送'}
+                    </button>
+                    <button
+                      onClick={() => handleSaveAndPush('pending')}
+                      disabled={saving}
+                      className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
+                    >
+                      仅保存修改
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditedErrorDiagnosis([
+                      ...editedErrorDiagnosis,
+                      {
+                        stepNumber: editedErrorDiagnosis.length + 1,
+                        stepContent: '',
+                        status: 'correct',
+                        comment: ''
+                      }
+                    ]);
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer hidden"
+                >
+                  + 增加批改步骤
+                </button>
+              </div>
             </div>
-         )}
-         
-         <div className="p-6 md:p-8 space-y-6">
-           {isEditing ? (
-             <div className="space-y-5">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学科分类</label>
-                   <input
-                     type="text"
-                     value={editedSubject}
-                     onChange={e => setEditedSubject(e.target.value)}
-                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                   />
-                 </div>
-                 
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
-                   <select 
-                     value={editedErrorReason} 
-                     onChange={e => setEditedErrorReason(e.target.value)}
-                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                   >
-                     <option value="概念不清">概念不清</option>
-                     <option value="粗心大意">粗心大意</option>
-                     <option value="思路错误">思路错误</option>
-                     <option value="完全不会">完全不会</option>
-                     <option value="其他">其他</option>
-                   </select>
-                 </div>
-               </div>
-
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">题目完整文本 (LaTeX 数学公式请保持格式)</label>
-                 <textarea
-                   value={editedText}
-                   onChange={e => setEditedText(e.target.value)}
-                   rows={6}
-                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                 />
-               </div>
-
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考查核心知识点 (用英文逗号分隔)</label>
-                 <input
-                   type="text"
-                   value={editedKp}
-                   onChange={e => setEditedKp(e.target.value)}
-                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                   placeholder="如：二次函数, 极值点"
-                 />
-               </div>
-
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">名师精解与步骤引导 (LaTeX 数学公式请保持格式)</label>
-                 <textarea
-                   value={editedSolution}
-                   onChange={e => setEditedSolution(e.target.value)}
-                   rows={8}
-                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                 />
-               </div>
-
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生完整手写作答文本（OCR提取结果）</label>
-                 <textarea
-                   value={editedStudentAnswer}
-                   onChange={e => setEditedStudentAnswer(e.target.value)}
-                   rows={4}
-                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                   placeholder="学生的完整手写作答过程文本"
-                 />
-               </div>
-
-               <div className="space-y-3 pt-2">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label></div><textarea value={editedErrorAnalysis} onChange={e => setEditedErrorAnalysis(e.target.value)} rows={5} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4" placeholder="请输入本题错因深度剖析..." /><div style={{display:'none'}}>
-                 <div className="space-y-3">
-                   {editedErrorDiagnosis.map((step, idx) => (
-                     <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                       <div className="flex justify-between items-center text-xs font-bold text-slate-500">
-                         <span>步骤 #{step.stepNumber || idx + 1}</span>
-                         <button
-                           type="button"
-                           onClick={() => {
-                             const updated = [...editedErrorDiagnosis];
-                             updated.splice(idx, 1);
-                             updated.forEach((s, i) => s.stepNumber = i + 1);
-                             setEditedErrorDiagnosis(updated);
-                           }}
-                           className="text-rose-500 hover:text-rose-700 text-[10px] font-extrabold cursor-pointer"
-                         >
-                           删除此步骤
-                         </button>
-                       </div>
-                       
-                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                         <div className="sm:col-span-2 space-y-1">
-                           <label className="text-[9px] text-slate-400 font-bold uppercase">步骤内容</label>
-                           <input
-                             type="text"
-                             value={step.stepContent}
-                             onChange={(e) => {
-                               const updated = [...editedErrorDiagnosis];
-                               updated[idx].stepContent = e.target.value;
-                               setEditedErrorDiagnosis(updated);
-                             }}
-                             placeholder="步骤内容或公式，如：x + 1 = 2"
-                             className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                           />
-                         </div>
-                         <div className="space-y-1">
-                           <label className="text-[9px] text-slate-400 font-bold uppercase">步骤状态</label>
-                           <select
-                             value={step.status}
-                             onChange={(e) => {
-                               const updated = [...editedErrorDiagnosis];
-                               updated[idx].status = e.target.value as any;
-                               setEditedErrorDiagnosis(updated);
-                             }}
-                             className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700"
-                           >
-                             <option value="correct">✅ 正确</option>
-                             <option value="incorrect">❌ 首次错误</option>
-                             <option value="consequential_error">⚠️ 连带错误</option>
-                           </select>
-                         </div>
-                       </div>
-                       
-                       <div className="space-y-1">
-                         <label className="text-[9px] text-slate-400 font-bold uppercase">步骤评语 / 诊断分析</label>
-                         <input
-                           type="text"
-                           value={step.comment || ''}
-                           onChange={(e) => {
-                             const updated = [...editedErrorDiagnosis];
-                             updated[idx].comment = e.target.value;
-                             setEditedErrorDiagnosis(updated);
-                           }}
-                           placeholder="如：计算错误，符号写错（非必须，建议在错误行填写）"
-                           className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                         />
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-                 
-                 {/* 修改所属错题本分类 */}
-                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                   <div>
-                     <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                       <span>📓</span> 调整归属错题本
-                     </h4>
-                     <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
-                   </div>
-                   <select
-                     value={selectedNotebook}
-                     onChange={e => setSelectedNotebook(e.target.value)}
-                     className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
-                   >
-                     <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
-                     {notebooks.map(nb => (
-                       <option key={nb.id} value={nb.id}>{nb.name}</option>
-                     ))}
-                   </select>
-                   
-                   <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                     <button
-                       onClick={() => handleSaveAndPush('audited')}
-                       disabled={saving}
-                       className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
-                     >
-                       {saving ? '正在保存...' : '审核通过并推送'}
-                     </button>
-                     <button
-                       onClick={() => handleSaveAndPush('pending')}
-                       disabled={saving}
-                       className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
-                     >
-                       仅保存修改
-                     </button>
-                   </div>
-                 </div>
-                 
-                 <button
-                   type="button"
-                   onClick={() => {
-                     setEditedErrorDiagnosis([
-                       ...editedErrorDiagnosis,
-                       {
-                         stepNumber: editedErrorDiagnosis.length + 1,
-                         stepContent: '',
-                         status: 'correct',
-                         comment: ''
-                       }
-                     ]);
-                   }}
-                   className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer hidden"
-                 >
-                   + 增加批改步骤
-                 </button>
-               </div>
-             </div>
-            ) : (
-              <ReadOnlyDetail 
-                question={question} 
-                isStudent={isStudent} 
-                notebooks={notebooks}
-                onUpdate={onUpdate}
-              />
-            )}
-         </div>
+          ) : (
+            <ReadOnlyDetail
+              question={question}
+              isStudent={isStudent}
+              notebooks={notebooks}
+              onUpdate={onUpdate}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Action / Tabs */}
-      {!isStudent && !isEditing && (
-        <>
-          <div className="flex gap-2 p-1 bg-slate-200/50 rounded-2xl">
-            <button 
-               onClick={() => setSimilarTabActive(false)}
-               className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all ${!similarTabActive ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-            >
-              原题精解回顾
-            </button>
-            <button 
-               onClick={() => setSimilarTabActive(true)}
-               className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all flex justify-center items-center gap-2 ${similarTabActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/10' : 'text-slate-500 hover:text-slate-900'}`}
-            >
-              <BrainCircuitIcon className="w-4 h-4" /> 关联考点同类题推荐
-            </button>
-          </div>
+      {/* 错题举一反三 */}
+      {!isEditing && (
+        <div className="bg-white border-2 border-blue-100 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-2 fade-in shadow-sm">
+          {generating ? (
+            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+              <p className="text-slate-600 font-bold tracking-wide animate-pulse">AI 正在深度关联题库并分析难度，为您生成相似变式强化练习题...</p>
+            </div>
+          ) : similarData ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-2">
+                <div className="flex items-center gap-2 text-blue-855 font-bold">
+                  <span className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-xs font-extrabold">练</span>
+                  <h4 className="text-sm font-extrabold text-slate-800">高频错点相似强化训练题</h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSimilarData(null)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> 重新配置与生成
+                </button>
+              </div>
 
-          {/* Similar Question Area */}
-          {similarTabActive && (
-            <div className="bg-white border-2 border-blue-100 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-2 fade-in shadow-sm">
-               {generating ? (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-4">
-                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                    <p className="text-slate-600 font-bold tracking-wide animate-pulse">AI 正在深度关联题库并分析难度，为您生成相似变式强化练习题...</p>
-                  </div>
-               ) : similarData ? (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-2">
-                      <div className="flex items-center gap-2 text-blue-855 font-bold">
-                        <span className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center text-xs font-extrabold">练</span>
-                        <h4 className="text-sm font-extrabold text-slate-800">高频错点相似强化训练题</h4>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSimilarData(null)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" /> 重新配置与生成
-                      </button>
-                    </div>
-
-                    <div className="space-y-6">
-                      {(Array.isArray(similarData) ? similarData : [similarData]).map((item, idx) => {
-                        const isSaved = savedStatus[idx];
-                        return (
-                          <div key={idx} className="bg-slate-50/40 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm hover:border-slate-300 transition-colors">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                              <span className="text-xs font-black text-slate-800 bg-slate-200 px-3 py-1 rounded-lg">
-                                变式题 {idx + 1}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveSimilarItem(item, idx)}
-                                disabled={isSaved}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                                  isSaved
-                                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default'
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-                                }`}
-                              >
-                                {isSaved ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>已存入错题库</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <PlusCircle className="w-3.5 h-3.5 text-white" />
-                                    <span>保存至错题库</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-
-                            {item.geometry && item.geometry.type !== 'none' && (
-                              <div className="py-2 bg-white rounded-xl p-2 border border-slate-100">
-                                <GeometryRenderer geometry={item.geometry} />
-                              </div>
-                            )}
-
-                            <FormattedMath text={item.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
-
-                            <details className="group border border-slate-200 rounded-xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-white shadow-sm">
-                              <summary className="cursor-pointer bg-slate-55/70 p-3 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs">
-                                精编解答步骤与知识梳理 (点击展开)
-                                <ChevronRight className="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" />
-                              </summary>
-                              <div className="p-4 bg-white">
-                                <FormattedMath text={item.solution} className="text-slate-805 text-xs leading-relaxed" />
-                              </div>
-                            </details>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-               ) : (
-                  <div className="space-y-6 animate-in fade-in duration-300">
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                      <div>
-                        <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                          <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能同类变式题推荐
-                        </h4>
-                        <p className="text-[11px] text-blue-700/80 mt-1 font-medium leading-relaxed">
-                          系统已自动锁定当前原题的难度水平、考查知识点与所属年级学段，将为您精确定制出高质量的相似变式题，用于针对性强化巩固。
-                        </p>
+              <div className="space-y-6">
+                {(Array.isArray(similarData) ? similarData : [similarData]).map((item, idx) => {
+                  const isSaved = savedStatus[idx];
+                  return (
+                    <div key={idx} className="bg-slate-50/40 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm hover:border-slate-300 transition-colors">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="text-xs font-black text-slate-800 bg-slate-200 px-3 py-1 rounded-lg">
+                          变式题 {idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveSimilarItem(item, idx)}
+                          disabled={isSaved}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSaved
+                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                            }`}
+                        >
+                          {isSaved ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>已存入错题库</span>
+                            </>
+                          ) : (
+                            <>
+                              <PlusCircle className="w-3.5 h-3.5 text-white" />
+                              <span>保存至错题库</span>
+                            </>
+                          )}
+                        </button>
                       </div>
 
-                      {parsedQs.length > 1 && (
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成推荐题的子题</label>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {parsedQs.map((qItem, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => setSelectedSubQIndex(idx)}
-                                className={`p-3 text-left text-xs font-semibold rounded-xl border transition-all ${
-                                  selectedSubQIndex === idx
-                                    ? 'bg-blue-50 border-blue-500 text-blue-805 ring-1 ring-blue-500 shadow-sm'
-                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="font-bold text-slate-800 mb-0.5">{qItem.number || `第 ${idx + 1} 题`}</div>
-                                <div className="text-[10px] text-slate-500 truncate">{qItem.content}</div>
-                              </button>
-                            ))}
-                          </div>
+                      {item.geometry && item.geometry.type !== 'none' && (
+                        <div className="py-2 bg-white rounded-xl p-2 border border-slate-100">
+                          <GeometryRenderer geometry={item.geometry} />
                         </div>
                       )}
 
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成题目数量</label>
-                        <div className="flex gap-2.5">
-                          {[1, 2, 3].map(c => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => setSimilarCount(c)}
-                              className={`flex-1 py-3 text-xs font-bold rounded-xl border transition-all ${
-                                similarCount === c
-                                  ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/10'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                              }`}
-                            >
-                              {c} 道题
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <FormattedMath text={item.questionText} className="text-slate-900 text-sm font-semibold leading-relaxed" />
 
-                      <button
-                        type="button"
-                        onClick={generateSimilar}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer flex justify-center items-center gap-2"
-                      >
-                        <BrainCircuitIcon className="w-4 h-4" /> 开始智能生成推荐题
-                      </button>
+                      <details className="group border border-slate-200 rounded-xl overflow-hidden [&_summary::-webkit-details-marker]:hidden bg-white shadow-sm">
+                        <summary className="cursor-pointer bg-slate-55/70 p-3 font-bold text-slate-700 flex justify-between items-center group-open:border-b border-slate-200 text-xs">
+                          精编解答步骤与知识梳理 (点击展开)
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" />
+                        </summary>
+                        <div className="p-4 bg-white">
+                          <FormattedMath text={item.solution} className="text-slate-805 text-xs leading-relaxed" />
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                <div>
+                  <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能同类变式题推荐 (错题举一反三)
+                  </h4>
+                  <p className="text-[11px] text-blue-700/80 mt-1 font-medium leading-relaxed">
+                    系统已自动锁定当前原题的难度水平、考查知识点与所属年级学段，将为您精确定制出高质量的相似变式题，用于针对性强化巩固。
+                  </p>
+                </div>
+
+                {parsedQs.length > 1 && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成推荐题的子题</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {parsedQs.map((qItem, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedSubQIndex(idx)}
+                          className={`p-3 text-left text-xs font-semibold rounded-xl border transition-all ${selectedSubQIndex === idx
+                            ? 'bg-blue-50 border-blue-500 text-blue-805 ring-1 ring-blue-500 shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                          <div className="font-bold text-slate-800 mb-0.5">{qItem.number || `第 ${idx + 1} 题`}</div>
+                          <div className="text-[10px] text-slate-500 truncate">{qItem.content}</div>
+                        </button>
+                      ))}
                     </div>
                   </div>
-               )}
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成题目数量</label>
+                  <div className="flex gap-2.5">
+                    {[1, 2, 3].map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSimilarCount(c)}
+                        className={`flex-1 py-3 text-xs font-bold rounded-xl border transition-all ${similarCount === c
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/10'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        {c} 道题
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={generateSimilar}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer flex justify-center items-center gap-2"
+                >
+                  <BrainCircuitIcon className="w-4 h-4" /> 开始智能生成推荐题
+                </button>
+              </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
