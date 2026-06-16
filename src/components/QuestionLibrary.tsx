@@ -3,6 +3,7 @@ import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import FormattedMath, { InlineContent } from './FormattedMath';
+import { parseIndividualErrorAnalysis } from '../lib/parser';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
 
@@ -93,6 +94,8 @@ export default function QuestionLibrary({
   const [editingNotebook, setEditingNotebook] = useState<any | null>(null);
   const [nbForm, setNbForm] = useState({ name: '', grade: '', subject: '', description: '' });
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
+  const [stats, setStats] = useState({ total: 0, mastered: 0, unmastered: 0 });
+  const [activeDimension, setActiveDimension] = useState<'timeline' | 'knowledge' | 'error_count'>('timeline');
   
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -106,7 +109,6 @@ export default function QuestionLibrary({
 
   const [localUserInfo, setLocalUserInfo] = useState<any>(null);
   const userInfo = propUserInfo || localUserInfo;
-  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
   const fetchUserInfo = () => {
     if (onRefreshUserInfo) {
@@ -158,6 +160,28 @@ export default function QuestionLibrary({
       loadQuestions(1);
     }
   }, [activeNotebookId, filterSubject, filterMastery, debouncedSearch]);
+
+  const updateNotebookStats = () => {
+    if (activeNotebookId === null) return;
+    db.getPaginatedQuestions({
+      page: 1,
+      limit: 100000,
+      notebookId: activeNotebookId
+    }).then(res => {
+      const total = res.questions.length;
+      const mastered = res.questions.filter(q => q.masteryStatus === 'mastered').length;
+      const unmastered = total - mastered;
+      setStats({ total, mastered, unmastered });
+    }).catch(err => {
+      console.error('获取错题统计失败:', err);
+    });
+  };
+
+  useEffect(() => {
+    if (activeNotebookId !== null) {
+      updateNotebookStats();
+    }
+  }, [activeNotebookId]);
 
   const loadUnclassifiedCount = () => {
     db.getUnclassifiedCount().then(count => {
@@ -249,6 +273,7 @@ export default function QuestionLibrary({
         }
       }
       setNotebookPanel('list');
+      setShowNotebookModal(false);
     } catch (err: any) {
       window.alert(err.message || '操作失败');
     }
@@ -260,6 +285,7 @@ export default function QuestionLibrary({
     try {
       await db.updateQuestionMastery(id, nextStatus);
       loadQuestions(currentPage);
+      updateNotebookStats();
       if (selectedQuestion && selectedQuestion.id === id) {
         setSelectedQuestion(prev => prev ? { ...prev, masteryStatus: nextStatus } : null);
       }
@@ -312,6 +338,7 @@ export default function QuestionLibrary({
     loadQuestions(currentPage);
     loadNotebooks();
     loadUnclassifiedCount();
+    updateNotebookStats();
   };
 
   const toggleSelect = (id: string) => {
@@ -403,6 +430,7 @@ export default function QuestionLibrary({
         loadQuestions(currentPage);
         loadNotebooks();
         loadUnclassifiedCount();
+        updateNotebookStats();
       }}
     />;
   }
@@ -428,35 +456,6 @@ export default function QuestionLibrary({
         </button>
       </div>
 
-      {/* Selected Items floating indicator bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-blue-50 border border-blue-200/80 p-4 rounded-2xl shadow-sm gap-3 animate-in slide-in-from-top-2 duration-300">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
-            <p className="text-xs font-bold text-blue-900">已选中 {selectedIds.size} 道错题</p>
-            <button 
-              onClick={handleSelectAll} 
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 underline transition-colors cursor-pointer"
-            >
-              {selectedIds.size === filtered.length ? "取消全选" : "选择全部已过滤题"}
-            </button>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="flex-1 sm:flex-initial px-4 py-2 border border-slate-200 text-slate-600 bg-white rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              清空选择
-            </button>
-            <button
-              onClick={handleGeneratePaperClick}
-              className="flex-1 sm:flex-initial px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-extrabold hover:from-blue-700 hover:to-indigo-700 transition-colors shadow-md shadow-blue-500/10 cursor-pointer"
-            >
-              生成复习试卷
-            </button>
-          </div>
-        </div>
-      )}
 
       {activeNotebookId === null ? (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -556,58 +555,26 @@ export default function QuestionLibrary({
                     </div>
                   </div>
 
-                  {/* Dropdown 操作按钮 */}
+                  {/* 编辑错题本按钮 */}
                   <div className="absolute top-4 right-4">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveDropdownId(activeDropdownId === nb.id ? null : nb.id);
+                        setEditingNotebook(nb);
+                        setNbForm({
+                          name: nb.name || '',
+                          grade: nb.grade || '',
+                          subject: nb.subject || '',
+                          description: nb.description || ''
+                        });
+                        setNotebookPanel('edit');
+                        setShowNotebookModal(true);
                       }}
                       className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                      title="编辑错题本"
                     >
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
-                    {activeDropdownId === nb.id && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-10" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdownId(null);
-                          }} 
-                        />
-                        <div className="absolute right-0 mt-1 w-24 bg-white border border-slate-200/80 rounded-xl shadow-lg z-20 py-1 text-xs animate-in fade-in zoom-in-95 duration-100">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownId(null);
-                              setEditingNotebook(nb);
-                              setNbForm({
-                                name: nb.name || '',
-                                grade: nb.grade || '',
-                                subject: nb.subject || '',
-                                description: nb.description || ''
-                              });
-                              setNotebookPanel('edit');
-                              setShowNotebookModal(true);
-                            }}
-                            className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 font-bold transition-colors"
-                          >
-                            编辑
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownId(null);
-                              handleDeleteNotebook(nb.id);
-                            }}
-                            className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 font-bold transition-colors"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </>
-                    )}
                   </div>
                   
                   <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
@@ -647,96 +614,145 @@ export default function QuestionLibrary({
         <div className="space-y-6">
           <button
             onClick={handleBackToNotebooks}
-            className="flex items-center gap-1.5 text-xs font-black text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-4 py-2.5 rounded-xl transition-all self-start cursor-pointer shadow-sm border border-slate-200"
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-900 transition-all self-start cursor-pointer"
           >
             <span>← 返回错题本列表</span>
           </button>
 
-          {/* Filter and Search */}
-          <div className="flex flex-col xl:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text"
-                placeholder="搜索题目、知识点、考点..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-semibold text-slate-800"
-              />
+          {/* 错题本概览信息 */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+                {activeNotebookId === 'unclassified' ? '未分类错题' : (activeNotebook?.name || '未分类错题')}
+              </h1>
+              <div className="text-sm text-slate-400 font-medium">
+                {stats.total} 道错题 · {stats.unmastered} 道未掌握
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            
+            {/* 右上角维度选项卡 */}
+            <div className="flex bg-[#f3f0ea] p-1 rounded-xl border border-slate-200/45 shrink-0 self-start md:self-auto shadow-sm">
+              <button
+                onClick={() => setActiveDimension('timeline')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeDimension === 'timeline'
+                    ? 'bg-[#f8f5ee] text-[#b38235] shadow-sm'
+                    : 'text-slate-500 hover:text-slate-850'
+                }`}
+              >
+                📋 时间线
+              </button>
+              <button
+                onClick={() => setActiveDimension('knowledge')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeDimension === 'knowledge'
+                    ? 'bg-[#f8f5ee] text-[#b38235] shadow-sm'
+                    : 'text-slate-500 hover:text-slate-855'
+                }`}
+              >
+                🏷️ 知识点
+              </button>
+              <button
+                onClick={() => setActiveDimension('error_count')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeDimension === 'error_count'
+                    ? 'bg-[#f8f5ee] text-[#b38235] shadow-sm'
+                    : 'text-slate-500 hover:text-slate-855'
+                }`}
+              >
+                📊 错误次数
+              </button>
+            </div>
+          </div>
+
+          {/* Filter and Tab section */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-200/60 pb-4">
+            {/* 左侧掌握状态 Tab */}
+            <div className="flex bg-[#f3f0ea]/60 p-1 rounded-2xl gap-1 self-start">
+              <button
+                onClick={() => setFilterMastery('all')}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                  filterMastery === 'all'
+                    ? 'bg-[#d2973b] text-white shadow-md shadow-[#d2973b]/10'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>全部</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+                  filterMastery === 'all'
+                    ? 'bg-[#f8f5ee] text-[#d2973b]'
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {stats.total}
+                </span>
+              </button>
+              <button
+                onClick={() => setFilterMastery('not_mastered')}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                  filterMastery === 'not_mastered'
+                    ? 'bg-[#d2973b] text-white shadow-md shadow-[#d2973b]/10'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>未掌握</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+                  filterMastery === 'not_mastered'
+                    ? 'bg-[#f8f5ee] text-[#d2973b]'
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {stats.unmastered}
+                </span>
+              </button>
+              <button
+                onClick={() => setFilterMastery('mastered')}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                  filterMastery === 'mastered'
+                    ? 'bg-[#d2973b] text-white shadow-md shadow-[#d2973b]/10'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>已掌握</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+                  filterMastery === 'mastered'
+                    ? 'bg-[#f8f5ee] text-[#d2973b]'
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {stats.mastered}
+                </span>
+              </button>
+            </div>
+
+            {/* 右侧搜索与过滤 */}
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end flex-1">
+              <div className="relative flex-1 max-w-xs min-w-[150px]">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text"
+                  placeholder="搜索题目、知识点..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold text-slate-700 placeholder-slate-400"
+                />
+              </div>
               <select 
                 value={filterSubject}
                 onChange={e => setFilterSubject(e.target.value)}
-                className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700 flex-1 sm:flex-initial"
+                className="py-2 px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none text-xs font-bold text-slate-650 cursor-pointer"
               >
-                <option value="all">所有学科分类</option>
+                <option value="all">所有学科</option>
                 {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select 
-                value={filterNotebook}
-                onChange={e => {
-                  const val = e.target.value;
-                  setFilterNotebook(val);
-                  if (val === 'all') {
-                    setActiveNotebookId(null);
-                  } else {
-                    setActiveNotebookId(val);
-                  }
-                }}
-                className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700 flex-1 sm:flex-initial"
-              >
-                <option value="all">所有错题本</option>
-                <option value="unclassified">未分类错题</option>
-                {notebooks.map(nb => (
-                  <option key={nb.id} value={nb.id}>{nb.name}</option>
-                ))}
-              </select>
-              <select 
-                value={filterMastery}
-                onChange={e => setFilterMastery(e.target.value as any)}
-                className="py-3 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700 flex-1 sm:flex-initial"
-              >
-                <option value="all">所有掌握状态</option>
-                <option value="not_mastered">未掌握</option>
-                <option value="mastered">已掌握</option>
               </select>
               <button
                 onClick={() => {
                   setNotebookPanel('list');
                   setShowNotebookModal(true);
                 }}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-700 text-sm font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-600 text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
               >
-                ⚙️ 管理错题本
+                ⚙️ 管理
               </button>
             </div>
           </div>
-
-          {activeNotebook && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <span>📘</span> {activeNotebook.name}
-                </h3>
-                <div className="flex gap-2">
-                  {activeNotebook.grade && (
-                    <span className="text-[10px] bg-white text-slate-650 font-bold px-2 py-0.5 rounded border border-slate-200 shadow-sm">
-                      🏫 {activeNotebook.grade}
-                    </span>
-                  )}
-                  {activeNotebook.subject && (
-                    <span className="text-[10px] bg-white text-slate-650 font-bold px-2 py-0.5 rounded border border-slate-200 shadow-sm">
-                      📚 {activeNotebook.subject}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {activeNotebook.description && (
-                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{activeNotebook.description}</p>
-              )}
-            </div>
-          )}
 
           {/* List */}
           {loadingQuestions ? (
@@ -758,99 +774,125 @@ export default function QuestionLibrary({
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filtered.map(q => {
+              <div className="flex flex-col gap-4">
+                {filtered.map((q, index) => {
                   const isSelected = selectedIds.has(q.id);
+                  const formattedDate = format(new Date(q.createdAt), 'MM/dd');
                   return (
-                    <div key={q.id} className="relative group">
-                      <button 
+                    <div 
+                      key={q.id} 
+                      className={`relative group bg-white rounded-3xl border transition-all flex flex-col md:flex-row p-5 gap-5 items-stretch ${
+                        isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:shadow-md hover:border-blue-400'
+                      }`}
+                    >
+                      {/* 卡片左侧：缩略图/原图 */}
+                      <div 
                         onClick={() => setSelectedQuestion(q)}
-                        className={`w-full bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between h-full ${
-                          isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:border-blue-400'
-                        }`}
+                        className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-inner"
                       >
-                        <div>
-                          <div className="flex items-center justify-between mb-3.5 pr-8">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-blue-100">{q.subject}</span>
-                              {q.notebookName ? (
-                                <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
-                              ) : (
-                                <span className="bg-slate-50 text-slate-500 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">未分类</span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {format(new Date(q.createdAt), 'yyyy-MM-dd')}
-                            </span>
+                        {q.imageUrl ? (
+                          <img src={q.imageUrl} alt="缩略图" className="w-full h-full object-cover rounded-2xl hover:scale-105 transition duration-300" />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-350">
+                            <span className="text-3xl mb-1">{getSubjectIcon(q.subject)}</span>
+                            <span className="text-[10px] font-bold">{q.subject}</span>
                           </div>
-                          <p className="text-slate-800 font-bold line-clamp-2 leading-relaxed mb-4 text-sm">{q.originalText}</p>
-                        </div>
-                        
-                        <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-                          <div className="flex gap-1.5 flex-wrap items-center">
-                            {q.knowledgePoints.slice(0,2).map(p => (
-                              <span key={p} className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {p}</span>
-                            ))}
-                            <button
-                              onClick={(e) => handleToggleMastery(q.id, q.masteryStatus, e)}
-                              className={`text-[9px] font-extrabold px-2 py-0.5 rounded transition-all flex items-center gap-0.5 cursor-pointer border ${
-                                q.masteryStatus === 'mastered' 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-250 hover:bg-emerald-105' 
-                                  : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-105'
-                              }`}
-                              title="点击一键切换掌握状态"
-                            >
-                              {q.masteryStatus === 'mastered' ? '✓ 已掌握' : '✗ 未掌握'}
-                            </button>
-                            <select
-                              value={q.notebookId || ''}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={async (e) => {
-                                e.stopPropagation();
-                                const targetNbId = e.target.value;
-                                const targetNb = notebooks.find(n => n.id === targetNbId);
-                                const updated = {
-                                  ...q,
-                                  notebookId: targetNbId || undefined,
-                                  notebookName: targetNb ? targetNb.name : undefined
-                                };
-                                try {
-                                  await db.saveQuestion(updated);
-                                  loadQuestions(currentPage);
-                                  loadNotebooks();
-                                  loadUnclassifiedCount();
-                                } catch (err: any) {
-                                  window.alert(err.message || '转移失败');
-                                }
-                              }}
-                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 outline-none cursor-pointer"
-                              title="快速转移所属错题本"
-                            >
-                              <option value="">未分类</option>
-                              {notebooks.map(nb => (
-                                <option key={nb.id} value={nb.id}>{nb.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-                        </div>
-                      </button>
+                        )}
+                      </div>
 
-                      {!isStudent && (
-                        <div className="absolute right-4 top-4.5 z-10">
-                          <input 
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              toggleSelect(q.id);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
-                          />
+                      {/* 卡片右侧：主内容区 */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        {/* 第一行：序号、题干与日期 */}
+                        <div className="flex justify-between items-start gap-4 mb-2">
+                          <div 
+                            onClick={() => setSelectedQuestion(q)}
+                            className="text-slate-800 font-bold text-sm md:text-base leading-relaxed line-clamp-2 cursor-pointer flex-1"
+                          >
+                            <span className="mr-1.5">{index + 1 + (currentPage - 1) * pageSize}.</span>
+                            {q.originalText}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-bold shrink-0 pt-0.5 flex items-center gap-1">
+                            {formattedDate}
+                          </div>
                         </div>
-                      )}
+
+                        {/* 第二行：错因分析 */}
+                        {q.errorReason && (
+                          <div 
+                            onClick={() => setSelectedQuestion(q)}
+                            className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2 mb-3.5 cursor-pointer bg-slate-50/50 p-2 rounded-xl border border-slate-100/40"
+                          >
+                            <span className="font-bold text-slate-700 mr-1.5">错因分析:</span>
+                            {q.errorReason}
+                          </div>
+                        )}
+
+                        {/* 第三行：标签和操作区域 */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 mt-auto">
+                          {/* 左侧：标签列表与转移下拉菜单 */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* 知识点标签 */}
+                            {q.knowledgePoints.map(p => (
+                              <span 
+                                key={p} 
+                                className="text-[10px] bg-[#fdfaf2] text-[#c08d3a] border border-[#f3ebda] px-2.5 py-0.5 rounded-lg font-bold"
+                              >
+                                {p}
+                              </span>
+                            ))}
+                            
+                            {/* 转移错题本胶囊下拉菜单 */}
+                            <div className="relative flex items-center text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg bg-blue-50/60 text-blue-600 border border-blue-150 hover:bg-blue-50 transition cursor-pointer">
+                              <span>📂 转移:</span>
+                              <select
+                                value={q.notebookId || ''}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={async (e) => {
+                                  e.stopPropagation();
+                                  const targetNbId = e.target.value;
+                                  const targetNb = notebooks.find(n => n.id === targetNbId);
+                                  const updated = {
+                                    ...q,
+                                    notebookId: targetNbId || undefined,
+                                    notebookName: targetNb ? targetNb.name : undefined
+                                  };
+                                  try {
+                                    await db.saveQuestion(updated);
+                                    loadQuestions(currentPage);
+                                    loadNotebooks();
+                                    loadUnclassifiedCount();
+                                    updateNotebookStats();
+                                  } catch (err: any) {
+                                    window.alert(err.message || '转移失败');
+                                  }
+                                }}
+                                className="ml-1 bg-transparent text-blue-600 border-none outline-none cursor-pointer pr-1 font-bold"
+                                title="快速转移所属错题本"
+                              >
+                                <option value="">未分类</option>
+                                {notebooks.map(nb => (
+                                  <option key={nb.id} value={nb.id}>{nb.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* 右侧：已/未掌握状态胶囊 */}
+                          <button
+                            onClick={(e) => handleToggleMastery(q.id, q.masteryStatus, e)}
+                            className={`text-xs font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1 cursor-pointer border ${
+                              q.masteryStatus === 'mastered' 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                                : 'bg-rose-50/70 text-rose-600 border-rose-200/60 hover:bg-rose-100/80'
+                            }`}
+                            title="点击一键切换掌握状态"
+                          >
+                            {q.masteryStatus === 'mastered' ? '已掌握' : '未掌握'}
+                          </button>
+                        </div>
+                      </div>
+
+
                     </div>
                   );
                 })}
@@ -973,20 +1015,20 @@ export default function QuestionLibrary({
 
             {/* Panel 2 & 3: 新增/修改表单 */}
             {(notebookPanel === 'create' || notebookPanel === 'edit') && (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500">错题本名称 <span className="text-rose-500">*</span></label>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">名称</label>
                   <input
                     type="text"
                     value={nbForm.name}
                     onChange={e => setNbForm(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="例如：高一数学重难点本"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                    placeholder="例如：初二"
+                    className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500">适用年级</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 mb-1 block">年级</label>
                     <select
                       value={nbForm.grade}
                       onChange={e => {
@@ -1001,7 +1043,7 @@ export default function QuestionLibrary({
                           };
                         });
                       }}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
                     >
                       <option value="">选择年级</option>
                       {GRADE_OPTIONS.map(g => (
@@ -1009,12 +1051,12 @@ export default function QuestionLibrary({
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500">所属学科</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 mb-1 block">学科</label>
                     <select
                       value={nbForm.subject}
                       onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
                     >
                       <option value="">选择学科</option>
                       {getAvailableSubjects(nbForm.grade).map(s => (
@@ -1023,30 +1065,68 @@ export default function QuestionLibrary({
                     </select>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500">备注描述</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">描述（可选）</label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={nbForm.description}
                     onChange={e => setNbForm(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="填写此错题本的收录规则与目的..."
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder="例如：方程、函数、几何证明等重点易错题集合"
+                    className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none text-slate-800"
                   />
                 </div>
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={() => setNotebookPanel('list')}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
-                  >
-                    返回列表
-                  </button>
-                  <button
-                    onClick={handleSaveNotebookSubmit}
-                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm shadow-blue-500/10"
-                  >
-                    保存提交
-                  </button>
-                </div>
+                
+                {notebookPanel === 'create' ? (
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        setShowNotebookModal(false);
+                        setNotebookPanel('list');
+                      }}
+                      className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveNotebookSubmit}
+                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-blue-500/10 text-center"
+                    >
+                      保存
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center pt-2 gap-3">
+                    <button
+                      onClick={async () => {
+                        if (editingNotebook) {
+                          await handleDeleteNotebook(editingNotebook.id);
+                          setShowNotebookModal(false);
+                          setNotebookPanel('list');
+                        }
+                      }}
+                      className="py-3 px-5 text-[#ef4444] bg-[#fef2f2] border border-[#fecaca] hover:bg-[#fee2e2] rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                    >
+                      删除
+                    </button>
+                    <div className="flex gap-2 flex-1 justify-end">
+                      <button
+                        onClick={() => {
+                          setShowNotebookModal(false);
+                          setNotebookPanel('list');
+                        }}
+                        className="py-3 px-5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer text-center min-w-[80px]"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={handleSaveNotebookSubmit}
+                        className="py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-blue-500/10 text-center min-w-[90px]"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1131,6 +1211,7 @@ function QuestionDetail({
   const [selectedNotebook, setSelectedNotebook] = useState(question.notebookId || '');
   const [editedStudentAnswer, setEditedStudentAnswer] = useState(question.studentAnswer || '');
   const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
+  const [editedErrorAnalysis, setEditedErrorAnalysis] = useState(question.errorAnalysis || '');
   const [saving, setSaving] = useState(false);
   
 
@@ -1143,6 +1224,7 @@ function QuestionDetail({
     setSelectedNotebook(question.notebookId || '');
     setEditedStudentAnswer(question.studentAnswer || '');
     setEditedErrorDiagnosis(question.errorDiagnosis || []);
+    setEditedErrorAnalysis(question.errorAnalysis || '');
     setIsEditing(false);
   }, [question]);
 
@@ -1214,7 +1296,8 @@ function QuestionDetail({
         notebookName: selectedNbObj ? selectedNbObj.name : undefined,
         status: newStatus,
         studentAnswer: editedStudentAnswer,
-        errorDiagnosis: editedErrorDiagnosis
+        errorDiagnosis: editedErrorDiagnosis,
+        errorAnalysis: editedErrorAnalysis
       };
       await db.saveQuestion(updatedQuestion);
       if (onUpdate) {
@@ -1342,7 +1425,7 @@ function QuestionDetail({
                </div>
 
                <div className="space-y-3 pt-2">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生答题步骤数字化批改诊断 (LaTeX 数学公式请保持格式)</label>
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label></div><textarea value={editedErrorAnalysis} onChange={e => setEditedErrorAnalysis(e.target.value)} rows={5} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4" placeholder="请输入本题错因深度剖析..." /><div style={{display:'none'}}>
                  <div className="space-y-3">
                    {editedErrorDiagnosis.map((step, idx) => (
                      <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
@@ -1463,7 +1546,7 @@ function QuestionDetail({
                        }
                      ]);
                    }}
-                   className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer"
+                   className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer hidden"
                  >
                    + 增加批改步骤
                  </button>
@@ -1842,14 +1925,18 @@ function ReadOnlyDetail({
 
 
 
-        {(question.studentAnswer || (question.errorDiagnosis && question.errorDiagnosis.length > 0)) && (
+        {(question.errorAnalysis) && (
           <div className="border-t border-slate-100 pt-6 space-y-4">
             <div className="flex items-center gap-2 text-rose-600 font-extrabold text-sm">
-              <span className="w-5 h-5 rounded-lg bg-rose-50 flex items-center justify-center border border-rose-100 text-xs">📝</span>
-              <h4>学生手写作答与 AI 诊断批改</h4>
+              <span className="text-rose-600 font-bold">❌</span>
+              <h4 className="text-slate-900 font-black text-sm">错因分析</h4>
             </div>
 
-            {question.errorDiagnosis && question.errorDiagnosis.length > 0 && (
+            <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
+              <FormattedMath text={question.errorAnalysis} />
+            </div>
+
+            {false && question.errorDiagnosis && question.errorDiagnosis.length > 0 && (
               <div className="grid grid-cols-1 gap-3">
                 {question.errorDiagnosis.map((step: any) => {
                   let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
@@ -1959,9 +2046,17 @@ function ReadOnlyDetail({
             const stuAns = parsedStudentAnswers[iIdx]?.content || '';
             const solText = parsedSols[iIdx]?.content || '';
 
+            const parsedErrorAnalyses = parseIndividualErrorAnalysis(question.errorAnalysis || "");
+            let subErrorAnalysis = "";
+            if (parsedErrorAnalyses.length > 1 && parsedErrorAnalyses[iIdx]) {
+              subErrorAnalysis = parsedErrorAnalyses[iIdx].content.replace(parsedErrorAnalyses[iIdx].number || '', '').trim();
+            } else if (parsedErrorAnalyses.length === 1 && parsedQs.length > 1 && iIdx === 0) {
+              subErrorAnalysis = parsedErrorAnalyses[0].content.replace(parsedErrorAnalyses[0].number || '', '').trim();
+            }
+
             // 过滤出当前题目的步骤诊断
             const questionPrefix = `(第${iIdx + 1}题)`;
-            const filteredSteps = (question.errorDiagnosis || []).filter((step: any) => {
+            const filteredSteps: any[] = []; const dummyFilteredSteps = (question.errorDiagnosis || []).filter((step: any) => {
               const hasPrefix = step.stepContent.startsWith(questionPrefix);
               if (hasPrefix) return true;
               // 兜底：如果第一题且步骤无任何前缀，也归给第一题
@@ -1991,6 +2086,20 @@ function ReadOnlyDetail({
                   </div>
                   <FormattedMath text={qItem.content} className="text-sm text-slate-905 font-bold leading-relaxed" />
                 </div>
+
+                {/* 错因分析 */}
+                {subErrorAnalysis && (
+                  <div className="border-t border-slate-100 pt-4 space-y-3">
+                    <div className="flex items-center gap-2 text-rose-600 font-extrabold text-xs">
+                      <span className="text-rose-600 font-bold">❌</span>
+                      <h4 className="text-slate-900 font-black text-xs">错因分析</h4>
+                    </div>
+
+                    <div className="p-3.5 bg-white border border-slate-200/80 rounded-2xl text-[11px] leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
+                      <FormattedMath text={subErrorAnalysis} />
+                    </div>
+                  </div>
+                )}
 
 
 

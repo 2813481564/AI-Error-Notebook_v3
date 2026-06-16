@@ -740,7 +740,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
 
 
                           {/* Error Analysis or Step Diagnosis */}
-                          {!isExcluded && (item.errorAnalysis || (item.errorDiagnosis && item.errorDiagnosis.length > 0)) && (
+                          {!isExcluded && item.errorAnalysis && (
                             <div className="pt-4 border-t border-slate-200/40 space-y-3">
                               {item.errorAnalysis ? (
                                 <div className="space-y-2">
@@ -751,7 +751,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                                     <FormattedMath text={item.errorAnalysis} />
                                   </div>
                                 </div>
-                              ) : item.errorDiagnosis && item.errorDiagnosis.length > 0 ? (
+                              ) : false ? (
                                 <div className="space-y-3">
                                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                     <span>📝</span> 手写作答 AI 步骤诊断批改
