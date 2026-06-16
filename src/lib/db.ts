@@ -26,6 +26,7 @@ export interface ErrorQuestion {
   masteryStatus?: 'not_mastered' | 'mastered';
   studentAnswer?: string;
   errorDiagnosis?: DiagnosisStep[];
+  errorAnalysis?: string;
   paperName?: string;
   standardAnswer?: string;
   score?: number;

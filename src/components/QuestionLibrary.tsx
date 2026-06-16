@@ -1,17 +1,85 @@
 import React, { useEffect, useState } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
-import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw } from 'lucide-react';
+import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import FormattedMath, { InlineContent } from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
 
+function timeAgo(timestamp?: number): string {
+  if (!timestamp) return '刚刚';
+  const diff = Date.now() - timestamp;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days > 0) return `${days}天前`;
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (hours > 0) return `${hours}小时前`;
+  const minutes = Math.floor(diff / (1000 * 60));
+  if (minutes > 0) return `${minutes}分钟前`;
+  return '刚刚';
+}
+
+function getSubjectIcon(subject?: string): string {
+  if (!subject) return '📚';
+  const s = subject.trim();
+  if (s.includes('数')) return '📐';
+  if (s.includes('英')) return '🔤';
+  if (s.includes('语') || s.includes('文')) return '✍️';
+  if (s.includes('物')) return '⚛️';
+  if (s.includes('化')) return '🧪';
+  if (s.includes('生')) return '🧬';
+  if (s.includes('历') || s.includes('史')) return '📜';
+  if (s.includes('地')) return '🌍';
+  if (s.includes('政')) return '⚖️';
+  return '📚';
+}
+
+function getSubjectBg(subject?: string): string {
+  if (!subject) return 'bg-slate-50 border-slate-200/60';
+  const s = subject.trim();
+  if (s.includes('数')) return 'bg-blue-50 border-blue-150';
+  if (s.includes('英')) return 'bg-indigo-50 border-indigo-150';
+  if (s.includes('语') || s.includes('文')) return 'bg-amber-50 border-amber-150';
+  if (s.includes('物')) return 'bg-purple-50 border-purple-150';
+  if (s.includes('化')) return 'bg-emerald-50 border-emerald-150';
+  if (s.includes('生')) return 'bg-teal-50 border-teal-150';
+  return 'bg-slate-50 border-slate-200/60';
+}
+
+const GRADE_OPTIONS = [
+  '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
+  '初一', '初二', '初三',
+  '高一', '高二', '高三'
+];
+
+function getAvailableSubjects(grade: string): string[] {
+  const allSubjects = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
+  if (!grade) return allSubjects;
+  
+  if (['一年级', '二年级', '三年级', '四年级', '五年级', '六年级'].includes(grade)) {
+    return ['语文', '数学', '英语'];
+  }
+  
+  if (grade === '初一' || grade === '七年级') {
+    return ['语文', '数学', '英语', '生物', '历史', '地理', '政治'];
+  }
+  
+  if (grade === '初二' || grade === '八年级') {
+    return ['语文', '数学', '英语', '物理', '生物', '历史', '地理', '政治'];
+  }
+  
+  return allSubjects;
+}
+
 export default function QuestionLibrary({ 
   onNavigate,
-  onGeneratePaper
+  onGeneratePaper,
+  userInfo: propUserInfo,
+  onRefreshUserInfo
 }: { 
   onNavigate: (v: any) => void;
   onGeneratePaper?: (questions: ErrorQuestion[]) => void;
+  userInfo?: any;
+  onRefreshUserInfo?: () => void;
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
@@ -35,6 +103,36 @@ export default function QuestionLibrary({
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   const pageSize = 10;
+
+  const [localUserInfo, setLocalUserInfo] = useState<any>(null);
+  const userInfo = propUserInfo || localUserInfo;
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+
+  const fetchUserInfo = () => {
+    if (onRefreshUserInfo) {
+      onRefreshUserInfo();
+      return;
+    }
+    const token = localStorage.getItem('errorbook_token');
+    if (!token) return;
+    fetch('/api/user/info', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => {
+        if (res.status === 401) {
+          localStorage.removeItem('errorbook_token');
+          localStorage.removeItem('errorbook_username');
+          window.location.reload();
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data && !data.error) {
+          setLocalUserInfo(data);
+        }
+      })
+      .catch(console.error);
+  };
   
   const userRole = localStorage.getItem('errorbook_role') || 'user';
   const isAdmin = userRole === 'admin';
@@ -51,6 +149,7 @@ export default function QuestionLibrary({
   useEffect(() => {
     loadNotebooks();
     loadUnclassifiedCount();
+    fetchUserInfo();
   }, []);
 
   // 当筛选条件或防抖后的搜索内容变化时，且处于错题本内，刷新至第 1 页
@@ -360,22 +459,41 @@ export default function QuestionLibrary({
       )}
 
       {activeNotebookId === null ? (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
-            <div className="flex flex-col">
-              <span className="text-xs text-slate-500 font-bold">请选择错题本以查看错题</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">创建个性的专属分类，分学科、年级和考点阶段进行系统复习。</span>
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* AI 学习额度状态栏 */}
+          {userInfo && (
+            <div className="bg-white border border-slate-200/85 rounded-2xl px-5 py-4 flex flex-col md:flex-row items-stretch md:items-center justify-between text-xs font-bold text-slate-700 gap-4 shadow-sm">
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                <span>当前身份：</span>
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 font-black text-[10px]">
+                  {userInfo.role === 'admin' ? '管理员' : userInfo.role === 'svip' ? 'SVIP会员' : userInfo.role === 'vip' ? 'VIP会员' : userInfo.role === 'teacher' ? '教师版' : '普通用户'}
+                </span>
+              </div>
+              
+              <div className="flex-1 flex items-center gap-3 min-w-0">
+                <span className="shrink-0 text-slate-500">AI 学习额度</span>
+                <div className="relative bg-slate-100 h-2 rounded-full flex-1 overflow-hidden">
+                  <div 
+                    className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${(userInfo.aiRemaining === "无限" || userInfo.aiLimit === Infinity) ? 0 : Math.min(100, ((userInfo.aiUsedToday || 0) / (userInfo.aiLimit || 30)) * 100)}%` 
+                    }}
+                  />
+                </div>
+                <span className="shrink-0 font-black text-slate-700 text-[11px]">
+                  {(userInfo.aiRemaining === "无限" || userInfo.aiLimit === Infinity) ? "无限制" : `${userInfo.aiUsedToday || 0} / ${userInfo.aiLimit || 30}`}
+                </span>
+              </div>
+
+              <div className="shrink-0 text-slate-400 text-[11px] font-semibold flex items-center gap-2 md:border-l md:border-slate-100 md:pl-4">
+                <span>错题容量</span>
+                <span className="font-extrabold text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                  {userInfo.capacityLimit === 0 ? `${userInfo.questionCount || 0} / 无限制` : `${userInfo.questionCount || 0} / ${userInfo.capacityLimit || 50}`}
+                </span>
+              </div>
             </div>
-            <button
-              onClick={() => {
-                setNotebookPanel('list');
-                setShowNotebookModal(true);
-              }}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <span>⚙️ 管理错题本</span>
-            </button>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {/* 默认未分类错题卡片 */}
@@ -384,29 +502,31 @@ export default function QuestionLibrary({
                 setActiveNotebookId('unclassified');
                 setFilterNotebook('unclassified');
               }}
-              className="bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200 p-6 flex flex-col justify-between min-h-[180px] cursor-pointer group hover:border-slate-355"
+              className="relative bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200/80 p-5 flex flex-col justify-between min-h-[140px] cursor-pointer group hover:border-blue-400"
             >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs bg-slate-100 text-slate-600 font-extrabold px-2.5 py-1 rounded-lg border border-slate-200">
-                    📁 默认系统本
-                  </span>
-                  <span className="text-2xl">📓</span>
+              <div className="flex gap-4 items-start">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center border text-2xl shrink-0 bg-slate-50 border-slate-150 shadow-inner">
+                  📓
                 </div>
-                <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors">
-                  未分类错题
-                </h3>
-                <p className="text-xs text-slate-400 font-semibold leading-relaxed line-clamp-2">
-                  所有未绑定具体错题本的零散错题，均会默认收录在此，方便进行后期归类。
-                </p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors truncate">
+                    未分类错题
+                  </h3>
+                  <p className="text-xs text-slate-400 font-semibold mt-1 truncate">
+                    系统默认归档集
+                  </p>
+                </div>
               </div>
-              <div className="border-t border-slate-100 pt-4 mt-4 flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-extrabold">
-                  共收录 <span className="text-blue-600 font-black text-sm">{unclassifiedCount}</span> 道错题
-                </span>
-                <span className="text-[10px] text-blue-600 font-black flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  进入管理 →
-                </span>
+              
+              <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-extrabold">
+                  <Book className="w-3.5 h-3.5 text-slate-400" />
+                  <span>共 <span className="text-blue-600 font-black">{unclassifiedCount}</span> 道错题</span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold">
+                  <Clock className="w-3.5 h-3.5 text-slate-300" />
+                  <span>刚刚</span>
+                </div>
               </div>
             </div>
 
@@ -420,67 +540,107 @@ export default function QuestionLibrary({
                     setActiveNotebookId(nb.id);
                     setFilterNotebook(nb.id);
                   }}
-                  className="bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200 p-6 flex flex-col justify-between min-h-[180px] cursor-pointer group hover:border-blue-400"
+                  className="relative bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200/80 p-5 flex flex-col justify-between min-h-[140px] cursor-pointer group hover:border-blue-400"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        {nb.grade && (
-                          <span className="text-[9px] bg-indigo-50 text-indigo-700 font-extrabold px-2 py-0.5 rounded border border-indigo-100">
-                            {nb.grade}
-                          </span>
-                        )}
-                        {nb.subject && (
-                          <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-2 py-0.5 rounded border border-blue-100">
-                            {nb.subject}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-2xl">📘</span>
+                  <div className="flex gap-4 items-start">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border text-2xl shrink-0 shadow-inner ${getSubjectBg(nb.subject)}`}>
+                      {getSubjectIcon(nb.subject)}
                     </div>
-                    <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors truncate">
-                      {nb.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 font-semibold leading-relaxed line-clamp-2">
-                      {nb.description || '暂无描述信息...'}
-                    </p>
+                    <div className="min-w-0 flex-1 pr-6">
+                      <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors truncate">
+                        {nb.name}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-semibold mt-1 truncate">
+                        {nb.subject || '通用'}{nb.grade ? ` · ${nb.grade}` : ''}错题集
+                      </p>
+                    </div>
                   </div>
-                  <div className="border-t border-slate-100 pt-4 mt-4 flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-extrabold">
-                      共收录 <span className="text-blue-600 font-black text-sm">{nbCount}</span> 道错题
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingNotebook(nb);
-                          setNbForm({
-                            name: nb.name || '',
-                            grade: nb.grade || '',
-                            subject: nb.subject || '',
-                            description: nb.description || ''
-                          });
-                          setNotebookPanel('edit');
-                          setShowNotebookModal(true);
-                        }}
-                        className="text-[10px] font-black text-blue-600 hover:text-blue-800 cursor-pointer"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteNotebook(nb.id);
-                        }}
-                        className="text-[10px] font-black text-rose-600 hover:text-rose-800 cursor-pointer"
-                      >
-                        删除
-                      </button>
+
+                  {/* Dropdown 操作按钮 */}
+                  <div className="absolute top-4 right-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveDropdownId(activeDropdownId === nb.id ? null : nb.id);
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {activeDropdownId === nb.id && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownId(null);
+                          }} 
+                        />
+                        <div className="absolute right-0 mt-1 w-24 bg-white border border-slate-200/80 rounded-xl shadow-lg z-20 py-1 text-xs animate-in fade-in zoom-in-95 duration-100">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveDropdownId(null);
+                              setEditingNotebook(nb);
+                              setNbForm({
+                                name: nb.name || '',
+                                grade: nb.grade || '',
+                                subject: nb.subject || '',
+                                description: nb.description || ''
+                              });
+                              setNotebookPanel('edit');
+                              setShowNotebookModal(true);
+                            }}
+                            className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 font-bold transition-colors"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveDropdownId(null);
+                              handleDeleteNotebook(nb.id);
+                            }}
+                            className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 font-bold transition-colors"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-extrabold">
+                      <Book className="w-3.5 h-3.5 text-slate-400" />
+                      <span>共 <span className="text-blue-600 font-black">{nbCount}</span> 道错题</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold">
+                      <Clock className="w-3.5 h-3.5 text-slate-300" />
+                      <span>{timeAgo(nb.createdAt)}</span>
                     </div>
                   </div>
                 </div>
               );
             })}
+
+            {/* 新建错题本虚线入口卡片 */}
+            <div 
+              onClick={() => {
+                setNotebookPanel('create');
+                setNbForm({ name: '', grade: '', subject: '', description: '' });
+                setShowNotebookModal(true);
+              }}
+              className="border-2 border-dashed border-slate-200/85 hover:border-blue-400 bg-white hover:bg-blue-50/10 cursor-pointer rounded-3xl p-5 flex flex-col items-center justify-center min-h-[140px] text-center transition-all group shadow-sm hover:shadow-md"
+            >
+              <PlusCircle className="w-8 h-8 text-slate-400 group-hover:text-blue-500 transition-colors mb-2 stroke-[1.5]" />
+              <span className="text-sm font-black text-slate-700 group-hover:text-blue-600 transition-colors">
+                创建新错题本
+              </span>
+              <span className="text-[10px] text-slate-400 font-semibold mt-1">
+                按科目或考试整理
+              </span>
+            </div>
           </div>
         </div>
       ) : (
@@ -827,23 +987,40 @@ export default function QuestionLibrary({
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500">适用年级</label>
-                    <input
-                      type="text"
+                    <select
                       value={nbForm.grade}
-                      onChange={e => setNbForm(prev => ({ ...prev, grade: e.target.value }))}
-                      placeholder="例如：高三"
+                      onChange={e => {
+                        const selectedGrade = e.target.value;
+                        setNbForm(prev => {
+                          const available = getAvailableSubjects(selectedGrade);
+                          const newSubject = available.includes(prev.subject) ? prev.subject : (available[0] || '');
+                          return {
+                            ...prev,
+                            grade: selectedGrade,
+                            subject: newSubject
+                          };
+                        });
+                      }}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="">选择年级</option>
+                      {GRADE_OPTIONS.map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500">所属学科</label>
-                    <input
-                      type="text"
+                    <select
                       value={nbForm.subject}
                       onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
-                      placeholder="例如：数学"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="">选择学科</option>
+                      {getAvailableSubjects(nbForm.grade).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-1">

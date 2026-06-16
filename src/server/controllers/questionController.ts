@@ -100,6 +100,7 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
         similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined,
         studentAnswer: row.studentAnswer || "",
         errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : [],
+        errorAnalysis: row.errorAnalysis || "",
         paperName: row.paperName || undefined,
         standardAnswer: row.standardAnswer || undefined,
         score: row.score !== null && row.score !== undefined ? row.score : undefined,
@@ -152,6 +153,7 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       similarQuestion: row.similarQuestion ? JSON.parse(row.similarQuestion) : undefined,
       studentAnswer: row.studentAnswer || "",
       errorDiagnosis: row.errorDiagnosis ? JSON.parse(row.errorDiagnosis) : [],
+      errorAnalysis: row.errorAnalysis || "",
       paperName: row.paperName || undefined,
       standardAnswer: row.standardAnswer || undefined,
       score: row.score !== null && row.score !== undefined ? row.score : undefined,
@@ -217,8 +219,8 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
 
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, paperName, standardAnswer, score, notebookId, masteryStatus
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, errorAnalysis, paperName, standardAnswer, score, notebookId, masteryStatus
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -236,6 +238,7 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       question.similarQuestion ? JSON.stringify(question.similarQuestion) : null,
       question.studentAnswer || "",
       question.errorDiagnosis ? JSON.stringify(question.errorDiagnosis) : "[]",
+      question.errorAnalysis || "",
       question.paperName || null,
       question.standardAnswer || null,
       question.score !== undefined ? question.score : null,

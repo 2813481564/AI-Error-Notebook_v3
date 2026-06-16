@@ -51,7 +51,8 @@ db.exec(`
     standardAnswer TEXT,
     score INTEGER,
     notebookId TEXT,
-    masteryStatus TEXT DEFAULT 'not_mastered'
+    masteryStatus TEXT DEFAULT 'not_mastered',
+    errorAnalysis TEXT
   );
   
   CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
@@ -197,6 +198,12 @@ try {
   if (!hasErrorDiagnosis) {
     console.log("正在升级 questions 表以支持步骤错误诊断字段...");
     db.exec("ALTER TABLE questions ADD COLUMN errorDiagnosis TEXT");
+  }
+
+  const hasErrorAnalysis = tableInfo.some(col => col.name === 'errorAnalysis');
+  if (!hasErrorAnalysis) {
+    console.log("正在升级 questions 表以支持综合错因分析字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN errorAnalysis TEXT");
   }
 
   const hasStandardAnswer = tableInfo.some(col => col.name === 'standardAnswer');

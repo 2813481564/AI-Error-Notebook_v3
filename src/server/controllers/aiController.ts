@@ -297,13 +297,11 @@ ${standardAnswerSection}
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
 2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
-3. **学生作答步骤级诊断** ("errorDiagnosis"):
-   - 如果 "学生作答内容" 为空，则 "errorDiagnosis" 必须返回空数组 []。
-   - If "学生作答内容" has content, digitize it step-by-step (step number starting from 1). For each step:
-     * "stepNumber": step sequence.
-     * "stepContent": digitized content (wrapped in $).
-     * "status": "correct", "incorrect" or "consequential_error".
-     * "comment": comment description (empty for correct).
+3. **错误原因分析** ("errorAnalysis"):
+   - 如果 "学生作答内容" 为空，返回 "错误原因分析：该题无学生作答内容，无法进行错因诊断。"。
+   - 若有作答内容，结合题干和标准答案分析学生作答中的错误，以结构化的评语形式进行总结，必须以如下两项输出：
+     1. 常见错误：[描述学生在解答该题时的常见逻辑或计算错误]
+     2. 根本原因：[剖析学生由于哪些概念不清、公式记错或基础不牢导致该错因]
 4. **学生本题所得评分** ("score"):
    - 根据学生的解答步骤与提供的【老师提供的参考标准答案】（如果提供了）的比对程度，评估学生本题的最终得分，只能是 0 到 100 之间的整数（如果学生完全未作答，或者 "学生作答内容" 缺失，则返回 0）。
 
@@ -312,14 +310,7 @@ ${standardAnswerSection}
   "knowledgePoints": ["核心考点1", "核心考点2"],
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorDiagnosis": [
-    {
-      "stepNumber": 1,
-      "stepContent": "步骤1内容",
-      "status": "correct",
-      "comment": ""
-    }
-  ]
+  "errorAnalysis": "1. 常见错误：...\n2. 根本原因：..."
 }
 `;
 
@@ -358,6 +349,7 @@ ${standardAnswerSection}
         knowledgePoints: ["需手动分析"],
         solution: text,
         score: 0,
+        errorAnalysis: "识别异常，请手动分析",
         errorDiagnosis: []
       };
     }

@@ -836,6 +836,8 @@ export default function App() {
             {currentView === 'library' && (
               <QuestionLibrary
                 onNavigate={setCurrentView}
+                userInfo={userInfo}
+                onRefreshUserInfo={fetchUserInfo}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('library');

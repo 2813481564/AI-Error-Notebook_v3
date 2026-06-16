@@ -737,46 +737,61 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             </div>
                           )}
 
-                          {/* Step Diagnosis */}
-                          {item.errorDiagnosis && item.errorDiagnosis.length > 0 && !isExcluded && (
+
+
+                          {/* Error Analysis or Step Diagnosis */}
+                          {!isExcluded && (item.errorAnalysis || (item.errorDiagnosis && item.errorDiagnosis.length > 0)) && (
                             <div className="pt-4 border-t border-slate-200/40 space-y-3">
-                              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                <span>📝</span> 手写作答 AI 步骤诊断批改
-                              </h4>
-                              <div className="grid grid-cols-1 gap-3">
-                                {item.errorDiagnosis.map((stepItem: any) => {
-                                  let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
-                                  let statusIcon = "✅";
-                                  let statusText = "正确";
+                              {item.errorAnalysis ? (
+                                <div className="space-y-2">
+                                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                    <span>🔍</span> AI 错因深度剖析
+                                  </h4>
+                                  <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-805 font-medium whitespace-pre-wrap">
+                                    <FormattedMath text={item.errorAnalysis} />
+                                  </div>
+                                </div>
+                              ) : item.errorDiagnosis && item.errorDiagnosis.length > 0 ? (
+                                <div className="space-y-3">
+                                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                    <span>📝</span> 手写作答 AI 步骤诊断批改
+                                  </h4>
+                                  <div className="grid grid-cols-1 gap-3">
+                                    {item.errorDiagnosis.map((stepItem: any) => {
+                                      let statusColor = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                                      let statusIcon = "✅";
+                                      let statusText = "正确";
 
-                                  if (stepItem.status === 'incorrect') {
-                                    statusColor = "bg-rose-50 border-rose-100 text-rose-800";
-                                    statusIcon = "❌";
-                                    statusText = "首次出现错误";
-                                  } else if (stepItem.status === 'consequential_error') {
-                                    statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
-                                    statusIcon = "⚠️";
-                                    statusText = "受前面错误波及";
-                                  }
+                                      if (stepItem.status === 'incorrect') {
+                                        statusColor = "bg-rose-50 border-rose-100 text-rose-800";
+                                        statusIcon = "❌";
+                                        statusText = "首次出现错误";
+                                      } else if (stepItem.status === 'consequential_error') {
+                                        statusColor = "bg-amber-50/30 border-amber-100 text-amber-800";
+                                        statusIcon = "⚠️";
+                                        statusText = "受前面错误波及";
+                                      }
 
-                                  return (
-                                    <div key={stepItem.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1.5`}>
-                                      <div className="flex items-center justify-between text-xs font-extrabold">
-                                        <span>步骤 {stepItem.stepNumber} {statusIcon}</span>
-                                        <span>{statusText}</span>
-                                      </div>
-                                      <div className="text-xs font-semibold leading-relaxed">
-                                        <FormattedMath text={stepItem.stepContent} />
-                                      </div>
-                                      {stepItem.comment && (
-                                        <div className="text-xs mt-2 pt-2 border-t border-current/10 font-bold opacity-90 text-rose-700">
-                                          诊断说明：{stepItem.comment}
+                                      return (
+                                        <div key={stepItem.stepNumber} className={`p-4 border rounded-2xl ${statusColor} space-y-1.5`}>
+                                          <div className="flex items-center justify-between text-xs font-extrabold">
+                                            <span>步骤 {stepItem.stepNumber} {statusIcon}</span>
+                                            <span>{statusText}</span>
+                                          </div>
+                                          <div className="text-xs font-semibold leading-relaxed">
+                                            <FormattedMath text={stepItem.stepContent} />
+                                          </div>
+                                          {stepItem.comment && (
+                                            <div className="text-xs mt-2 pt-2 border-t border-current/10 font-bold opacity-90 text-rose-700">
+                                              诊断说明：{stepItem.comment}
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           )}
 

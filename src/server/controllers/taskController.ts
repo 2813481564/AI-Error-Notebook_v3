@@ -264,9 +264,11 @@ ${standardAnswerSection}
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点，最多列出 3 个，存入数组。
 2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。数学公式用 $ 或 $$ 包围。
-3. **学生作答步骤级诊断** ("errorDiagnosis"):
-   - 如果 "学生作答内容" 为空，则 "errorDiagnosis" 必须返回空数组 []。
-   - 若有作答内容，分步骤数字化诊断（步骤序号从 1 开始），返回每个步骤的 stepNumber、stepContent、status ('correct' | 'incorrect' | 'consequential_error') 以及评语 comment。
+3. **错误原因分析** ("errorAnalysis"):
+   - 如果 "学生作答内容" 为空，返回 "错误原因分析：该题无学生作答内容，无法进行错因诊断。"。
+   - 若有作答内容，结合题干和标准答案分析学生作答中的错误，以结构化的评语形式进行总结，必须以如下两项输出：
+     1. 常见错误：[描述学生在解答该题时的常见逻辑或计算错误]
+     2. 根本原因：[剖析学生由于哪些概念不清、公式记错或基础不牢导致该错因]
 4. **学生本题所得评分** ("score"): 评估学生本题得分，0到100之间的整数。
 
 请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记：
@@ -274,14 +276,7 @@ ${standardAnswerSection}
   "knowledgePoints": ["核心考点1", "核心考点2"],
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorDiagnosis": [
-    {
-      "stepNumber": 1,
-      "stepContent": "步骤1内容",
-      "status": "correct",
-      "comment": ""
-    }
-  ]
+  "errorAnalysis": "1. 常见错误：...\n2. 根本原因：..."
 }
 `;
 
@@ -299,6 +294,7 @@ ${standardAnswerSection}
       knowledgePoints: ["需手动分析"],
       solution: text || '无解析步骤',
       score: 0,
+      errorAnalysis: "识别异常，请手动分析",
       errorDiagnosis: []
     };
 
@@ -321,7 +317,8 @@ ${standardAnswerSection}
       solution: resultObj.solution || '',
       createdAt: Date.now(),
       studentAnswer: item.studentAnswer || '',
-      errorDiagnosis: resultObj.errorDiagnosis || [],
+      errorDiagnosis: [],
+      errorAnalysis: resultObj.errorAnalysis || '',
       notebookId: notebookId || undefined,
       score: resultObj.score !== undefined ? resultObj.score : 0,
       masteryStatus: 'not_mastered',
@@ -343,8 +340,8 @@ const saveFinalQuestionsToLibrary = async (
 
   const stmt = db.prepare(`
     INSERT INTO questions (
-      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, notebookId, score, masteryStatus, standardAnswer
-    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?)
+      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer
+    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?)
   `);
 
   for (let i = 0; i < activeQuestions.length; i++) {
@@ -363,6 +360,7 @@ const saveFinalQuestionsToLibrary = async (
       Date.now() + i, // 稍微错开时间戳以保证排序相对顺序
       q.studentAnswer || '',
       JSON.stringify(q.errorDiagnosis || []),
+      q.errorAnalysis || '',
       notebookId || null,
       q.score !== undefined ? q.score : null,
       q.standardAnswer || null

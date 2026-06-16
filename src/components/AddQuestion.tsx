@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEvent, useEffect } from 'react';
+import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
 import { Upload, Camera, Loader2, Sparkles, AlertCircle, RotateCw, Trash2, Plus, Check, ChevronLeft } from 'lucide-react';
 import FormattedMath from './FormattedMath';
@@ -45,6 +45,43 @@ const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{
   };
 };
 
+// 选框裁剪辅助函数
+const cropBoxes = (
+  imageStr: string,
+  boxes: { x: number; y: number; w: number; h: number }[],
+  mimeType: string
+): Promise<string[]> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const results: string[] = [];
+        boxes.forEach((box) => {
+          const canvas = document.createElement('canvas');
+          const cropX = (box.x / 100) * img.naturalWidth;
+          const cropY = (box.y / 100) * img.naturalHeight;
+          const cropW = (box.w / 100) * img.naturalWidth;
+          const cropH = (box.h / 100) * img.naturalHeight;
+
+          canvas.width = cropW;
+          canvas.height = cropH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Canvas 2D context not supported');
+
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+          results.push(canvas.toDataURL(mimeType));
+        });
+        resolve(results);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('加载原始图片失败，无法进行区域裁剪'));
+    img.src = imageStr;
+  });
+};
+
 export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
@@ -55,6 +92,13 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
   // 跨页多图模式下的图片队列状态
   const [imageList, setImageList] = useState<{ id: string; url: string; mimeType: string }[]>([]);
+
+  // 多题选框裁剪状态
+  const [boxes, setBoxes] = useState<{ id: string; x: number; y: number; w: number; h: number }[]>([]);
+  const [isDrawingBox, setIsDrawingBox] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // 跨页多图拼接后的提取模式：'multi'（识别出多道题）或 'single'（识别为单道长题）
   const [crossPageExtractMode, setCrossPageExtractMode] = useState<'single' | 'multi'>('multi');
@@ -185,8 +229,69 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
       const rotatedBase64 = canvas.toDataURL(mimeType);
       setImageStr(rotatedBase64);
+      setBoxes([]); // 旋转后清空选框
     };
     img.src = imageStr;
+  };
+
+  // 多题框选录入区域鼠标交互处理
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (uploadMode !== 'multi') return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    setIsDrawingBox(true);
+    setStartPos({ x, y });
+    setCurrentPos({ x, y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDrawingBox) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    setCurrentPos({
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y))
+    });
+  };
+
+  const handleMouseUp = () => {
+    if (!isDrawingBox) return;
+    setIsDrawingBox(false);
+
+    const x = Math.min(startPos.x, currentPos.x);
+    const y = Math.min(startPos.y, currentPos.y);
+    const w = Math.abs(currentPos.x - startPos.x);
+    const h = Math.abs(currentPos.y - startPos.y);
+
+    if (w > 1.5 && h > 1.5) {
+      const newBox = {
+        id: 'box_' + Math.random().toString(36).substring(2, 9),
+        x,
+        y,
+        w,
+        h
+      };
+      setBoxes(prev => [...prev, newBox]);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isDrawingBox) {
+      handleMouseUp();
+    }
+  };
+
+  const deleteBox = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBoxes(prev => prev.filter(b => b.id !== id));
   };
 
   // 跨页列表中的特定图片 90 度旋转
@@ -233,31 +338,141 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         if (!imageStr) {
           throw new Error('请先上传图片！');
         }
+        if (uploadMode === 'multi' && boxes.length === 0) {
+          throw new Error('“多题录入”模式下必须手动框选至少一个题目区域！请在下方图片上拖拽鼠标框选题目。');
+        }
       }
 
       const token = localStorage.getItem('errorbook_token');
+      const hasBoxes = uploadMode === 'multi' && boxes.length > 0;
+      let croppedImages: string[] = [];
+      if (hasBoxes && imageStr) {
+        croppedImages = await cropBoxes(imageStr, boxes, mimeType);
+      }
 
       if (enableBgTask) {
         // 后台异步任务录题
-        const taskName = `错题录入_${new Date().toLocaleDateString().replace(/\//g, '')}_${new Date().toTimeString().slice(0, 5).replace(/:/g, '')}`;
-        const extractMode = uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single');
+        const baseTaskName = `错题录入_${new Date().toLocaleDateString().replace(/\//g, '')}_${new Date().toTimeString().slice(0, 5).replace(/:/g, '')}`;
 
-        const res = await fetch('/api/tasks', {
+        if (hasBoxes && croppedImages.length > 0) {
+          for (let i = 0; i < croppedImages.length; i++) {
+            const taskName = `${baseTaskName}_框选分题#${i + 1}`;
+            const res = await fetch('/api/tasks', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                taskName,
+                autoRun: autoRun ? 1 : 0,
+                uploadMode: 'single', // 框选切图后，每一道题对 AI 来说都是单题
+                notebookId: selectedNotebook || undefined,
+                payload: {
+                  imageBase64: croppedImages[i],
+                  mimeType: mimeType,
+                  extractMode: 'single'
+                }
+              })
+            });
+            if (res.status === 401) {
+              localStorage.removeItem('errorbook_token');
+              localStorage.removeItem('errorbook_username');
+              window.location.reload();
+              throw new Error('登录已过期，请重新登录');
+            }
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `创建框选分题任务 #${i + 1} 失败`);
+          }
+          alert(`成功提交了 ${croppedImages.length} 个框选分题录入任务至后台队列进行处理！\n您可以在“后台任务”中追踪执行进度。`);
+        } else {
+          const extractMode = uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single');
+          const res = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+              taskName: baseTaskName,
+              autoRun: autoRun ? 1 : 0,
+              uploadMode,
+              notebookId: selectedNotebook || undefined,
+              payload: {
+                imageBase64: finalImageStr,
+                mimeType: finalMimeType,
+                extractMode
+              }
+            })
+          });
+
+          if (res.status === 401) {
+            localStorage.removeItem('errorbook_token');
+            localStorage.removeItem('errorbook_username');
+            window.location.reload();
+            throw new Error('登录已过期，请重新登录');
+          }
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
+
+          alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
+        }
+
+        // 清理当前状态
+        setImageStr(null);
+        setImageList([]);
+        setBoxes([]);
+        setExtractedQuestions(null);
+        setParsedData(null);
+        setStep(1);
+        return;
+      }
+
+      if (hasBoxes && croppedImages.length > 0) {
+        const allExtracted: any[] = [];
+        for (let i = 0; i < croppedImages.length; i++) {
+          const res = await fetch('/api/extract', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+              imageBase64: croppedImages[i],
+              mimeType: mimeType,
+              mode: 'single' // 强制为单题提取模式
+            })
+          });
+
+          if (res.status === 401) {
+            localStorage.removeItem('errorbook_token');
+            localStorage.removeItem('errorbook_username');
+            window.location.reload();
+            throw new Error('登录已过期，请重新登录');
+          }
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `提取第 ${i + 1} 个选区失败`);
+          if (Array.isArray(data)) {
+            allExtracted.push(...data);
+          } else {
+            allExtracted.push(data);
+          }
+        }
+        setExtractedQuestions(allExtracted);
+        setStep(2);
+      } else {
+        const res = await fetch('/api/extract', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
           body: JSON.stringify({
-            taskName,
-            autoRun: autoRun ? 1 : 0,
-            uploadMode,
-            notebookId: selectedNotebook || undefined,
-            payload: {
-              imageBase64: finalImageStr,
-              mimeType: finalMimeType,
-              extractMode
-            }
+            imageBase64: finalImageStr,
+            mimeType: finalMimeType,
+            mode: uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single')
           })
         });
 
@@ -269,50 +484,18 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         }
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
+        if (!res.ok) throw new Error(data.error || '提取失败');
 
-        alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
-
-        // 清理当前上传状态，以便连续上传
-        setImageStr(null);
-        setImageList([]);
-        setExtractedQuestions(null);
-        setParsedData(null);
-        setStep(1);
-        return;
+        if (Array.isArray(data)) {
+          setExtractedQuestions(data);
+        } else {
+          setExtractedQuestions([data]);
+        }
+        setStep(2);
       }
-
-      const res = await fetch('/api/extract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          imageBase64: finalImageStr,
-          mimeType: finalMimeType,
-          mode: uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single')
-        })
-      });
-
-      if (res.status === 401) {
-        localStorage.removeItem('errorbook_token');
-        localStorage.removeItem('errorbook_username');
-        window.location.reload();
-        throw new Error('登录已过期，请重新登录');
-      }
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '提取失败');
-
-      if (Array.isArray(data)) {
-        setExtractedQuestions(data);
-      } else {
-        setExtractedQuestions([data]);
-      }
-      setStep(2);
     } catch (err: any) {
       setError(err.message);
+      alert(err.message);
     } finally {
       setAnalyzing(false);
     }
@@ -390,6 +573,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           createdAt: Date.now(),
           studentAnswer: item.studentAnswer,
           errorDiagnosis: data.errorDiagnosis || [],
+          errorAnalysis: data.errorAnalysis || '',
           notebookId: selectedNotebook || undefined,
           score: data.score !== undefined ? data.score : undefined,
           masteryStatus: 'not_mastered',
@@ -409,6 +593,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           createdAt: Date.now(),
           studentAnswer: item.studentAnswer,
           errorDiagnosis: [],
+          errorAnalysis: 'AI 诊断请求失败，暂无错因分析。',
           notebookId: selectedNotebook || undefined,
           score: 0,
           masteryStatus: 'not_mastered',
@@ -498,6 +683,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
             createdAt: Date.now() + i, // 稍微错开时间戳以保证排序相对顺序
             studentAnswer: q.studentAnswer || '',
             errorDiagnosis: q.errorDiagnosis || [],
+            errorAnalysis: q.errorAnalysis || '',
             notebookId: selectedNotebook || undefined,
             score: q.score,
             status: 'pending',
@@ -592,54 +778,56 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
             </div>
           </div>
 
-          {/* 后台异步任务选项卡 */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-5">
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span>⚙️</span> 后台录题设置
-            </h3>
+          {/* 后台异步任务选项卡 (已默认开启并隐藏) */}
+          {false && (
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 mb-5">
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <span>⚙️</span> 后台录题设置
+              </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* 异步排队开关 */}
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">开启后台任务排队</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">上传图片后立即返回，由后台静默提取与诊断</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEnableBgTask(!enableBgTask)}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${enableBgTask ? 'bg-blue-600' : 'bg-slate-300'
-                    }`}
-                >
-                  <span
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${enableBgTask ? 'transform translate-x-6' : ''
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 异步排队开关 */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">开启后台任务排队</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">上传图片后立即返回，由后台静默提取与诊断</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEnableBgTask(!enableBgTask)}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${enableBgTask ? 'bg-blue-600' : 'bg-slate-300'
                       }`}
-                  />
-                </button>
-              </div>
+                  >
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${enableBgTask ? 'transform translate-x-6' : ''
+                        }`}
+                    />
+                  </button>
+                </div>
 
-              {/* 审核模式开关，仅当开启后台任务时可见 */}
-              <div className={`flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl transition-all duration-300 ${enableBgTask ? 'opacity-100 pointer-events-auto' : 'opacity-40 pointer-events-none'
-                }`}>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">全自动归档 (免审核)</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">跳过所有人工核对，AI 识别诊断完毕后自动入库</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={!enableBgTask}
-                  onClick={() => setAutoRun(!autoRun)}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${autoRun ? 'bg-emerald-600' : 'bg-slate-300'
-                    }`}
-                >
-                  <span
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoRun ? 'transform translate-x-6' : ''
+                {/* 审核模式开关，仅当开启后台任务时可见 */}
+                <div className={`flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/60 rounded-2xl transition-all duration-300 ${enableBgTask ? 'opacity-100 pointer-events-auto' : 'opacity-40 pointer-events-none'
+                  }`}>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">全自动归档 (免审核)</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">跳过所有人工核对，AI 识别诊断完毕后自动入库</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!enableBgTask}
+                    onClick={() => setAutoRun(!autoRun)}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer outline-none ${autoRun ? 'bg-emerald-600' : 'bg-slate-300'
                       }`}
-                  />
-                </button>
+                  >
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${autoRun ? 'transform translate-x-6' : ''
+                        }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Mode Selector Tab */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
@@ -653,8 +841,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   setImageList([]);
                 }}
                 className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${uploadMode === 'single'
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                    : 'text-slate-555 hover:text-slate-800'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'text-slate-555 hover:text-slate-800'
                   }`}
               >
                 <span>单题录入</span>
@@ -667,8 +855,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                   setImageList([]);
                 }}
                 className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${uploadMode === 'multi'
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                    : 'text-slate-555 hover:text-slate-800'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'text-slate-555 hover:text-slate-800'
                   }`}
               >
                 <span>多题录入</span>
@@ -692,7 +880,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
 
             <p className="text-[10px] text-slate-400 pl-0.5 leading-relaxed">
               {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，AI 将以单题最高精度和聚焦深度提取题干与公式。'}
-              {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，AI 会自动寻找题号并进行切题分题，供您挑选。'}
+              {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，您需要手动在图片上框选出各道题的范围，系统会分别裁剪并执行并行智能诊断。'}
               {uploadMode === 'crossPage' && '💡 适用于试卷折叠、错题过长跨越两面等，上传多张图后前端将在 Canvas 中顺次无缝拼接后再做提取。'}
             </p>
           </div>
@@ -727,19 +915,87 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="bg-white p-4 rounded-3xl border border-slate-200 overflow-hidden relative shadow-sm flex flex-col items-center">
-                    <img src={imageStr} alt="Uploaded" className="w-full max-h-96 object-contain rounded-2xl" />
+                  <div className="bg-white p-4 rounded-3xl border border-slate-200 overflow-hidden relative shadow-sm flex flex-col items-center w-full">
+                    {uploadMode === 'multi' && (
+                      <div className="text-sm text-blue-800 bg-blue-50 border border-blue-200 px-4 py-3 rounded-2xl mb-4 w-full text-center font-black animate-pulse shadow-sm">
+                        🚨 必须框选：多题模式下，请在下方图片上按住鼠标左键拖拽框选出每一道题。框选完成后再点击下方按钮提取。
+                      </div>
+                    )}
 
-                    <div className="flex gap-2 mt-4 w-full justify-between px-1">
+                    <div
+                      ref={containerRef}
+                      className={`relative inline-block select-none border border-slate-100 rounded-2xl overflow-hidden bg-slate-50 max-w-full ${uploadMode === 'multi' ? 'cursor-crosshair' : ''
+                        }`}
+                      onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={handleMouseLeave}
+                    >
+                      <img
+                        src={imageStr}
+                        alt="Uploaded"
+                        className="max-w-full h-auto max-h-[60vh] block pointer-events-none select-none"
+                      />
+
+                      {/* 渲染现有选区 */}
+                      {uploadMode === 'multi' && boxes.map((box, index) => (
+                        <div
+                          key={box.id}
+                          className="absolute border-2 border-rose-500 bg-rose-500/10 group flex items-center justify-center transition-colors hover:bg-rose-500/20"
+                          style={{
+                            left: `${box.x}%`,
+                            top: `${box.y}%`,
+                            width: `${box.w}%`,
+                            height: `${box.h}%`,
+                          }}
+                        >
+                          <span className="absolute top-1 left-1 bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow">
+                            题目 {index + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => deleteBox(box.id, e)}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-rose-700 hover:bg-rose-800 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow transition-transform group-hover:scale-110 cursor-pointer border border-white"
+                            title="删除此选区"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* 绘制中的临时选区 */}
+                      {uploadMode === 'multi' && isDrawingBox && (
+                        <div
+                          className="absolute border-2 border-dashed border-blue-500 bg-blue-500/15 pointer-events-none"
+                          style={{
+                            left: `${Math.min(startPos.x, currentPos.x)}%`,
+                            top: `${Math.min(startPos.y, currentPos.y)}%`,
+                            width: `${Math.abs(currentPos.x - startPos.x)}%`,
+                            height: `${Math.abs(currentPos.y - startPos.y)}%`,
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-4 w-full justify-between px-1">
                       <button
                         onClick={handleRotate}
-                        className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="flex-1 min-w-[120px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                         title="顺时针旋转90°"
                       >
                         <RotateCw className="w-3.5 h-3.5" /> 顺时针旋转 90°
                       </button>
+                      {uploadMode === 'multi' && boxes.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setBoxes([])}
+                          className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                        >
+                          清空选框 ({boxes.length})
+                        </button>
+                      )}
                       <button
-                        onClick={() => { setImageStr(null); setExtractedQuestions(null); }}
+                        onClick={() => { setImageStr(null); setExtractedQuestions(null); setBoxes([]); }}
                         className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                       >
                         重新上传
@@ -881,8 +1137,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                         type="button"
                         onClick={() => setCrossPageExtractMode('multi')}
                         className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${crossPageExtractMode === 'multi'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-slate-555 hover:text-slate-800'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-555 hover:text-slate-800'
                           }`}
                       >
                         <span>提取多道题 (多张试卷/多题)</span>
@@ -891,8 +1147,8 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                         type="button"
                         onClick={() => setCrossPageExtractMode('single')}
                         className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${crossPageExtractMode === 'single'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-slate-555 hover:text-slate-800'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-555 hover:text-slate-800'
                           }`}
                       >
                         <span>提取单道长题 (跨页单题)</span>
@@ -1189,8 +1445,17 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                       </div>
                     )}
 
-                    {/* Step Diagnosis */}
-                    {q.errorDiagnosis && q.errorDiagnosis.length > 0 && (
+                    {/* Error Analysis / Diagnosis */}
+                    {q.errorAnalysis ? (
+                      <div className="pt-4 border-t border-slate-100 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>🔍</span> AI 错因深度剖析
+                        </h4>
+                        <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl text-xs leading-relaxed text-slate-800 font-medium whitespace-pre-wrap">
+                          <FormattedMath text={q.errorAnalysis} />
+                        </div>
+                      </div>
+                    ) : q.errorDiagnosis && q.errorDiagnosis.length > 0 ? (
                       <div className="pt-4 border-t border-slate-100 space-y-3">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                           <span>📝</span> 手写作答 AI 步骤诊断批改
@@ -1230,7 +1495,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
                           })}
                         </div>
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Reason Selection */}
                     <div className="pt-4 border-t border-slate-100 flex items-center gap-3">

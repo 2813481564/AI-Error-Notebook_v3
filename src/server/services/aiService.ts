@@ -159,9 +159,11 @@ export async function generateContentWithFallback(params: {
       };
 
       const req = https.request(reqOptions, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => resolve(data));
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => { chunks.push(chunk); });
+        res.on('end', () => {
+          resolve(Buffer.concat(chunks).toString('utf-8'));
+        });
       });
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（1200s），请重试')); });
