@@ -8,7 +8,9 @@ import {
   Check,
   PlusCircle,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  CheckCircle2,
+  FolderSymlink
 } from 'lucide-react';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
@@ -33,6 +35,41 @@ export default function QuestionDetail({
   const [similarTabActive, setSimilarTabActive] = useState(false);
   const [similarData, setSimilarData] = useState<any>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
+  const [showMoveDropdown, setShowMoveDropdown] = useState(false);
+
+  const handleToggleMasteryStatus = async () => {
+    const nextStatus = question.masteryStatus === 'mastered' ? 'not_mastered' : 'mastered';
+    try {
+      await db.updateQuestionMastery(question.id, nextStatus);
+      const updatedQuestion: ErrorQuestion = {
+        ...question,
+        masteryStatus: nextStatus
+      };
+      if (onUpdate) {
+        onUpdate(updatedQuestion);
+      }
+    } catch (err: any) {
+      window.alert(err.message || '更新掌握状态失败');
+    }
+  };
+
+  const handleMoveToNotebook = async (targetNbId?: string) => {
+    try {
+      const targetNb = notebooks.find(n => n.id === targetNbId);
+      const updatedQuestion: ErrorQuestion = {
+        ...question,
+        notebookId: targetNbId || undefined,
+        notebookName: targetNb ? targetNb.name : undefined
+      };
+      await db.saveQuestion(updatedQuestion);
+      if (onUpdate) {
+        onUpdate(updatedQuestion);
+      }
+      setShowMoveDropdown(false);
+    } catch (err: any) {
+      window.alert(err.message || '移动失败，请重试');
+    }
+  };
 
   // 用于支持多道题数量选择与保存状态跟踪
   const [similarCount, setSimilarCount] = useState<number>(1);
@@ -445,7 +482,7 @@ export default function QuestionDetail({
                   <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能同类变式题推荐 (错题举一反三)
                   </h4>
-                  <p className="text-[11px] text-blue-700/80 mt-1 font-medium leading-relaxed">
+                  <p className="text-[13px] text-blue-700/80 mt-1 font-medium leading-relaxed">
                     系统已自动锁定当前原题的难度水平、考查知识点与所属年级学段，将为您精确定制出高质量的相似变式题，用于针对性强化巩固。
                   </p>
                 </div>
@@ -501,6 +538,75 @@ export default function QuestionDetail({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 底部快捷操作按钮 */}
+      {!isEditing && (
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-100 relative z-20">
+          {/* 标记已掌握按钮 */}
+          <button
+            onClick={handleToggleMasteryStatus}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 border ${question.masteryStatus === 'mastered'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+          >
+            <CheckCircle2 className={`w-4 h-4 ${question.masteryStatus === 'mastered' ? 'text-emerald-600 fill-emerald-50' : 'text-slate-500'}`} />
+            <span>{question.masteryStatus === 'mastered' ? '标记为未掌握' : '标记为已掌握'}</span>
+          </button>
+
+          {/* 移动按钮 */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMoveDropdown(!showMoveDropdown)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
+            >
+              <FolderSymlink className="w-4 h-4 text-slate-500" />
+              <span>移动</span>
+            </button>
+
+            {/* 移动归属下拉菜单 */}
+            {showMoveDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowMoveDropdown(false)}
+                />
+                <div className="absolute right-0 bottom-full mb-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-40 animate-in fade-in slide-in-from-bottom-2 duration-200 max-h-60 overflow-y-auto">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1.5 border-b border-slate-100 mb-1">
+                    选择目标错题本
+                  </div>
+                  <button
+                    onClick={() => handleMoveToNotebook(undefined)}
+                    className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${!question.notebookId ? 'text-blue-600 bg-blue-50/50' : 'text-slate-700'}`}
+                  >
+                    <span>未分类错题</span>
+                    {!question.notebookId && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                  </button>
+                  {notebooks.map(nb => (
+                    <button
+                      key={nb.id}
+                      onClick={() => handleMoveToNotebook(nb.id)}
+                      className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${question.notebookId === nb.id ? 'text-blue-600 bg-blue-50/50' : 'text-slate-700'}`}
+                    >
+                      <span className="truncate">{nb.name}</span>
+                      {question.notebookId === nb.id && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 删除错题按钮 */}
+          <button
+            onClick={onDelete}
+            className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-500 transition-all shadow-sm cursor-pointer active:scale-95"
+          >
+            <Trash2 className="w-4 h-4 text-rose-500" />
+            <span>删除错题</span>
+          </button>
         </div>
       )}
     </div>

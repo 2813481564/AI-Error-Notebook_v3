@@ -56,37 +56,6 @@ export default function ReadOnlyDetail({
     // 原有单题展示逻辑（向下兼容）
     return (
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-          <div className="flex items-center gap-1 text-[11px] font-bold text-indigo-750 bg-indigo-50 border border-indigo-200/60 px-2.5 py-1 rounded-lg">
-            <span>📓 归属错题本：</span>
-            <select
-              value={question.notebookId || ''}
-              onChange={async (e) => {
-                const targetNbId = e.target.value;
-                const targetNb = notebooks.find(n => n.id === targetNbId);
-                const updated = {
-                  ...question,
-                  notebookId: targetNbId || undefined,
-                  notebookName: targetNb ? targetNb.name : undefined
-                };
-                try {
-                  await db.saveQuestion(updated);
-                  if (onUpdate) {
-                    onUpdate(updated);
-                  }
-                } catch (err: any) {
-                  window.alert(err.message || '转移失败');
-                }
-              }}
-              className="bg-transparent border-none outline-none font-bold text-indigo-850 cursor-pointer pl-0.5"
-            >
-              <option value="">未分类</option>
-              {notebooks.map(nb => (
-                <option key={nb.id} value={nb.id}>{nb.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
         <div>
           <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
           {question.errorReason === 'AI变式题' && question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
@@ -128,37 +97,6 @@ export default function ReadOnlyDetail({
     // 多题折叠/分页展示逻辑
     return (
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-          <div className="flex items-center gap-1 text-[11px] font-bold text-indigo-750 bg-indigo-50 border border-indigo-200/60 px-2.5 py-1 rounded-lg">
-            <span>📓 归属错题本：</span>
-            <select
-              value={question.notebookId || ''}
-              onChange={async (e) => {
-                const targetNbId = e.target.value;
-                const targetNb = notebooks.find(n => n.id === targetNbId);
-                const updated = {
-                  ...question,
-                  notebookId: targetNbId || undefined,
-                  notebookName: targetNb ? targetNb.name : undefined
-                };
-                try {
-                  await db.saveQuestion(updated);
-                  if (onUpdate) {
-                    onUpdate(updated);
-                  }
-                } catch (err: any) {
-                  window.alert(err.message || '转移失败');
-                }
-              }}
-              className="bg-transparent border-none outline-none font-bold text-indigo-850 cursor-pointer pl-0.5"
-            >
-              <option value="">未分类</option>
-              {notebooks.map(nb => (
-                <option key={nb.id} value={nb.id}>{nb.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
         <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
           <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
             <span>📄</span> 本卷共包含 {parsedQs.length} 道题目

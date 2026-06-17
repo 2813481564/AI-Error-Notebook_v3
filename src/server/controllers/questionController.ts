@@ -3,6 +3,7 @@ import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { hashPassword } from "./authController";
 import { getSetting } from "../services/settingService";
+import { isBase64Image, saveBase64Image, deleteImageFile } from "../services/fileService";
 
 // ================= 错题管理 =================
 
@@ -217,6 +218,16 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
     const defaultStatus = user.role !== 'admin' ? 'audited' : 'pending';
     const targetStatus = question.status !== undefined ? question.status : (existing ? existing.status : defaultStatus);
 
+    // 拦截 Base64 图片：若传入的 imageUrl 是 Base64 格式，则落盘为物理文件
+    let finalImageUrl = question.imageUrl || null;
+    if (finalImageUrl && isBase64Image(finalImageUrl)) {
+      try {
+        finalImageUrl = saveBase64Image(finalImageUrl);
+      } catch (imgErr) {
+        console.warn("[saveQuestion] Base64 图片落盘失败，将以 Base64 格式存储:", imgErr);
+      }
+    }
+
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
         id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, errorAnalysis, paperName, standardAnswer, score, notebookId, masteryStatus
@@ -228,7 +239,7 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       targetUserId,
       targetStudentId,
       targetStatus,
-      question.imageUrl || null,
+      finalImageUrl,
       question.originalText,
       question.subject || "其他",
       question.knowledgePoints ? JSON.stringify(question.knowledgePoints) : "[]",
@@ -264,8 +275,8 @@ export const deleteQuestion = (req: AuthenticatedRequest, res: express.Response)
       return res.status(403).json({ error: "用户不存在" });
     }
 
-    const checkStmt = db.prepare("SELECT userId FROM questions WHERE id = ?");
-    const existing = checkStmt.get(id) as { userId: string } | undefined;
+    const checkStmt = db.prepare("SELECT userId, imageUrl FROM questions WHERE id = ?");
+    const existing = checkStmt.get(id) as { userId: string; imageUrl: string | null } | undefined;
     if (!existing) {
       return res.status(404).json({ error: "错题不存在" });
     }
@@ -273,6 +284,11 @@ export const deleteQuestion = (req: AuthenticatedRequest, res: express.Response)
     // 非管理员 且 非作者，不能删除
     if (existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限删除该错题" });
+    }
+
+    // 联动删除磁盘上的关联图片文件（若图片为物理文件）
+    if (existing.imageUrl) {
+      deleteImageFile(existing.imageUrl);
     }
 
     const stmt = db.prepare("DELETE FROM questions WHERE id = ?");

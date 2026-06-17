@@ -82,9 +82,15 @@ const cropBoxes = (
   });
 };
 
-export default function AddQuestion({ onNavigate }: { onNavigate: (v: any, params?: any) => void }) {
+export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavigate: (v: any, params?: any) => void, initialUploadMode?: 'single' | 'multi' | 'crossPage' }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
+  const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>(initialUploadMode || 'single');
+
+  useEffect(() => {
+    if (initialUploadMode) {
+      setUploadMode(initialUploadMode);
+    }
+  }, [initialUploadMode]);
 
   // 单图/多题下的单张图片状态
   const [imageStr, setImageStr] = useState<string | null>(null);

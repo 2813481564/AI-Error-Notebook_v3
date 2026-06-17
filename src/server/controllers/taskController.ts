@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
 import { getSetting } from "../services/settingService";
 import crypto from "crypto";
+import { isBase64Image, saveBase64Image } from "../services/fileService";
 
 // ================= 后台任务队列处理器 =================
 
@@ -107,7 +108,9 @@ const processTask = async (id: string) => {
         return;
       } else {
         // 全自动：直接归档保存
-        await saveFinalQuestionsToLibrary(task.userId, diagnosed, payload.imageBase64, task.notebookId);
+        // 优先使用创建任务时已落盘的物理文件路径，否则再传 Base64（saveImage 内部会再次落盘）
+        const imageForLib = payload.savedImageUrl || payload.imageBase64;
+        await saveFinalQuestionsToLibrary(task.userId, diagnosed, imageForLib, task.notebookId);
         db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
         console.log(`[TaskQueue] [${id}] 全自动处理成功并归档完毕！`);
       }
@@ -359,6 +362,17 @@ const saveFinalQuestionsToLibrary = async (
   const activeQuestions = diagnosedQuestions.filter(q => q.errorReason !== '不纳入归档');
   if (activeQuestions.length === 0) return;
 
+  // 获取最终入库的图片 URL：如果仍是 Base64 格式则落盘为物理文件
+  let finalImageUrl: string | null = imageUrl || null;
+  if (finalImageUrl && isBase64Image(finalImageUrl)) {
+    try {
+      finalImageUrl = saveBase64Image(finalImageUrl);
+      console.log("[TaskQueue] 归档时图片落盘成功:", finalImageUrl);
+    } catch (imgErr) {
+      console.warn("[TaskQueue] 归档时图片落盘失败，将以 Base64 入库:", imgErr);
+    }
+  }
+
   const stmt = db.prepare(`
     INSERT INTO questions (
       id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer
@@ -372,7 +386,7 @@ const saveFinalQuestionsToLibrary = async (
     stmt.run(
       id,
       userId,
-      imageUrl || null,
+      finalImageUrl,
       q.originalText,
       q.subject || '数学',
       JSON.stringify(q.knowledgePoints || []),
@@ -398,6 +412,20 @@ export const createTask = async (req: AuthenticatedRequest, res: express.Respons
     const { taskName, autoRun, uploadMode, notebookId, payload } = req.body;
     if (!payload || !payload.imageBase64) {
       return res.status(400).json({ error: "参数不完整，缺少图片" });
+    }
+
+    // 提前将 Base64 图片落盘为物理文件，savedImageUrl 仅用于数据库存储
+    // 注意：imageBase64 原始数据必须保留，因为后续 AI OCR 阶段需要将其传给远程 AI API
+    let savedImageUrl: string | null = null;
+    if (payload.imageBase64 && isBase64Image(payload.imageBase64)) {
+      try {
+        savedImageUrl = saveBase64Image(payload.imageBase64);
+        // 仅追加落盘路径字段，不清空 imageBase64（AI OCR 阶段仍需要原始 Base64 数据）
+        payload.savedImageUrl = savedImageUrl;
+        console.log(`[TaskQueue] 任务 Payload 图片落盘成功: ${savedImageUrl}`);
+      } catch (imgErr) {
+        console.warn("[TaskQueue] 创建任务时图片落盘失败，将在归档时重新尝试落盘:", imgErr);
+      }
     }
 
     const taskId = "task_" + Math.random().toString(36).substring(2, 9);

@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import crypto from "crypto";
+import { isBase64Image, saveBase64Image } from "../services/fileService";
 
 // 初始化 SQLite 数据库
 export const db = new Database(path.join(process.cwd(), "questions.db"));
@@ -417,4 +418,39 @@ try {
   console.log("system_settings 数据库表初始化完成！");
 } catch (err) {
   console.error("初始化 system_settings 失败:", err);
+}
+
+// ==================== 历史 Base64 图片数据自动迁移 ====================
+// 在服务启动时自动扫描数据库中所有历史 Base64 图片，落盘为物理文件并更新记录
+// 此迁移仅会处理 imageUrl 以 'data:image/' 开头的老数据，幂等且安全
+try {
+  const base64Rows = db.prepare(`
+    SELECT id, imageUrl FROM questions
+    WHERE imageUrl IS NOT NULL AND imageUrl LIKE 'data:image/%'
+  `).all() as { id: string; imageUrl: string }[];
+
+  if (base64Rows.length > 0) {
+    console.log(`[DB Migration] 检测到 ${base64Rows.length} 条历史 Base64 图片记录，开始自动迁移...`);
+    const updateStmt = db.prepare("UPDATE questions SET imageUrl = ? WHERE id = ?");
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const row of base64Rows) {
+      try {
+        if (isBase64Image(row.imageUrl)) {
+          const fileUrl = saveBase64Image(row.imageUrl);
+          updateStmt.run(fileUrl, row.id);
+          successCount++;
+        }
+      } catch (err) {
+        console.warn(`[DB Migration] 题目 ${row.id} 图片迁移失败，跳过:`, err);
+        failCount++;
+      }
+    }
+    console.log(`[DB Migration] 历史图片迁移完成！成功: ${successCount} 条，失败/跳过: ${failCount} 条。数据库已完成瘦身。`);
+  } else {
+    console.log("[DB Migration] 未发现历史 Base64 图片记录，无需迁移。");
+  }
+} catch (migrateErr) {
+  console.error("[DB Migration] 历史图片迁移执行失败:", migrateErr);
 }

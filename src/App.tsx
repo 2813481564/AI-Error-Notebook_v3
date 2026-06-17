@@ -24,10 +24,23 @@ export default function App() {
   const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
   const [paperSourceView, setPaperSourceView] = useState<View>('library');
   const [libraryNotebookId, setLibraryNotebookId] = useState<string | null>(null);
+  const [librarySearchKey, setLibrarySearchKey] = useState<string | null>(null);
+  const [libraryMasteryStatus, setLibraryMasteryStatus] = useState<'all' | 'not_mastered' | 'mastered' | null>(null);
+  const [addUploadMode, setAddUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
 
-  const handleNavigate = (view: View, params?: { notebookId?: string | null }) => {
+  const handleNavigate = (view: View, params?: { 
+    notebookId?: string | null; 
+    uploadMode?: 'single' | 'multi' | 'crossPage';
+    searchKey?: string | null;
+    masteryStatus?: 'all' | 'not_mastered' | 'mastered' | null;
+  }) => {
     if (view === 'library') {
-      setLibraryNotebookId(params?.notebookId || null);
+      setLibraryNotebookId(params?.notebookId !== undefined ? params.notebookId : null);
+      setLibrarySearchKey(params?.searchKey || null);
+      setLibraryMasteryStatus(params?.masteryStatus || null);
+    }
+    if (view === 'add') {
+      setAddUploadMode(params?.uploadMode || 'single');
     }
     setCurrentView(view);
   };
@@ -625,7 +638,7 @@ export default function App() {
     <div className="flex h-screen w-full bg-slate-50 font-sans text-slate-800 overflow-hidden">
 
       {/* Sidebar Navigation - Desktop */}
-      <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col shrink-0">
+      <aside className="no-print w-64 bg-white border-r border-slate-200 hidden md:flex flex-col shrink-0">
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">
@@ -651,7 +664,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setCurrentView('library')}
+            onClick={() => handleNavigate('library')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
@@ -847,7 +860,7 @@ export default function App() {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
 
         {/* Mobile Header (Hidden on Desktop) */}
-        <header className="md:hidden flex h-16 bg-white border-b border-slate-200 items-center justify-between px-5 sticky top-0 z-25 shrink-0">
+        <header className="no-print md:hidden flex h-16 bg-white border-b border-slate-200 items-center justify-between px-5 sticky top-0 z-25 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-[10px]">AI</span>
@@ -875,7 +888,7 @@ export default function App() {
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
-            {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} />}
+            {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
             {currentView === 'tasks' && <TaskCenter onNavigate={handleNavigate} />}
             {currentView === 'library' && (
               <QuestionLibrary
@@ -883,6 +896,8 @@ export default function App() {
                 userInfo={userInfo}
                 onRefreshUserInfo={fetchUserInfo}
                 initialNotebookId={libraryNotebookId}
+                initialSearchKey={librarySearchKey}
+                initialMasteryStatus={libraryMasteryStatus}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('library');
@@ -941,7 +956,7 @@ export default function App() {
         </main>
 
         {/* Mobile Navigation - Only Bottom */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
+        <nav className="no-print md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
           <NavItem
             icon={<Home className="w-5 h-5" />} label="首页"
             active={currentView === 'dashboard'}
@@ -950,7 +965,7 @@ export default function App() {
           <NavItem
             icon={<Database className="w-5 h-5" />} label="错题库"
             active={currentView === 'library'}
-            onClick={() => setCurrentView('library')}
+            onClick={() => handleNavigate('library')}
           />
           {role === 'admin' ? (
             <NavItem
@@ -971,7 +986,7 @@ export default function App() {
           <NavItem
             icon={<Database className="w-5 h-5" />} label="错题库"
             active={currentView === 'library'}
-            onClick={() => setCurrentView('library')}
+            onClick={() => handleNavigate('library')}
           />
           <NavItem
             icon={<Award className="w-5 h-5" />} label="会员中心"
@@ -984,7 +999,7 @@ export default function App() {
 
       {/* SQLite Instruction Modal */}
       {showSqlTip && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="no-print fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowSqlTip(false)}
@@ -1028,7 +1043,7 @@ export default function App() {
       )}
 
       {/* 全局持久任务通知悬浮容器 */}
-      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+      <div className="no-print fixed top-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
         {notifications.map((n) => (
           <div
             key={n.id}
@@ -1072,7 +1087,7 @@ export default function App() {
                 ) : n.status === 'completed' ? (
                   <button
                     onClick={() => {
-                      setCurrentView('library');
+                      handleNavigate('library');
                       handleDismissNotification(n.id, n.alertKey);
                     }}
                     className="text-[0.625rem] font-black px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer shadow-sm"

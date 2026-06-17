@@ -210,10 +210,30 @@ export default function TestPaper({
           .no-print {
             display: none !important;
           }
-          body, html {
+          @page {
+            margin: 0;
+          }
+          body {
+            margin: 1.6cm 2cm !important;
             background: #fff !important;
             color: #000 !important;
             font-size: 14px !important;
+          }
+          html, body, #root,
+          .h-screen,
+          .h-full,
+          .overflow-hidden,
+          .overflow-y-auto,
+          main {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            position: static !important;
+            background: transparent !important;
+          }
+          /* Hide scrollbars during print */
+          ::-webkit-scrollbar {
+            display: none !important;
           }
           .print-main-area {
             padding: 0 !important;

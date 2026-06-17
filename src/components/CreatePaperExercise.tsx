@@ -63,7 +63,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
   const allKps = Array.from(new Set(questions.flatMap(q => q.knowledgePoints || []))).filter(Boolean) as string[];
 
   // 知识点过滤（支持搜索）
-  const filteredKps = allKps.filter(kp => 
+  const filteredKps = allKps.filter(kp =>
     kp.toLowerCase().includes(kpSearch.toLowerCase())
   );
 
@@ -161,7 +161,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
 
   if (loading) {
     return (
-      <div className="min-h-[400px] flex flex-col items-center justify-center space-y-4 bg-white rounded-3xl border border-slate-100 shadow-sm">
+      <div className="min-h-[400px] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
         <p className="text-slate-500 font-bold text-xs animate-pulse">正在为您载入错题库与组卷数据...</p>
       </div>
@@ -170,7 +170,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
+
       {/* 头部导航/标题 */}
       <div className="flex flex-col gap-1.5">
         <h2 className="text-2xl font-black text-slate-950 tracking-tight">智能组卷练习</h2>
@@ -181,22 +181,20 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
       <div className="flex bg-slate-100 p-1 rounded-2xl max-w-sm border border-slate-200/40">
         <button
           onClick={() => setActiveTab('smart')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'smart'
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'smart'
               ? 'bg-white text-blue-600 shadow-sm'
               : 'text-slate-500 hover:text-slate-800'
-          }`}
+            }`}
         >
           <Sparkles className="w-4 h-4" />
           <span>智能一键组卷</span>
         </button>
         <button
           onClick={() => setActiveTab('manual')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'manual'
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'manual'
               ? 'bg-white text-blue-600 shadow-sm'
               : 'text-slate-500 hover:text-slate-800'
-          }`}
+            }`}
         >
           <ListChecks className="w-4 h-4" />
           <span>手动精选组卷</span>
@@ -207,10 +205,10 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
       {activeTab === 'smart' ? (
         // ======================== 智能一键组卷 ========================
         <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/60 shadow-sm space-y-6">
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* 学科筛选 */}
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                 <span>目标学科分类</span>
@@ -223,7 +221,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                 <option value="all">不限学科</option>
                 {subjects.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-            </div>
+            </div> */}
 
             {/* 错题本筛选 */}
             <div className="space-y-2">
@@ -273,11 +271,10 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                 <button
                   key={n}
                   onClick={() => setSmartCount(n)}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                    smartCount === n
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${smartCount === n
                       ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/10'
                       : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {n} 道题
                 </button>
@@ -311,7 +308,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                     placeholder="搜索考点标签..."
                     value={kpSearch}
                     onChange={e => setKpSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-[11px] font-bold text-slate-700 focus:bg-white focus:border-blue-500 transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-500 transition-all"
                   />
                 </div>
               )}
@@ -333,13 +330,12 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                         <button
                           key={kp}
                           onClick={() => toggleKp(kp)}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
-                            isActive
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${isActive
                               ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
                               : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                          }`}
+                            }`}
                         >
-                          {isActive && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
+                          {isActive && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                           <span>{kp}</span>
                         </button>
                       );
@@ -349,7 +345,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
               </div>
             )}
             {selectedKps.size > 0 && (
-              <div className="flex items-center gap-2 text-[10px]">
+              <div className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400 font-bold">已选考点：</span>
                 <span className="text-blue-600 font-extrabold">{selectedKps.size} 个</span>
                 <button
@@ -368,7 +364,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
               <HelpCircle className="w-4.5 h-4.5 text-slate-400" />
               <span>系统将根据所选条件，在数据库中匹配最契合您的题目，并生成巩固测验卷。</span>
             </div>
-            
+
             <button
               onClick={handleSmartGenerate}
               className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-xs transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-1.5 cursor-pointer"
@@ -382,7 +378,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
       ) : (
         // ======================== 手动精选组卷 ========================
         <div className="space-y-4">
-          
+
           {/* 筛选过滤工具条 */}
           <div className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col lg:flex-row gap-3">
             <div className="relative flex-1">
@@ -395,7 +391,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-xs font-semibold text-slate-800 focus:bg-white transition-all"
               />
             </div>
-            
+
             <div className="flex flex-wrap gap-2">
               <select
                 value={manualSubject}
@@ -451,55 +447,52 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                   <div
                     key={q.id}
                     onClick={() => toggleSelect(q.id)}
-                    className={`bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between cursor-pointer relative group ${
-                      isSelected 
-                        ? 'border-blue-500 ring-2 ring-blue-500/10' 
+                    className={`bg-white p-5 rounded-2xl border text-left hover:shadow-md transition-all flex flex-col justify-between cursor-pointer relative group ${isSelected
+                        ? 'border-blue-500 ring-2 ring-blue-500/10'
                         : 'border-slate-200 hover:border-blue-400'
-                    }`}
+                      }`}
                   >
                     <div>
                       {/* 卡片头部 */}
                       <div className="flex items-center justify-between mb-3.5 pr-8">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="bg-blue-50 text-blue-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-lg border border-blue-100">{q.subject}</span>
+                          <span className="bg-blue-50 text-blue-700 text-xs font-extrabold px-2.5 py-0.5 rounded-lg border border-blue-100">{q.subject}</span>
                           {q.notebookName && (
-                            <span className="bg-indigo-50 text-indigo-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
+                            <span className="bg-indigo-50 text-indigo-700 text-xs font-extrabold px-2.5 py-0.5 rounded-lg border border-indigo-200/50">📓 {q.notebookName}</span>
                           )}
                           {q.errorReason === 'AI变式题' && (
-                            <span className="bg-amber-50 text-amber-750 text-[9px] font-extrabold px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-0.5">
+                            <span className="bg-amber-50 text-amber-750 text-xs font-extrabold px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-0.5">
                               <span>✨</span> AI变式题
                             </span>
                           )}
                         </div>
-                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border ${
-                          q.masteryStatus === 'mastered' 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                        <span className={`text-xs font-extrabold px-2 py-0.5 rounded border ${q.masteryStatus === 'mastered'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : 'bg-rose-50 text-rose-600 border-rose-200'
-                        }`}>
+                          }`}>
                           {q.masteryStatus === 'mastered' ? '✓ 已掌握' : '✗ 未掌握'}
                         </span>
                       </div>
                       {/* 题目内容预览 */}
-                      <FormattedMath 
-                        text={q.originalText} 
-                        className="text-slate-800 font-bold line-clamp-3 leading-relaxed mb-4 text-xs" 
+                      <FormattedMath
+                        text={q.originalText}
+                        className="text-slate-800 font-bold line-clamp-3 leading-relaxed mb-4 text-xs"
                       />
                     </div>
 
                     {/* 卡片底部知识点 */}
                     <div className="flex flex-wrap gap-1 border-t border-slate-100 pt-3 mt-auto">
                       {q.knowledgePoints.slice(0, 3).map(kp => (
-                        <span key={kp} className="text-[9px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {kp}</span>
+                        <span key={kp} className="text-xs bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-100 font-bold"># {kp}</span>
                       ))}
                     </div>
 
                     {/* 复选框 */}
                     <div className="absolute right-4 top-4.5">
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
-                        isSelected 
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                           : 'bg-white border-slate-300 group-hover:border-blue-400'
-                      }`}>
+                        }`}>
                         {isSelected && <Check className="w-3.5 h-3.5" />}
                       </div>
                     </div>

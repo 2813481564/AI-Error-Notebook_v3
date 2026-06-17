@@ -77,13 +77,17 @@ export default function QuestionLibrary({
   onGeneratePaper,
   userInfo: propUserInfo,
   onRefreshUserInfo,
-  initialNotebookId
+  initialNotebookId,
+  initialSearchKey,
+  initialMasteryStatus
 }: {
   onNavigate: (v: any, params?: any) => void;
   onGeneratePaper?: (questions: ErrorQuestion[]) => void;
   userInfo?: any;
   onRefreshUserInfo?: () => void;
   initialNotebookId?: string | null;
+  initialSearchKey?: string | null;
+  initialMasteryStatus?: 'all' | 'not_mastered' | 'mastered' | null;
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
@@ -109,8 +113,17 @@ export default function QuestionLibrary({
     if (initialNotebookId) {
       setActiveNotebookId(initialNotebookId);
       setFilterNotebook(initialNotebookId);
+    } else {
+      setActiveNotebookId(null);
+      setFilterNotebook('all');
     }
   }, [initialNotebookId]);
+
+  // 响应 initialSearchKey 与 initialMasteryStatus 变化
+  useEffect(() => {
+    setSearch(initialSearchKey || '');
+    setFilterMastery(initialMasteryStatus || 'all');
+  }, [initialSearchKey, initialMasteryStatus]);
 
   // 获取正在进行中的任务
   const loadActiveTasks = async () => {
@@ -129,12 +142,12 @@ export default function QuestionLibrary({
             if (typeof payloadObj === 'string' && payloadObj.trim()) {
               try {
                 payloadObj = JSON.parse(payloadObj);
-              } catch (e) {}
+              } catch (e) { }
             }
             if (typeof payloadObj === 'string' && payloadObj.trim()) {
               try {
                 payloadObj = JSON.parse(payloadObj);
-              } catch (e) {}
+              } catch (e) { }
             }
             return {
               ...task,
@@ -544,6 +557,9 @@ export default function QuestionLibrary({
   const activeNotebook = notebooks.find(n => n.id === filterNotebook);
 
   const currentNotebookTasks = activeTasks.filter(task => {
+    if (activeNotebookId === 'all') {
+      return true;
+    }
     if (activeNotebookId === 'unclassified') {
       return !task.notebookId || task.notebookId === 'unclassified';
     }
@@ -716,7 +732,7 @@ export default function QuestionLibrary({
               <span className="text-sm font-black text-slate-700 group-hover:text-blue-600 transition-colors">
                 创建新错题本
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold mt-1">
+              <span className="text-[12px] text-slate-400 font-semibold mt-1">
                 按科目或考试整理
               </span>
             </div>
@@ -735,7 +751,7 @@ export default function QuestionLibrary({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
             <div className="space-y-1">
               <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
-                {activeNotebookId === 'unclassified' ? '未分类错题' : (activeNotebook?.name || '未分类错题')}
+                {activeNotebookId === 'all' ? '全部错题' : activeNotebookId === 'unclassified' ? '未分类错题' : (activeNotebook?.name || '未分类错题')}
               </h1>
               <div className="text-sm text-slate-400 font-medium">
                 {stats.total} 道错题 · {stats.unmastered} 道未掌握
@@ -943,7 +959,7 @@ export default function QuestionLibrary({
                             className="text-slate-800 font-bold text-sm md:text-base leading-relaxed line-clamp-2 cursor-pointer flex-1"
                           >
                             <span className="mr-1.5">{index + 1 + (currentPage - 1) * pageSize}.</span>
-                            {q.originalText}
+                            <InlineContent text={q.originalText} />
                           </div>
                           <div className="text-xs text-slate-400 font-extrabold shrink-0 pt-0.5 flex items-center gap-1">
                             {formattedDate}
@@ -953,20 +969,23 @@ export default function QuestionLibrary({
                         {/* 第二行：错因分析 */}
                         {q.errorAnalysis && (() => {
                           const cleanText = q.errorAnalysis.replace(/\n+/g, ' ').trim();
-                          const displayText = cleanText.length > 90 ? cleanText.slice(0, 90) + '...' : cleanText;
                           return (
                             <div
                               onClick={() => setSelectedQuestion(q)}
-                              className="text-xs text-slate-500 font-medium leading-relaxed mb-3.5 cursor-pointer bg-slate-50/50 p-2 rounded-xl border border-slate-100/40 line-clamp-2 overflow-hidden"
-                              style={{
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden'
-                              }}
+                              className="text-xs text-slate-500 font-medium leading-relaxed mb-3.5 cursor-pointer bg-slate-50/50 p-2 rounded-xl border border-slate-100/40"
                             >
-                              <span className="font-bold text-slate-700 mr-1.5">错因分析:</span>
-                              {displayText}
+                              <div
+                                className="line-clamp-2 overflow-hidden"
+                                style={{
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden'
+                                }}
+                              >
+                                <span className="font-bold text-slate-700 mr-1.5">错因分析:</span>
+                                <InlineContent text={cleanText} />
+                              </div>
                             </div>
                           );
                         })()}
@@ -1289,4 +1308,4 @@ export default function QuestionLibrary({
     </div>
   );
 }
-
+

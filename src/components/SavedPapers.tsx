@@ -68,7 +68,7 @@ export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProp
 
   if (loading) {
     return (
-      <div className="min-h-[400px] flex flex-col items-center justify-center space-y-4 bg-white rounded-3xl border border-slate-100 shadow-sm">
+      <div className="min-h-[400px] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
         <p className="text-slate-500 font-bold text-xs animate-pulse">正在为您载入已组试卷归档...</p>
       </div>
@@ -130,35 +130,35 @@ export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProp
                   {/* 卡片头部 */}
                   <div className="flex items-center justify-between">
                     {isVariant ? (
-                      <span className="text-[9px] bg-amber-50 text-amber-700 font-extrabold px-2.5 py-1 rounded-lg border border-amber-100 flex items-center gap-0.5">
-                        <Sparkles className="w-2.5 h-2.5 text-amber-500 animate-pulse" />
+                      <span className="text-xs bg-amber-50 text-amber-700 font-extrabold px-2.5 py-1 rounded-lg border border-amber-100 flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
                         <span>AI 变式版</span>
                       </span>
                     ) : (
-                      <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-0.5">
-                        <Layers className="w-2.5 h-2.5 text-blue-500" />
+                      <span className="text-xs bg-blue-50 text-blue-700 font-extrabold px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-blue-500" />
                         <span>原错题版</span>
                       </span>
                     )}
                     
                     {hasDeleted && (
-                      <span className="text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded font-extrabold" title="包含的某些原错题已被物理删除">
+                      <span className="text-xs bg-rose-50 text-rose-600 border border-rose-100 px-2 py-1 rounded font-extrabold" title="包含的某些原错题已被物理删除">
                         ⚠️ 部分题已删
                       </span>
                     )}
                   </div>
 
                   {/* 试卷标题 */}
-                  <h3 className="text-sm font-black text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  <h3 className="text-lg font-black text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
                     {paper.title}
                   </h3>
                 </div>
 
                 {/* 卡片底部 */}
                 <div className="border-t border-slate-100 pt-4 mt-6 flex flex-col space-y-3">
-                  <div className="flex items-center justify-between text-[10px] text-slate-450 font-bold">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
+                  <div className="flex items-center justify-between text-xs text-slate-450 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4" />
                       {format(new Date(paper.createdAt), 'yyyy-MM-dd HH:mm')}
                     </span>
                     <span>共 {paper.questionIds.length} 道题</span>
@@ -170,9 +170,9 @@ export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProp
                         e.stopPropagation();
                         handleOpen(paper);
                       }}
-                      className="flex-1 py-2 bg-slate-50 hover:bg-blue-50 border border-slate-200/60 hover:border-blue-200 text-slate-700 hover:text-blue-700 rounded-xl text-[10px] font-black transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="flex-1 py-2 bg-slate-50 hover:bg-blue-50 border border-slate-200/60 hover:border-blue-200 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Eye className="w-3.5 h-3.5" />
+                      <Eye className="w-4 h-4" />
                       <span>查看试卷</span>
                     </button>
                     <button
@@ -180,7 +180,7 @@ export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProp
                       className="px-3 py-2 bg-slate-50 hover:bg-rose-50 border border-slate-200/60 hover:border-rose-200 text-slate-400 hover:text-rose-600 rounded-xl transition flex items-center justify-center cursor-pointer"
                       title="删除试卷"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
