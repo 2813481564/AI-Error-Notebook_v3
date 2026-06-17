@@ -302,131 +302,51 @@ export default function QuestionDetail({
               </div>
 
               <div className="space-y-3 pt-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label></div><textarea value={editedErrorAnalysis} onChange={e => setEditedErrorAnalysis(e.target.value)} rows={5} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4" placeholder="请输入本题错因深度剖析..." /><div style={{ display: 'none' }}>
-                <div className="space-y-3">
-                  {editedErrorDiagnosis.map((step, idx) => (
-                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-500">
-                        <span>步骤 #{step.stepNumber || idx + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...editedErrorDiagnosis];
-                            updated.splice(idx, 1);
-                            updated.forEach((s, i) => s.stepNumber = i + 1);
-                            setEditedErrorDiagnosis(updated);
-                          }}
-                          className="text-rose-500 hover:text-rose-700 text-[10px] font-extrabold cursor-pointer"
-                        >
-                          删除此步骤
-                        </button>
-                      </div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label>
+                <textarea
+                  value={editedErrorAnalysis}
+                  onChange={e => setEditedErrorAnalysis(e.target.value)}
+                  rows={5}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4"
+                  placeholder="请输入本题错因深度剖析..."
+                />
+              </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="sm:col-span-2 space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase">步骤内容</label>
-                          <input
-                            type="text"
-                            value={step.stepContent}
-                            onChange={(e) => {
-                              const updated = [...editedErrorDiagnosis];
-                              updated[idx].stepContent = e.target.value;
-                              setEditedErrorDiagnosis(updated);
-                            }}
-                            placeholder="步骤内容或公式，如：x + 1 = 2"
-                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase">步骤状态</label>
-                          <select
-                            value={step.status}
-                            onChange={(e) => {
-                              const updated = [...editedErrorDiagnosis];
-                              updated[idx].status = e.target.value as any;
-                              setEditedErrorDiagnosis(updated);
-                            }}
-                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700"
-                          >
-                            <option value="correct">✅ 正确</option>
-                            <option value="incorrect">❌ 首次错误</option>
-                            <option value="consequential_error">⚠️ 连带错误</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[9px] text-slate-400 font-bold uppercase">步骤评语 / 诊断分析</label>
-                        <input
-                          type="text"
-                          value={step.comment || ''}
-                          onChange={(e) => {
-                            const updated = [...editedErrorDiagnosis];
-                            updated[idx].comment = e.target.value;
-                            setEditedErrorDiagnosis(updated);
-                          }}
-                          placeholder="如：计算错误，符号写错（非必须，建议在错误行填写）"
-                          className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                        />
-                      </div>
-                    </div>
-                  ))}
+              {/* 修改所属错题本分类 */}
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                <div>
+                  <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>📓</span> 调整归属错题本
+                  </h4>
+                  <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
                 </div>
-
-                {/* 修改所属错题本分类 */}
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                  <div>
-                    <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <span>📓</span> 调整归属错题本
-                    </h4>
-                    <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
-                  </div>
-                  <select
-                    value={selectedNotebook}
-                    onChange={e => setSelectedNotebook(e.target.value)}
-                    className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
-                  >
-                    <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
-                    {notebooks.map(nb => (
-                      <option key={nb.id} value={nb.id}>{nb.name}</option>
-                    ))}
-                  </select>
-
-                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                    <button
-                      onClick={() => handleSaveAndPush('audited')}
-                      disabled={saving}
-                      className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
-                    >
-                      {saving ? '正在保存...' : '审核通过并推送'}
-                    </button>
-                    <button
-                      onClick={() => handleSaveAndPush('pending')}
-                      disabled={saving}
-                      className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
-                    >
-                      仅保存修改
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditedErrorDiagnosis([
-                      ...editedErrorDiagnosis,
-                      {
-                        stepNumber: editedErrorDiagnosis.length + 1,
-                        stepContent: '',
-                        status: 'correct',
-                        comment: ''
-                      }
-                    ]);
-                  }}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-2 cursor-pointer hidden"
+                <select
+                  value={selectedNotebook}
+                  onChange={e => setSelectedNotebook(e.target.value)}
+                  className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
                 >
-                  + 增加批改步骤
-                </button>
+                  <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
+                  {notebooks.map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name}</option>
+                  ))}
+                </select>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    onClick={() => handleSaveAndPush('audited')}
+                    disabled={saving}
+                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
+                  >
+                    {saving ? '正在保存...' : '审核通过并推送'}
+                  </button>
+                  <button
+                    onClick={() => handleSaveAndPush('pending')}
+                    disabled={saving}
+                    className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
+                  >
+                    仅保存修改
+                  </button>
+                </div>
               </div>
             </div>
           ) : (

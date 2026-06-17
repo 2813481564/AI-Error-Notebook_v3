@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect, useRef } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -11,9 +11,10 @@ import AnnouncementManagement from './components/AnnouncementManagement';
 import CreatePaperExercise from './components/CreatePaperExercise';
 import SavedPapers from './components/SavedPapers';
 import TaskCenter from './components/TaskCenter';
+import UserProfile, { UserAvatar } from './components/UserProfile';
 import { db } from './lib/db';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile';
 
 const API_PREFIX = '/api';
 
@@ -629,50 +630,48 @@ export default function App() {
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <button
             onClick={() => setCurrentView('dashboard')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'dashboard'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'dashboard'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
           >
-            <Home className="w-4 h-4" />
+            {currentView === 'dashboard' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <Home className="w-4 h-4 ml-1" />
             <span>首页</span>
           </button>
 
           <button
             onClick={() => setCurrentView('library')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'library'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
           >
-            <Database className="w-4 h-4" />
+            {currentView === 'library' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <Database className="w-4 h-4 ml-1" />
             <span>我的错题本</span>
           </button>
 
           <button
-            onClick={() => setCurrentView('add')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'add'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            <Camera className="w-4 h-4" />
-            <span>上传错题</span>
-          </button>
-
-          <button
             onClick={() => setCurrentView('tasks')}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'tasks'
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'tasks'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
           >
-            <div className="flex items-center gap-3">
+            {currentView === 'tasks' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <div className="flex items-center gap-3 ml-1">
               <Clock className="w-4 h-4" />
               <span>后台任务</span>
             </div>
             {pendingTasksCount > 0 && (
-              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0">
+              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 mr-1">
                 {pendingTasksCount}
               </span>
             )}
@@ -680,37 +679,44 @@ export default function App() {
 
           <button
             onClick={() => setCurrentView('exercise')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'exercise'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'exercise'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
           >
-            <Sparkles className="w-4 h-4" />
+            {currentView === 'exercise' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <Sparkles className="w-4 h-4 ml-1" />
             <span>组卷练习</span>
           </button>
 
           <button
             onClick={() => setCurrentView('papers')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'papers'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'papers'
               ? 'bg-blue-50 text-blue-700 shadow-sm'
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
           >
-            <FileText className="w-4 h-4" />
+            {currentView === 'papers' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <FileText className="w-4 h-4 ml-1" />
             <span>我的试卷</span>
           </button>
-
-
 
           {role === 'admin' && (
             <button
               onClick={() => setCurrentView('users')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'users'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'users'
                 ? 'bg-blue-50 text-blue-700 shadow-sm'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`}
             >
-              <Users className="w-4 h-4" />
+              {currentView === 'users' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Users className="w-4 h-4 ml-1" />
               <span>用户管理</span>
             </button>
           )}
@@ -718,12 +724,15 @@ export default function App() {
           {role === 'admin' && (
             <button
               onClick={() => setCurrentView('settings')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'settings'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'settings'
                 ? 'bg-blue-50 text-blue-700 shadow-sm'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`}
             >
-              <Settings className="w-4 h-4" />
+              {currentView === 'settings' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Settings className="w-4 h-4 ml-1" />
               <span>系统设置</span>
             </button>
           )}
@@ -731,71 +740,96 @@ export default function App() {
           {role === 'admin' && (
             <button
               onClick={() => setCurrentView('announcements')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'announcements'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'announcements'
                 ? 'bg-blue-50 text-blue-700 shadow-sm'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`}
             >
-              <Megaphone className="w-4 h-4" />
+              {currentView === 'announcements' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Megaphone className="w-4 h-4 ml-1" />
               <span>公告管理</span>
             </button>
           )}
-
-          <button
-            onClick={() => setCurrentView('vipCenter')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === 'vipCenter'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            <Award className="w-4 h-4" />
-            <span>会员中心</span>
-          </button>
         </nav>
 
-        {/* SQLite Storage Status & Link */}
-        <div className="p-4 border-t border-slate-100 space-y-3">
-          <button
-            onClick={() => setShowSqlTip(true)}
-            className="w-full text-left p-3.5 bg-slate-900 rounded-2xl text-white hover:bg-black transition-colors relative group overflow-hidden"
-          >
-            <div className="absolute right-3 top-3.5 text-white/40 group-hover:text-white transition-colors">
-              <HelpCircle className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] tracking-wider font-bold text-slate-400 uppercase mb-1">智能错题本</p>
+        {/* 侧边栏底部操作区 (参照图1设计) */}
+        <div className="mt-auto border-t border-slate-100 bg-white space-y-1">
+          {/* 新建错题按钮 */}
+          <div className="p-3">
+            <button
+              onClick={() => setCurrentView('add')}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/10 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/15 active:scale-[0.98]"
+            >
+              <Camera className="w-4 h-4" />
+              <span>新建错题</span>
+            </button>
+          </div>
 
-            <div className="mt-2.5 pt-2.5 border-t border-white/10 flex flex-col gap-0.5 text-[10px]">
-              <div className="flex justify-between">
-                <span className="text-slate-400">账号:</span>
-                <span className="font-bold text-blue-400 truncate max-w-[120px]">{username}</span>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-slate-400">身份:</span>
-                <span className="font-bold text-yellow-400">{role?.toUpperCase()}</span>
-              </div>
-              {userInfo?.vipExpireAt && (
-                <div className="flex justify-between mt-1">
-                  <span className="text-slate-400">过期:</span>
-                  <span className="font-semibold text-slate-300">{userInfo.vipExpireAt}</span>
-                </div>
+          {/* 会员和设置二级项 */}
+          <div className="px-3 pb-2 space-y-0.5">
+            <button
+              onClick={() => setCurrentView('vipCenter')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'vipCenter'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'vipCenter' && (
+                <span className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />
               )}
-              <div className="flex justify-between mt-1">
-                <span className="text-slate-400">今日AI:</span>
-                <span className="font-bold text-slate-200">{userInfo?.aiRemaining === "无限" ? "无限制" : `${userInfo?.aiUsedToday || 0} / ${userInfo?.aiLimit || 30}`}</span>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-slate-400">错题容量:</span>
-                <span className="font-bold text-slate-200">{userInfo?.capacityLimit === 0 ? `${userInfo?.questionCount || 0} / 无限制` : `${userInfo?.questionCount || 0} / ${userInfo?.capacityLimit || 50}`}</span>
+              <Award className="w-4 h-4 ml-1" />
+              <span>会员</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('profile')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'profile'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'profile' && (
+                <span className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Settings className="w-4 h-4 ml-1" />
+              <span>设置</span>
+            </button>
+          </div>
+
+          {/* 分割线 */}
+          <div className="border-t border-slate-100 my-1 mx-4" />
+
+          {/* 用户基础卡片与注销 */}
+          <div className="px-4 py-3 flex items-center justify-between gap-3">
+            <div
+              onClick={() => setCurrentView('profile')}
+              className="flex items-center gap-2.5 cursor-pointer hover:opacity-85 transition-opacity overflow-hidden flex-1"
+            >
+              <UserAvatar
+                avatar={userInfo?.avatar || null}
+                username={username}
+                className="w-9 h-9 text-xs"
+              />
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-xs font-bold text-slate-700 truncate">
+                  {userInfo?.nickname || username || '未登录'}
+                </span>
+                <span className="text-[9px] text-slate-400 font-bold truncate uppercase tracking-wider">
+                  {userInfo?.role || 'STUDENT'}
+                </span>
               </div>
             </div>
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/50 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-rose-500/5 cursor-pointer"
-          >
-            <span>退出登录</span>
-          </button>
+            
+            <button
+              onClick={handleLogout}
+              title="退出登录"
+              className="w-8 h-8 rounded-xl border border-slate-150 bg-white hover:bg-slate-50 hover:border-slate-355 text-slate-450 hover:text-slate-700 flex items-center justify-center transition-all cursor-pointer active:scale-90 shadow-sm shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -877,6 +911,15 @@ export default function App() {
                 onNavigate={setCurrentView}
               />
             )}
+            {currentView === 'profile' && (
+              <UserProfile
+                token={token}
+                userInfo={userInfo}
+                onRefreshUserInfo={fetchUserInfo}
+                onNavigate={setCurrentView}
+                onShowSqlTip={() => setShowSqlTip(true)}
+              />
+            )}
             {currentView === 'paper' && (
               <TestPaper
                 questions={paperQuestions}
@@ -892,6 +935,11 @@ export default function App() {
             icon={<Home className="w-5 h-5" />} label="首页"
             active={currentView === 'dashboard'}
             onClick={() => setCurrentView('dashboard')}
+          />
+          <NavItem
+            icon={<Database className="w-5 h-5" />} label="错题库"
+            active={currentView === 'library'}
+            onClick={() => setCurrentView('library')}
           />
           {role === 'admin' ? (
             <NavItem
