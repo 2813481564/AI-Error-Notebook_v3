@@ -23,6 +23,14 @@ export default function App() {
   const [showSqlTip, setShowSqlTip] = useState(false);
   const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
   const [paperSourceView, setPaperSourceView] = useState<View>('library');
+  const [libraryNotebookId, setLibraryNotebookId] = useState<string | null>(null);
+
+  const handleNavigate = (view: View, params?: { notebookId?: string | null }) => {
+    if (view === 'library') {
+      setLibraryNotebookId(params?.notebookId || null);
+    }
+    setCurrentView(view);
+  };
 
   const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
@@ -656,26 +664,28 @@ export default function App() {
             <span>我的错题本</span>
           </button>
 
-          <button
-            onClick={() => setCurrentView('tasks')}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'tasks'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'tasks' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <div className="flex items-center gap-3 ml-1">
-              <Clock className="w-4 h-4" />
-              <span>后台任务</span>
-            </div>
-            {pendingTasksCount > 0 && (
-              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 mr-1">
-                {pendingTasksCount}
-              </span>
-            )}
-          </button>
+          {role === 'admin' && (
+            <button
+              onClick={() => setCurrentView('tasks')}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'tasks'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'tasks' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <div className="flex items-center gap-3 ml-1">
+                <Clock className="w-4 h-4" />
+                <span>后台任务</span>
+              </div>
+              {pendingTasksCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 mr-1">
+                  {pendingTasksCount}
+                </span>
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => setCurrentView('exercise')}
@@ -864,14 +874,15 @@ export default function App() {
         {/* Content Area */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
-            {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} pendingTasksCount={pendingTasksCount} />}
-            {currentView === 'add' && <AddQuestion onNavigate={setCurrentView} />}
-            {currentView === 'tasks' && <TaskCenter onNavigate={setCurrentView} />}
+            {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
+            {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} />}
+            {currentView === 'tasks' && <TaskCenter onNavigate={handleNavigate} />}
             {currentView === 'library' && (
               <QuestionLibrary
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigate}
                 userInfo={userInfo}
                 onRefreshUserInfo={fetchUserInfo}
+                initialNotebookId={libraryNotebookId}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('library');
@@ -881,7 +892,7 @@ export default function App() {
             )}
             {currentView === 'exercise' && (
               <CreatePaperExercise
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigate}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('exercise');
@@ -891,7 +902,7 @@ export default function App() {
             )}
             {currentView === 'papers' && (
               <SavedPapers
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigate}
                 onOpenPaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('papers');
@@ -900,7 +911,7 @@ export default function App() {
               />
             )}
 
-            {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={setCurrentView} />}
+            {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={handleNavigate} />}
             {currentView === 'settings' && username === 'admin' && <SystemSettings />}
             {currentView === 'announcements' && username === 'admin' && <AnnouncementManagement />}
             {currentView === 'vipCenter' && (
@@ -908,7 +919,7 @@ export default function App() {
                 token={token}
                 userInfo={userInfo}
                 onRefresh={fetchUserInfo}
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigate}
               />
             )}
             {currentView === 'profile' && (
@@ -916,7 +927,7 @@ export default function App() {
                 token={token}
                 userInfo={userInfo}
                 onRefreshUserInfo={fetchUserInfo}
-                onNavigate={setCurrentView}
+                onNavigate={handleNavigate}
                 onShowSqlTip={() => setShowSqlTip(true)}
               />
             )}

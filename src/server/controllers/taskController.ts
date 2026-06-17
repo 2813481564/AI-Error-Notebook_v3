@@ -435,6 +435,33 @@ export const createTask = async (req: AuthenticatedRequest, res: express.Respons
 // 2. 获取任务列表 (仅自己，不包含 payload 字段以提升性能)
 export const getTasks = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
+    const statusParam = req.query.status;
+    if (statusParam === 'active') {
+      const stmt = db.prepare(`
+        SELECT id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt, errorMsg, isNotified 
+        FROM background_tasks 
+        WHERE userId = ? AND status IN ('queued', 'extracting', 'diagnosing', 'pending_extract_review', 'pending_diagnose_review')
+        ORDER BY createdAt DESC
+      `);
+      const rows = stmt.all(req.userId) as any[];
+      const tasks = rows.map(row => ({
+        id: row.id,
+        userId: row.userId,
+        taskName: row.taskName,
+        status: row.status,
+        progress: row.progress,
+        autoRun: row.autoRun,
+        uploadMode: row.uploadMode,
+        notebookId: row.notebookId || undefined,
+        payload: row.payload ? JSON.parse(row.payload) : {},
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        errorMsg: row.errorMsg || undefined,
+        isNotified: row.isNotified !== undefined ? row.isNotified : 0
+      }));
+      return res.json(tasks);
+    }
+
     const pageParam = req.query.page;
     const limitParam = req.query.limit;
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
@@ -76,12 +76,14 @@ export default function QuestionLibrary({
   onNavigate,
   onGeneratePaper,
   userInfo: propUserInfo,
-  onRefreshUserInfo
+  onRefreshUserInfo,
+  initialNotebookId
 }: {
-  onNavigate: (v: any) => void;
+  onNavigate: (v: any, params?: any) => void;
   onGeneratePaper?: (questions: ErrorQuestion[]) => void;
   userInfo?: any;
   onRefreshUserInfo?: () => void;
+  initialNotebookId?: string | null;
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState('');
@@ -97,6 +99,107 @@ export default function QuestionLibrary({
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
   const [stats, setStats] = useState({ total: 0, mastered: 0, unmastered: 0 });
   const [activeDimension, setActiveDimension] = useState<'timeline' | 'knowledge' | 'error_count'>('timeline');
+
+  // 后台进行中的任务
+  const [activeTasks, setActiveTasks] = useState<any[]>([]);
+  const prevActiveTaskIds = useRef<string[]>([]);
+
+  // 响应 initialNotebookId 变化
+  useEffect(() => {
+    if (initialNotebookId) {
+      setActiveNotebookId(initialNotebookId);
+      setFilterNotebook(initialNotebookId);
+    }
+  }, [initialNotebookId]);
+
+  // 获取正在进行中的任务
+  const loadActiveTasks = async () => {
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/tasks?status=active', {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const parsedData = data.map(task => {
+            let payloadObj = task.payload;
+            if (typeof payloadObj === 'string' && payloadObj.trim()) {
+              try {
+                payloadObj = JSON.parse(payloadObj);
+              } catch (e) {}
+            }
+            if (typeof payloadObj === 'string' && payloadObj.trim()) {
+              try {
+                payloadObj = JSON.parse(payloadObj);
+              } catch (e) {}
+            }
+            return {
+              ...task,
+              payload: payloadObj || {}
+            };
+          });
+          console.log("加载活跃任务返回结果：", parsedData);
+          setActiveTasks(parsedData);
+        }
+      }
+    } catch (err) {
+      console.error("加载进行中任务失败:", err);
+    }
+  };
+
+  // 删除进行中或卡住的任务
+  const handleDeleteTask = async (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('您确定要取消并删除这个正在处理的任务吗？')) return;
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        loadActiveTasks();
+      } else {
+        const data = await res.json();
+        alert(data.error || '删除任务失败');
+      }
+    } catch (err: any) {
+      alert(err.message || '网络错误，删除任务失败');
+    }
+  };
+
+  // 进入错题本后，开启轮询
+  useEffect(() => {
+    if (activeNotebookId === null) {
+      setActiveTasks([]);
+      return;
+    }
+
+    loadActiveTasks();
+
+    const interval = setInterval(() => {
+      loadActiveTasks();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeNotebookId]);
+
+  // 轮询对比：如果进行中任务减少，说明有任务执行完，触发数据重载
+  useEffect(() => {
+    const currentIds = activeTasks.map(t => t.id);
+    const hasCompleted = prevActiveTaskIds.current.some(id => !currentIds.includes(id));
+    if (hasCompleted && activeNotebookId !== null) {
+      loadQuestions(1);
+      updateNotebookStats();
+      loadNotebooks();
+    }
+    prevActiveTaskIds.current = currentIds;
+  }, [activeTasks, activeNotebookId]);
 
   const [selectedQuestion, setSelectedQuestion] = useState<ErrorQuestion | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -440,6 +543,13 @@ export default function QuestionLibrary({
 
   const activeNotebook = notebooks.find(n => n.id === filterNotebook);
 
+  const currentNotebookTasks = activeTasks.filter(task => {
+    if (activeNotebookId === 'unclassified') {
+      return !task.notebookId || task.notebookId === 'unclassified';
+    }
+    return task.notebookId === activeNotebookId;
+  });
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -739,7 +849,7 @@ export default function QuestionLibrary({
               <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
               <p className="text-slate-500 font-bold text-xs animate-pulse">正在加载错题数据，请稍候...</p>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : (filtered.length === 0 && currentNotebookTasks.length === 0) ? (
             <div className="bg-white rounded-3xl p-16 text-center border border-slate-200/60 shadow-sm flex flex-col items-center justify-center space-y-4">
               <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100">
                 <Book className="w-8 h-8 text-slate-350" />
@@ -754,6 +864,52 @@ export default function QuestionLibrary({
           ) : (
             <div className="space-y-6">
               <div className="flex flex-col gap-4">
+                {currentPage === 1 && currentNotebookTasks.map((task) => {
+                  const taskImg = task.payload?.imageBase64;
+                  const formattedDate = format(new Date(task.createdAt), 'MM/dd');
+                  return (
+                    <div
+                      key={task.id}
+                      className="relative group bg-slate-50/50 rounded-3xl border border-dashed border-slate-250 transition-all flex flex-col md:flex-row p-5 gap-5 items-center opacity-85 hover:border-blue-400 hover:opacity-100"
+                    >
+                      {/* 左侧缩略图 */}
+                      <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                        {taskImg ? (
+                          <img src={taskImg} alt="录入缩略图" className="w-full h-full object-cover rounded-2xl filter brightness-95 grayscale-[20%]" />
+                        ) : (
+                          <div className="text-2xl text-slate-300">📝</div>
+                        )}
+                      </div>
+
+                      {/* 右侧主内容区：正在进行中提示 */}
+                      <div className="flex-1 flex flex-col md:flex-row justify-between items-start md:items-center w-full gap-4">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2 text-slate-700 font-extrabold text-sm md:text-base">
+                            <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                            <span>错题AI正在分析中...</span>
+                            <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-black border border-blue-100 uppercase tracking-wider scale-95 origin-left">
+                              {task.status === 'queued' ? '排队中' : task.status === 'extracting' ? '文本提取' : '智能批改'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-semibold">
+                            图片已保存，分析完成后自动更新
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
+                          <span className="text-xs text-slate-400 font-extrabold">{formattedDate}</span>
+                          <button
+                            onClick={(e) => handleDeleteTask(task.id, e)}
+                            className="p-1.5 text-slate-450 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title="取消并删除任务"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {filtered.map((q, index) => {
                   const isSelected = selectedIds.has(q.id);
                   const formattedDate = format(new Date(q.createdAt), 'MM/dd');

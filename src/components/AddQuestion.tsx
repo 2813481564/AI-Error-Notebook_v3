@@ -82,7 +82,7 @@ const cropBoxes = (
   });
 };
 
-export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => void }) {
+export default function AddQuestion({ onNavigate }: { onNavigate: (v: any, params?: any) => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [uploadMode, setUploadMode] = useState<'single' | 'multi' | 'crossPage'>('single');
 
@@ -416,8 +416,17 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
 
-          alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
+          const userRole = localStorage.getItem('errorbook_role') || 'user';
+          const isAdmin = userRole === 'admin';
+          if (isAdmin) {
+            alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
+          } else {
+            alert("错题已成功提交，AI 正在后台进行诊断，已为您跳转至错题本。");
+          }
         }
+
+        const userRole = localStorage.getItem('errorbook_role') || 'user';
+        const isAdmin = userRole === 'admin';
 
         // 清理当前状态
         setImageStr(null);
@@ -426,6 +435,10 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         setExtractedQuestions(null);
         setParsedData(null);
         setStep(1);
+
+        if (!isAdmin) {
+          onNavigate('library', { notebookId: selectedNotebook || 'unclassified' });
+        }
         return;
       }
 
@@ -703,7 +716,7 @@ export default function AddQuestion({ onNavigate }: { onNavigate: (v: any) => vo
         alert('选中的题目均标记为“不纳入归档”，未写入错题本。');
       }
 
-      onNavigate('library');
+      onNavigate('library', { notebookId: selectedNotebook || 'unclassified' });
     } catch (err: any) {
       setError(err.message || '保存错题失败，请重试');
     }
