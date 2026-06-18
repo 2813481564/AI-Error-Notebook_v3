@@ -48,8 +48,8 @@ export const saveBase64Image = (base64Str: string): string => {
 
   console.log(`[FileService] 图片已物理落盘: ${fileName} (${(buffer.byteLength / 1024).toFixed(1)} KB)`);
 
-  // 返回可直接用于 <img src="..."> 的相对 URL
-  return `/uploads/${fileName}`;
+  // 返回可直接用于 <img src="..."> 的相对 URL (增加 /notebook 前缀配合 Nginx 路由)
+  return `/notebook/uploads/${fileName}`;
 };
 
 /**

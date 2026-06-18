@@ -454,3 +454,27 @@ try {
 } catch (migrateErr) {
   console.error("[DB Migration] 历史图片迁移执行失败:", migrateErr);
 }
+
+// ==================== 旧路径自动升级（/uploads/ -> /notebook/uploads/） ====================
+// 为配合子路径部署，将原有的本地 /uploads/ 前缀全部迁移为 /notebook/uploads/ 前缀，避免 Nginx 转发到 5566 端口
+try {
+  const oldPathRows = db.prepare(`
+    SELECT id, imageUrl FROM questions
+    WHERE imageUrl IS NOT NULL AND imageUrl LIKE '/uploads/%'
+  `).all() as { id: string; imageUrl: string }[];
+
+  if (oldPathRows.length > 0) {
+    console.log(`[DB Migration] 检测到 ${oldPathRows.length} 条旧版 /uploads/ 路径，开始自动升级前缀...`);
+    const updatePathStmt = db.prepare("UPDATE questions SET imageUrl = ? WHERE id = ?");
+    let count = 0;
+
+    for (const row of oldPathRows) {
+      const newUrl = row.imageUrl.replace(/^\/uploads\//, "/notebook/uploads/");
+      updatePathStmt.run(newUrl, row.id);
+      count++;
+    }
+    console.log(`[DB Migration] 路径前缀升级完成！成功将 ${count} 条路径前缀修改为 /notebook/uploads/`);
+  }
+} catch (pathMigrateErr) {
+  console.error("[DB Migration] 路径前缀升级执行失败:", pathMigrateErr);
+}
