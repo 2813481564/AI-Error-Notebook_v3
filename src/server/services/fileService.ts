@@ -6,9 +6,13 @@ import crypto from "crypto";
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 // 确保目录存在，不存在则自动创建
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  console.log("[FileService] 已自动创建 uploads 目录:", UPLOADS_DIR);
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    console.log("[FileService] 已自动创建 uploads 目录:", UPLOADS_DIR);
+  }
+} catch (dirErr) {
+  console.error("[FileService] 自动创建 uploads 目录失败 (可能是无根目录写权限)，请手动在项目根目录创建并设置 775 权限:", dirErr);
 }
 
 /**
@@ -55,11 +59,12 @@ export const saveBase64Image = (base64Str: string): string => {
 /**
  * 删除磁盘上的一个图片文件（通过其相对路径 URL）
  * 如果图片是 Base64 内嵌格式则直接忽略，如果文件不存在则静默跳过
- * @param imageUrl - 相对路径，如 "/uploads/img_xxx.png"
+ * @param imageUrl - 相对路径，如 "/uploads/img_xxx.png" 或 "/notebook/uploads/img_xxx.png"
  */
 export const deleteImageFile = (imageUrl: string): void => {
   if (!imageUrl || isBase64Image(imageUrl)) return;
-  if (!imageUrl.startsWith("/uploads/")) return;
+  // 同时兼容检测旧路径格式 "/uploads/" 和新路径格式 "/notebook/uploads/"
+  if (!imageUrl.startsWith("/uploads/") && !imageUrl.startsWith("/notebook/uploads/")) return;
 
   const fileName = path.basename(imageUrl);
   const filePath = path.join(UPLOADS_DIR, fileName);
