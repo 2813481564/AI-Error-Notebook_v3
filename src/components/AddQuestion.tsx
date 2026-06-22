@@ -735,17 +735,17 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
       <div className="flex items-center justify-between mb-8 max-w-md mx-auto">
         <div className="flex flex-col items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">上传与设置</span>
+          <span className="text-[13px] mt-1.5 font-extrabold text-slate-555">上传与设置</span>
         </div>
         <div className={`flex-1 h-0.5 mx-3 transition-colors duration-500 ${step >= 2 ? 'bg-blue-600' : 'bg-slate-100'}`} />
         <div className="flex flex-col items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>2</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">内容校对</span>
+          <span className="text-[13px] mt-1.5 font-extrabold text-slate-555">内容校对</span>
         </div>
         <div className={`flex-1 h-0.5 mx-3 transition-colors duration-500 ${step >= 3 ? 'bg-blue-600' : 'bg-slate-100'}`} />
         <div className="flex flex-col items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>3</div>
-          <span className="text-[10px] mt-1.5 font-extrabold text-slate-555">智能诊断</span>
+          <span className="text-[13px] mt-1.5 font-extrabold text-slate-555">智能诊断</span>
         </div>
       </div>
 
@@ -779,7 +779,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </h3>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择错题本</label>
+              <label className="text-[13px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择错题本</label>
               <div className="flex gap-2 items-center">
                 <select
                   value={selectedNotebook}
@@ -855,7 +855,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
 
           {/* Mode Selector Tab */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
+            <label className="text-[13px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
             <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
               <button
                 type="button"
@@ -902,7 +902,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
               </button> */}
             </div>
 
-            <p className="text-[10px] text-slate-400 pl-0.5 leading-relaxed">
+            <p className="text-[13px] text-slate-400 pl-0.5 leading-relaxed">
               {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，AI 将以单题最高精度和聚焦深度提取题干与公式。'}
               {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，您需要手动在图片上框选出各道题的范围，系统会分别裁剪并执行并行智能诊断。'}
               {uploadMode === 'crossPage' && '💡 适用于试卷折叠、错题过长跨越两面等，上传多张图后前端将在 Canvas 中顺次无缝拼接后再做提取。'}

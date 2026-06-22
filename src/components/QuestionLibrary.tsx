@@ -283,7 +283,8 @@ export default function QuestionLibrary({
     db.getPaginatedQuestions({
       page: 1,
       limit: 100000,
-      notebookId: activeNotebookId
+      notebookId: activeNotebookId,
+      search: debouncedSearch
     }).then(res => {
       const total = res.questions.length;
       const mastered = res.questions.filter(q => q.masteryStatus === 'mastered').length;
@@ -298,7 +299,7 @@ export default function QuestionLibrary({
     if (activeNotebookId !== null) {
       updateNotebookStats();
     }
-  }, [activeNotebookId]);
+  }, [activeNotebookId, debouncedSearch]);
 
   const loadUnclassifiedCount = () => {
     db.getUnclassifiedCount().then(count => {
@@ -811,36 +812,40 @@ export default function QuestionLibrary({
                   {stats.total}
                 </span>
               </button>
-              <button
-                onClick={() => setFilterMastery('not_mastered')}
-                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${filterMastery === 'not_mastered'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                  : 'text-slate-500 hover:text-slate-800'
-                  }`}
-              >
-                <span>未掌握</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${filterMastery === 'not_mastered'
-                  ? 'bg-blue-700/30 text-white'
-                  : 'bg-slate-200 text-slate-500'
-                  }`}>
-                  {stats.unmastered}
-                </span>
-              </button>
-              <button
-                onClick={() => setFilterMastery('mastered')}
-                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${filterMastery === 'mastered'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                  : 'text-slate-500 hover:text-slate-800'
-                  }`}
-              >
-                <span>已掌握</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-black ${filterMastery === 'mastered'
-                  ? 'bg-blue-700/30 text-white'
-                  : 'bg-slate-200 text-slate-500'
-                  }`}>
-                  {stats.mastered}
-                </span>
-              </button>
+              {!initialSearchKey && (
+                <>
+                  <button
+                    onClick={() => setFilterMastery('not_mastered')}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${filterMastery === 'not_mastered'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                      : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                  >
+                    <span>未掌握</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-black ${filterMastery === 'not_mastered'
+                      ? 'bg-blue-700/30 text-white'
+                      : 'bg-slate-200 text-slate-500'
+                      }`}>
+                      {stats.unmastered}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setFilterMastery('mastered')}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${filterMastery === 'mastered'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                      : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                  >
+                    <span>已掌握</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-black ${filterMastery === 'mastered'
+                      ? 'bg-blue-700/30 text-white'
+                      : 'bg-slate-200 text-slate-500'
+                      }`}>
+                      {stats.mastered}
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
 
             {/* 右侧搜索与过滤 */}
@@ -1308,4 +1313,5 @@ export default function QuestionLibrary({
     </div>
   );
 }
+
 

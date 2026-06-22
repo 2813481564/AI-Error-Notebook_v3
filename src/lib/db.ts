@@ -376,11 +376,11 @@ export const db = {
     return data.count;
   },
 
-  async getPaginatedTasks(page: number, limit: number): Promise<{ 
-    total: number; 
-    page: number; 
-    limit: number; 
-    tasks: any[]; 
+  async getPaginatedTasks(page: number, limit: number): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    tasks: any[];
     stats?: {
       running: number;
       pendingOcr: number;

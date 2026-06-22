@@ -186,7 +186,7 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
 
     const checkStmt = db.prepare("SELECT userId, studentId, status FROM questions WHERE id = ?");
     const existing = checkStmt.get(question.id) as { userId: string, studentId: string | null, status: string } | undefined;
-    
+
     // 如果错题已存在且不属于当前用户，非管理员不可修改
     if (existing && existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限修改该错题" });
@@ -280,7 +280,7 @@ export const deleteQuestion = (req: AuthenticatedRequest, res: express.Response)
     if (!existing) {
       return res.status(404).json({ error: "错题不存在" });
     }
-    
+
     // 非管理员 且 非作者，不能删除
     if (existing.userId !== req.userId && user.role !== 'admin') {
       return res.status(403).json({ error: "您没有权限删除该错题" });
@@ -425,7 +425,7 @@ export const adminGetUsers = (req: express.Request, res: express.Response) => {
 export const adminGetUserWeeklyStats = (req: express.Request, res: express.Response) => {
   try {
     const { username } = req.params;
-    
+
     // 检查用户是否存在
     const userExists = db.prepare("SELECT username FROM users WHERE username = ?").get(username);
     if (!userExists) {
@@ -445,27 +445,27 @@ export const adminGetUserWeeklyStats = (req: express.Request, res: express.Respo
     const getMondayDateString = (timestamp: number) => {
       const date = new Date(timestamp);
       const day = date.getDay(); // 0 是周日, 1-6 是周一到周六
-      
+
       const diffToMonday = date.getDate() - (day === 0 ? 6 : day - 1);
       const monday = new Date(date.getTime());
       monday.setDate(diffToMonday);
       monday.setHours(0, 0, 0, 0);
-      
+
       const sunday = new Date(monday.getTime());
       sunday.setDate(monday.getDate() + 6);
       sunday.setHours(23, 59, 59, 999);
-      
+
       const formatDate = (d: Date) => {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
         const dateVal = String(d.getDate()).padStart(2, '0');
         return `${y}-${m}-${dateVal}`;
       };
-      
+
       const mondayStr = formatDate(monday);
       const sundayStr = formatDate(sunday);
       const label = `${mondayStr.replace(/-/g, '.')} ~ ${sundayStr.slice(5).replace(/-/g, '.')}`;
-      
+
       return {
         key: mondayStr,
         label,
@@ -493,7 +493,7 @@ export const adminGetUserWeeklyStats = (req: express.Request, res: express.Respo
       const subject = row.subject || '其他';
 
       const { key, label, start, end } = getMondayDateString(createdAt);
-      
+
       if (!statsMap.has(key)) {
         statsMap.set(key, {
           weekKey: key,
@@ -506,7 +506,7 @@ export const adminGetUserWeeklyStats = (req: express.Request, res: express.Respo
           bySubject: {}
         });
       }
-      
+
       const stat = statsMap.get(key)!;
       stat.total += 1;
       if (masteryStatus === 'mastered') {
@@ -514,7 +514,7 @@ export const adminGetUserWeeklyStats = (req: express.Request, res: express.Respo
       } else {
         stat.notMastered += 1;
       }
-      
+
       stat.bySubject[subject] = (stat.bySubject[subject] || 0) + 1;
     }
 
