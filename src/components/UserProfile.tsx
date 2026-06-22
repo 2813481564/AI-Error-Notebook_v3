@@ -212,7 +212,7 @@ export default function UserProfile({ token, userInfo, onRefreshUserInfo, onNavi
     : `${questionCountVal} / ${capacityLimitVal}`;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* 顶部标题与简述 */}
       <div>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">账号设置</h1>

@@ -580,7 +580,7 @@ export default function QuestionLibrary({
             onClick={() => onNavigate('add')}
             className="text-xs font-bold text-white bg-blue-600 px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
           >
-            + 录入新错题
+            上传错题
           </button>
         </div>
       )}
@@ -624,40 +624,6 @@ export default function QuestionLibrary({
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* 默认未分类错题卡片 */}
-            <div
-              onClick={() => {
-                setActiveNotebookId('unclassified');
-                setFilterNotebook('unclassified');
-              }}
-              className="relative bg-white hover:shadow-lg transition-all rounded-3xl border border-slate-200/80 p-5 flex flex-col justify-between min-h-[140px] cursor-pointer group hover:border-blue-400"
-            >
-              <div className="flex gap-4 items-start">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center border text-2xl shrink-0 bg-slate-50 border-slate-150 shadow-inner">
-                  📓
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-black text-slate-800 group-hover:text-blue-600 transition-colors truncate">
-                    未分类错题
-                  </h3>
-                  <p className="text-xs text-slate-400 font-semibold mt-1 truncate">
-                    系统默认归档集
-                  </p>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-extrabold">
-                  <Book className="w-3.5 h-3.5 text-slate-400" />
-                  <span>共 <span className="text-blue-600 font-black">{unclassifiedCount}</span> 道错题</span>
-                </div>
-                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold">
-                  <Clock className="w-3.5 h-3.5 text-slate-300" />
-                  <span>刚刚</span>
-                </div>
-              </div>
-            </div>
-
             {/* 用户自定义错题本卡片 */}
             {notebooks.map(nb => {
               const nbCount = nb.questionCount || 0;
@@ -709,7 +675,9 @@ export default function QuestionLibrary({
                   <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs text-slate-500 font-extrabold">
                       <Book className="w-3.5 h-3.5 text-slate-400" />
-                      <span>共 <span className="text-blue-600 font-black">{nbCount}</span> 道错题</span>
+                      <span>共 <span className="text-blue-600 font-black">{nbCount}</span> 题</span>
+                      <span className="text-slate-300 mx-0.5">|</span>
+                      <span className="text-amber-500"><span className="font-black">{nb.unmasteredCount || 0}</span> 未掌握</span>
                     </div>
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold">
                       <Clock className="w-3.5 h-3.5 text-slate-300" />
@@ -1200,7 +1168,7 @@ export default function QuestionLibrary({
                     value={nbForm.name}
                     onChange={e => setNbForm(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="例如：初二"
-                    className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
+                    className="w-full px-4 py-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1220,7 +1188,7 @@ export default function QuestionLibrary({
                           };
                         });
                       }}
-                      className="w-full px-3 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                      className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
                     >
                       <option value="">选择年级</option>
                       {GRADE_OPTIONS.map(g => (
@@ -1233,7 +1201,7 @@ export default function QuestionLibrary({
                     <select
                       value={nbForm.subject}
                       onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
-                      className="w-full px-3 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                      className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
                     >
                       <option value="">选择学科</option>
                       {getAvailableSubjects(nbForm.grade).map(s => (

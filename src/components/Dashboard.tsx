@@ -228,6 +228,19 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 4);
 
+  if (selectedQuestion) {
+    return (
+      <QuestionDetail
+        question={selectedQuestion}
+        notebooks={notebooks}
+        isAdmin={userRole === 'admin'}
+        onBack={() => setSelectedQuestion(null)}
+        onDelete={handleDeleteQuestion}
+        onUpdate={handleUpdateQuestion}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
 
@@ -375,7 +388,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
                     onClick={() => onNavigate('library', {
                       notebookId: 'all',
                       searchKey: item.name,
-                      masteryStatus: 'not_mastered'
+                      masteryStatus: 'all'
                     })}
                     className="group flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50/30 hover:shadow-sm transition-all duration-300 cursor-pointer"
                   >
@@ -686,7 +699,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
                   placeholder="例如：初二"
                   value={newNotebookName}
                   onChange={(e) => setNewNotebookName(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50"
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 h-[38px] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50"
                 />
               </div>
 
@@ -697,7 +710,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
                   <select
                     value={newNotebookGrade}
                     onChange={(e) => setNewNotebookGrade(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50 text-slate-700"
+                    className="w-full text-xs border border-slate-200 rounded-xl px-3 h-[38px] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50 text-slate-700"
                   >
                     <option value="">选择年级</option>
                     <option value="一年级">一年级</option>
@@ -719,7 +732,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
                   <select
                     value={newNotebookSubject}
                     onChange={(e) => setNewNotebookSubject(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50 text-slate-700"
+                    className="w-full text-xs border border-slate-200 rounded-xl px-3 h-[38px] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50 text-slate-700"
                   >
                     <option value="">选择学科</option>
                     <option value="数学">数学</option>
@@ -773,21 +786,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
         </div>
       )}
 
-      {/* 错题详情模态框 */}
-      {selectedQuestion && (
-        <div className="fixed inset-0 z-40 bg-white overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-4 md:p-8">
-            <QuestionDetail
-              question={selectedQuestion}
-              notebooks={notebooks}
-              isAdmin={userRole === 'admin'}
-              onBack={() => setSelectedQuestion(null)}
-              onDelete={handleDeleteQuestion}
-              onUpdate={handleUpdateQuestion}
-            />
-          </div>
-        </div>
-      )}
+      {/* 错题详情将不再作为 fixed 模态框，而是由上方的 early return 在 main 区域中渲染 */}
 
     </div>
   );

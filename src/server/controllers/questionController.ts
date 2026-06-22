@@ -688,7 +688,9 @@ export const adminDeleteUser = (req: express.Request, res: express.Response) => 
 export const getNotebooks = (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const stmt = db.prepare(`
-      SELECT n.*, COUNT(q.id) as questionCount 
+      SELECT n.*, 
+             COUNT(q.id) as questionCount,
+             SUM(CASE WHEN q.masteryStatus != 'mastered' THEN 1 ELSE 0 END) as unmasteredCount
       FROM notebooks n 
       LEFT JOIN questions q ON n.id = q.notebookId AND (q.userId = ? OR q.studentId = ?)
       WHERE n.userId = ? 

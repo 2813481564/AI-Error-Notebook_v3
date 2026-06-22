@@ -220,7 +220,7 @@ export default function AnnouncementManagement() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto font-sans text-slate-700">
+    <div className="space-y-6 w-full font-sans text-slate-700">
       
       {/* 顶部标题与简述 */}
       <div className="flex items-center gap-3">

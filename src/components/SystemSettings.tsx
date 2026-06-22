@@ -240,7 +240,7 @@ export default function SystemSettings() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* 顶部标题与简述 */}
       <div className="flex flex-col gap-1.5 md:flex-row md:justify-between md:items-center">
         <div>

@@ -1,7 +1,21 @@
 import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
-import { Upload, Camera, Loader2, Sparkles, AlertCircle, RotateCw, Trash2, Plus, Check, ChevronLeft } from 'lucide-react';
+import { Upload, Camera, Loader2, Sparkles, AlertCircle, RotateCw, Trash2, Plus, Check, ChevronLeft, ChevronDown, X } from 'lucide-react';
 import FormattedMath from './FormattedMath';
+
+const GRADE_OPTIONS = [
+  '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
+  '初一', '初二', '初三',
+  '高一', '高二', '高三'
+];
+
+function getAvailableSubjects(grade: string): string[] {
+  if (!grade) return ['数学', '英语', '语文', '物理', '化学', '生物', '政治', '历史', '地理', '其他'];
+  if (grade.includes('初') || grade.includes('高')) {
+    return ['数学', '英语', '语文', '物理', '化学', '生物', '政治', '历史', '地理'];
+  }
+  return ['数学', '英语', '语文'];
+}
 
 // 图片无缝拼接辅助函数
 const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{ url: string; mimeType: string }> => {
@@ -45,10 +59,18 @@ const mergeImages = async (list: { url: string; mimeType: string }[]): Promise<{
   };
 };
 
-// 选框裁剪辅助函数
+interface QuadBox {
+  id: string;
+  p0: { x: number; y: number };
+  p1: { x: number; y: number };
+  p2: { x: number; y: number };
+  p3: { x: number; y: number };
+}
+
+// 选框裁剪辅助函数（双线性插值展平）
 const cropBoxes = (
   imageStr: string,
-  boxes: { x: number; y: number; w: number; h: number }[],
+  boxes: QuadBox[],
   mimeType: string
 ): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -58,19 +80,83 @@ const cropBoxes = (
       try {
         const results: string[] = [];
         boxes.forEach((box) => {
-          const canvas = document.createElement('canvas');
-          const cropX = (box.x / 100) * img.naturalWidth;
-          const cropY = (box.y / 100) * img.naturalHeight;
-          const cropW = (box.w / 100) * img.naturalWidth;
-          const cropH = (box.h / 100) * img.naturalHeight;
+          // 计算 4 个顶点在原始图片上的实际像素坐标
+          const p0 = { x: (box.p0.x / 100) * img.naturalWidth, y: (box.p0.y / 100) * img.naturalHeight };
+          const p1 = { x: (box.p1.x / 100) * img.naturalWidth, y: (box.p1.y / 100) * img.naturalHeight };
+          const p2 = { x: (box.p2.x / 100) * img.naturalWidth, y: (box.p2.y / 100) * img.naturalHeight };
+          const p3 = { x: (box.p3.x / 100) * img.naturalWidth, y: (box.p3.y / 100) * img.naturalHeight };
 
-          canvas.width = cropW;
-          canvas.height = cropH;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Canvas 2D context not supported');
+          // 计算裁剪区域四条边的长度，用均值来确定输出图像的宽高
+          const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+          const edgeW1 = dist(p0, p1);
+          const edgeW2 = dist(p3, p2);
+          const edgeH1 = dist(p0, p3);
+          const edgeH2 = dist(p1, p2);
 
-          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-          results.push(canvas.toDataURL(mimeType));
+          let destW = Math.round((edgeW1 + edgeW2) / 2);
+          let destH = Math.round((edgeH1 + edgeH2) / 2);
+
+          // 限制最大宽高，避免性能和 AI 识别异常
+          const maxDim = 1600;
+          if (destW > maxDim || destH > maxDim) {
+            const ratio = Math.min(maxDim / destW, maxDim / destH);
+            destW = Math.round(destW * ratio);
+            destH = Math.round(destH * ratio);
+          }
+          if (destW < 10) destW = 10;
+          if (destH < 10) destH = 10;
+
+          // 绘制源图像以获取像素数据
+          const canvasSrc = document.createElement('canvas');
+          canvasSrc.width = img.naturalWidth;
+          canvasSrc.height = img.naturalHeight;
+          const ctxSrc = canvasSrc.getContext('2d');
+          if (!ctxSrc) throw new Error('Canvas 2D context not supported');
+          ctxSrc.drawImage(img, 0, 0);
+          
+          const imgDataSrc = ctxSrc.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+          const srcData = imgDataSrc.data;
+          const srcW = img.naturalWidth;
+          const srcH = img.naturalHeight;
+
+          // 目标画布
+          const canvasDst = document.createElement('canvas');
+          canvasDst.width = destW;
+          canvasDst.height = destH;
+          const ctxDst = canvasDst.getContext('2d');
+          if (!ctxDst) throw new Error('Canvas 2D context not supported');
+          const imgDataDst = ctxDst.createImageData(destW, destH);
+          const dstData = imgDataDst.data;
+
+          // 双线性插值反向采样渲染循环
+          for (let v = 0; v < destH; v++) {
+            const nv = v / (destH - 1 || 1);
+            for (let u = 0; u < destW; u++) {
+              const nu = u / (destW - 1 || 1);
+
+              const w0 = (1 - nu) * (1 - nv);
+              const w1 = nu * (1 - nv);
+              const w2 = nu * nv;
+              const w3 = (1 - nu) * nv;
+
+              const sx = Math.round(w0 * p0.x + w1 * p1.x + w2 * p2.x + w3 * p3.x);
+              const sy = Math.round(w0 * p0.y + w1 * p1.y + w2 * p2.y + w3 * p3.y);
+
+              const clampedX = Math.max(0, Math.min(srcW - 1, sx));
+              const clampedY = Math.max(0, Math.min(srcH - 1, sy));
+
+              const srcIdx = (clampedY * srcW + clampedX) * 4;
+              const dstIdx = (v * destW + u) * 4;
+
+              dstData[dstIdx] = srcData[srcIdx];
+              dstData[dstIdx + 1] = srcData[srcIdx + 1];
+              dstData[dstIdx + 2] = srcData[srcIdx + 2];
+              dstData[dstIdx + 3] = srcData[srcIdx + 3];
+            }
+          }
+
+          ctxDst.putImageData(imgDataDst, 0, 0);
+          results.push(canvasDst.toDataURL(mimeType));
         });
         resolve(results);
       } catch (err) {
@@ -100,11 +186,23 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
   const [imageList, setImageList] = useState<{ id: string; url: string; mimeType: string }[]>([]);
 
   // 多题选框裁剪状态
-  const [boxes, setBoxes] = useState<{ id: string; x: number; y: number; w: number; h: number }[]>([]);
+  const [boxes, setBoxes] = useState<QuadBox[]>([]);
   const [isDrawingBox, setIsDrawingBox] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 二次编辑交互状态
+  const [activeBoxId, setActiveBoxId] = useState<string | null>(null);
+  const [interactionType, setInteractionType] = useState<'drawing' | 'moving' | 'resizing' | null>(null);
+  const [resizeHandle, setResizeHandle] = useState<'p0' | 'p1' | 'p2' | 'p3' | null>(null);
+  const [dragStartPct, setDragStartPct] = useState({ x: 0, y: 0 });
+  const [initialBoxPoints, setInitialBoxPoints] = useState<{
+    p0: { x: number; y: number };
+    p1: { x: number; y: number };
+    p2: { x: number; y: number };
+    p3: { x: number; y: number };
+  } | null>(null);
 
   // 跨页多图拼接后的提取模式：'multi'（识别出多道题）或 'single'（识别为单道长题）
   const [crossPageExtractMode, setCrossPageExtractMode] = useState<'single' | 'multi'>('multi');
@@ -147,9 +245,32 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
       .catch(console.error);
   }, []);
 
-  const handleCreateNotebook = async () => {
-    const name = prompt('请输入新错题本名称：');
-    if (!name || !name.trim()) return;
+  const [isNotebookDropdownOpen, setIsNotebookDropdownOpen] = useState(false);
+  const notebookDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notebookDropdownRef.current && !notebookDropdownRef.current.contains(event.target as Node)) {
+        setIsNotebookDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const [showNotebookModal, setShowNotebookModal] = useState(false);
+  const [nbForm, setNbForm] = useState({ name: '', grade: '', subject: '', description: '' });
+
+  const handleCreateNotebook = () => {
+    setNbForm({ name: '', grade: '', subject: '', description: '' });
+    setShowNotebookModal(true);
+  };
+
+  const handleSaveNotebookSubmit = async () => {
+    if (!nbForm.name.trim()) {
+      alert('请输入错题本名称');
+      return;
+    }
     try {
       const token = localStorage.getItem('errorbook_token');
       const res = await fetch('/api/notebooks', {
@@ -158,12 +279,18 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ name: name.trim() })
+        body: JSON.stringify({
+          name: nbForm.name.trim(),
+          grade: nbForm.grade,
+          subject: nbForm.subject,
+          description: nbForm.description
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '创建失败');
-      setNotebooks(prev => [...prev, data.notebook || data]);
+      setNotebooks(prev => [data.notebook || data, ...prev]);
       setSelectedNotebook(data.notebook?.id || data.id);
+      setShowNotebookModal(false);
     } catch (err: any) {
       alert(err.message || '操作失败');
     }
@@ -240,57 +367,162 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
     img.src = imageStr;
   };
 
-  // 多题框选录入区域鼠标交互处理
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (uploadMode !== 'multi') return;
+  // 选框挪动按下事件
+  const handleBoxMouseDown = (e: React.MouseEvent, box: QuadBox) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (uploadMode !== 'multi' && uploadMode !== 'single') return;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
+    setActiveBoxId(box.id);
+    setInteractionType('moving');
+    setDragStartPct({ x, y });
+    setInitialBoxPoints({
+      p0: { ...box.p0 },
+      p1: { ...box.p1 },
+      p2: { ...box.p2 },
+      p3: { ...box.p3 }
+    });
+  };
+
+  // 选框调整节点按下事件
+  const handleHandleMouseDown = (
+    e: React.MouseEvent,
+    box: QuadBox,
+    handleDir: 'p0' | 'p1' | 'p2' | 'p3'
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (uploadMode !== 'multi' && uploadMode !== 'single') return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    setActiveBoxId(box.id);
+    setInteractionType('resizing');
+    setResizeHandle(handleDir);
+    setDragStartPct({ x, y });
+    setInitialBoxPoints({
+      p0: { ...box.p0 },
+      p1: { ...box.p1 },
+      p2: { ...box.p2 },
+      p3: { ...box.p3 }
+    });
+  };
+
+  // 多题及单题框选录入区域鼠标交互处理
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (uploadMode !== 'multi' && uploadMode !== 'single') return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    setInteractionType('drawing');
     setIsDrawingBox(true);
     setStartPos({ x, y });
     setCurrentPos({ x, y });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDrawingBox) return;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
-    setCurrentPos({
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y))
-    });
-  };
+    const pctX = Math.max(0, Math.min(100, x));
+    const pctY = Math.max(0, Math.min(100, y));
 
-  const handleMouseUp = () => {
-    if (!isDrawingBox) return;
-    setIsDrawingBox(false);
+    if (interactionType === 'drawing') {
+      setCurrentPos({ x: pctX, y: pctY });
+    } else if (interactionType === 'moving' && activeBoxId && initialBoxPoints) {
+      const dx = pctX - dragStartPct.x;
+      const dy = pctY - dragStartPct.y;
 
-    const x = Math.min(startPos.x, currentPos.x);
-    const y = Math.min(startPos.y, currentPos.y);
-    const w = Math.abs(currentPos.x - startPos.x);
-    const h = Math.abs(currentPos.y - startPos.y);
+      setBoxes(prev => prev.map(box => {
+        if (box.id !== activeBoxId) return box;
 
-    if (w > 1.5 && h > 1.5) {
-      const newBox = {
-        id: 'box_' + Math.random().toString(36).substring(2, 9),
-        x,
-        y,
-        w,
-        h
-      };
-      setBoxes(prev => [...prev, newBox]);
+        const shiftPoint = (p: { x: number; y: number }) => {
+          let nx = p.x + dx;
+          let ny = p.y + dy;
+          if (nx < 0) nx = 0;
+          if (nx > 100) nx = 100;
+          if (ny < 0) ny = 0;
+          if (ny > 100) ny = 100;
+          return { x: nx, y: ny };
+        };
+
+        return {
+          ...box,
+          p0: shiftPoint(initialBoxPoints.p0),
+          p1: shiftPoint(initialBoxPoints.p1),
+          p2: shiftPoint(initialBoxPoints.p2),
+          p3: shiftPoint(initialBoxPoints.p3)
+        };
+      }));
+    } else if (interactionType === 'resizing' && activeBoxId && resizeHandle && initialBoxPoints) {
+      const dx = x - dragStartPct.x;
+      const dy = y - dragStartPct.y;
+
+      setBoxes(prev => prev.map(box => {
+        if (box.id !== activeBoxId) return box;
+
+        const targetPt = initialBoxPoints[resizeHandle];
+        let nx = targetPt.x + dx;
+        let ny = targetPt.y + dy;
+        if (nx < 0) nx = 0;
+        if (nx > 100) nx = 100;
+        if (ny < 0) ny = 0;
+        if (ny > 100) ny = 100;
+
+        return {
+          ...box,
+          [resizeHandle]: { x: nx, y: ny }
+        };
+      }));
     }
   };
 
+  const handleMouseUp = () => {
+    if (interactionType === 'drawing' && isDrawingBox) {
+      setIsDrawingBox(false);
+
+      const x = Math.min(startPos.x, currentPos.x);
+      const y = Math.min(startPos.y, currentPos.y);
+      const w = Math.abs(currentPos.x - startPos.x);
+      const h = Math.abs(currentPos.y - startPos.y);
+
+      if (w > 1.5 && h > 1.5) {
+        const newBox = {
+          id: 'box_' + Math.random().toString(36).substring(2, 9),
+          p0: { x: x, y: y },
+          p1: { x: x + w, y: y },
+          p2: { x: x + w, y: y + h },
+          p3: { x: x, y: y + h }
+        };
+        if (uploadMode === 'single') {
+          setBoxes([newBox]);
+        } else {
+          setBoxes(prev => [...prev, newBox]);
+        }
+      }
+    }
+    setInteractionType(null);
+    setActiveBoxId(null);
+    setResizeHandle(null);
+    setInitialBoxPoints(null);
+  };
+
   const handleMouseLeave = () => {
-    if (isDrawingBox) {
+    if (interactionType === 'drawing' || interactionType === 'moving' || interactionType === 'resizing') {
       handleMouseUp();
     }
   };
@@ -329,6 +561,9 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
     setAnalyzing(true);
     setError(null);
     try {
+      if (!selectedNotebook) {
+        throw new Error('请先选择或新建一个归属错题本！错题本为必选项。');
+      }
       if (uploadMode === 'crossPage') {
         if (imageList.length === 0) {
           throw new Error('请至少上传一张图片！');
@@ -344,13 +579,13 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
         if (!imageStr) {
           throw new Error('请先上传图片！');
         }
-        if (uploadMode === 'multi' && boxes.length === 0) {
-          throw new Error('“多题录入”模式下必须手动框选至少一个题目区域！请在下方图片上拖拽鼠标框选题目。');
+        if ((uploadMode === 'multi' || uploadMode === 'single') && boxes.length === 0) {
+          throw new Error(`“${uploadMode === 'single' ? '单题' : '多题'}录入”模式下必须手动框选要录入的题目区域！请在图片上拖拽鼠标进行框选。`);
         }
       }
 
       const token = localStorage.getItem('errorbook_token');
-      const hasBoxes = uploadMode === 'multi' && boxes.length > 0;
+      const hasBoxes = (uploadMode === 'multi' || uploadMode === 'single') && boxes.length > 0;
       let croppedImages: string[] = [];
       if (hasBoxes && imageStr) {
         croppedImages = await cropBoxes(imageStr, boxes, mimeType);
@@ -362,7 +597,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
 
         if (hasBoxes && croppedImages.length > 0) {
           for (let i = 0; i < croppedImages.length; i++) {
-            const taskName = `${baseTaskName}_框选分题#${i + 1}`;
+            const taskName = uploadMode === 'single' ? baseTaskName : `${baseTaskName}_框选分题#${i + 1}`;
             const res = await fetch('/api/tasks', {
               method: 'POST',
               headers: {
@@ -390,7 +625,6 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || `创建框选分题任务 #${i + 1} 失败`);
           }
-          alert(`成功提交了 ${croppedImages.length} 个框选分题录入任务至后台队列进行处理！\n您可以在“后台任务”中追踪执行进度。`);
         } else {
           const extractMode = uploadMode === 'crossPage' ? crossPageExtractMode : (uploadMode === 'multi' ? 'multi' : 'single');
           const res = await fetch('/api/tasks', {
@@ -422,13 +656,6 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '创建后台录题任务失败');
 
-          const userRole = localStorage.getItem('errorbook_role') || 'user';
-          const isAdmin = userRole === 'admin';
-          if (isAdmin) {
-            alert(`错题已成功提交后台排队处理！\n您可以在“后台任务”中追踪其执行状态，或者继续在本页面上传其他错题。`);
-          } else {
-            alert("错题已成功提交，AI 正在后台进行诊断，已为您跳转至错题本。");
-          }
         }
 
         const userRole = localStorage.getItem('errorbook_role') || 'user';
@@ -729,10 +956,10 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto pb-12">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-12">
 
       {/* Step Indicator */}
-      <div className="flex items-center justify-between mb-8 max-w-md mx-auto">
+      <div className="hidden flex items-center justify-between mb-8 max-w-md mx-auto">
         <div className="flex flex-col items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1</div>
           <span className="text-[13px] mt-1.5 font-extrabold text-slate-555">上传与设置</span>
@@ -779,22 +1006,39 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </h3>
 
             <div className="space-y-2">
-              <label className="text-[13px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择错题本</label>
+
               <div className="flex gap-2 items-center">
-                <select
-                  value={selectedNotebook}
-                  onChange={e => setSelectedNotebook(e.target.value)}
-                  className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700"
-                >
-                  <option value="">-- 请选择归属错题本 (选填，留空归入未分类) --</option>
-                  {notebooks.map(nb => (
-                    <option key={nb.id} value={nb.id}>{nb.name}</option>
-                  ))}
-                </select>
+                <div className="relative flex-1" ref={notebookDropdownRef}>
+                  <div
+                    onClick={() => setIsNotebookDropdownOpen(!isNotebookDropdownOpen)}
+                    className={`flex items-center justify-between px-3 h-[42px] bg-slate-50 border rounded-xl outline-none text-xs font-bold text-slate-700 cursor-pointer transition-all ${isNotebookDropdownOpen ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'
+                      }`}
+                  >
+                    <span className="truncate">
+                      {selectedNotebook ? notebooks.find(nb => nb.id === selectedNotebook)?.name : '-- 请选择归属错题本 (必填) --'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isNotebookDropdownOpen ? 'rotate-180' : ''}`} />
+                  </div>
+
+                  {isNotebookDropdownOpen && (
+                    <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] py-2 max-h-[260px] overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                      {notebooks.map(nb => (
+                        <div
+                          key={nb.id}
+                          onClick={() => { setSelectedNotebook(nb.id); setIsNotebookDropdownOpen(false); }}
+                          className={`px-4 py-3 text-xs font-bold cursor-pointer transition-colors ${selectedNotebook === nb.id ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                          {nb.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={handleCreateNotebook}
-                  className="px-4 py-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-xl text-xs font-black transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                  className="px-4 h-[42px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-xl text-xs font-black transition-all flex items-center gap-1 shrink-0 cursor-pointer"
                 >
                   <span>+ 新建错题本</span>
                 </button>
@@ -903,7 +1147,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </div>
 
             <p className="text-[13px] text-slate-400 pl-0.5 leading-relaxed">
-              {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，AI 将以单题最高精度和聚焦深度提取题干与公式。'}
+              {uploadMode === 'single' && '💡 适用于单张图片中只有 1 道错题的场景，您需要手动在图片上框选出要录入的题目区域（支持画好框后拖拽其边缘或顶角进行二次微调）。'}
               {uploadMode === 'multi' && '💡 适用于单张图片中包含多道不同独立错题，您需要手动在图片上框选出各道题的范围，系统会分别裁剪并执行并行智能诊断。'}
               {uploadMode === 'crossPage' && '💡 适用于试卷折叠、错题过长跨越两面等，上传多张图后前端将在 Canvas 中顺次无缝拼接后再做提取。'}
             </p>
@@ -945,10 +1189,15 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
                         🚨 必须框选：多题模式下，请在下方图片上按住鼠标左键拖拽框选出每一道题。框选完成后再点击下方按钮提取。
                       </div>
                     )}
+                    {uploadMode === 'single' && (
+                      <div className="text-xs text-blue-800 bg-blue-50/60 border border-blue-100 px-4 py-2.5 rounded-2xl mb-4 w-full text-center font-bold animate-pulse">
+                        🚨 必须框选：单题模式下，请在下方图片上按住鼠标左键拖拽框选出您需要提取的那道错题区域。画好框后可直接拖拽其边缘或顶角进行精准微调。
+                      </div>
+                    )}
 
                     <div
                       ref={containerRef}
-                      className={`relative inline-block select-none border border-slate-100 rounded-2xl overflow-hidden bg-slate-50 max-w-full ${uploadMode === 'multi' ? 'cursor-crosshair' : ''
+                      className={`relative inline-block select-none border border-slate-100 rounded-2xl overflow-hidden bg-slate-50 max-w-full ${(uploadMode === 'multi' || uploadMode === 'single') ? 'cursor-crosshair' : ''
                         }`}
                       onMouseDown={handleMouseDown}
                       onMouseMove={handleMouseMove}
@@ -961,34 +1210,84 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
                         className="max-w-full h-auto max-h-[60vh] block pointer-events-none select-none"
                       />
 
-                      {/* 渲染现有选区 */}
-                      {uploadMode === 'multi' && boxes.map((box, index) => (
-                        <div
-                          key={box.id}
-                          className="absolute border-2 border-rose-500 bg-rose-500/10 group flex items-center justify-center transition-colors hover:bg-rose-500/20"
-                          style={{
-                            left: `${box.x}%`,
-                            top: `${box.y}%`,
-                            width: `${box.w}%`,
-                            height: `${box.h}%`,
-                          }}
-                        >
-                          <span className="absolute top-1 left-1 bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow">
-                            题目 {index + 1}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => deleteBox(box.id, e)}
-                            className="absolute -top-2 -right-2 w-5 h-5 bg-rose-700 hover:bg-rose-800 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow transition-transform group-hover:scale-110 cursor-pointer border border-white"
-                            title="删除此选区"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+                      {/* SVG 选区绘制区 */}
+                      <svg
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        className="absolute inset-0 w-full h-full pointer-events-none select-none z-10"
+                      >
+                        {(uploadMode === 'multi' || uploadMode === 'single') && boxes.map((box) => {
+                          const pointsStr = `${box.p0.x},${box.p0.y} ${box.p1.x},${box.p1.y} ${box.p2.x},${box.p2.y} ${box.p3.x},${box.p3.y}`;
+                          const isCurrentActive = activeBoxId === box.id;
+                          return (
+                            <polygon
+                              key={box.id}
+                              points={pointsStr}
+                              className={`fill-rose-500/10 stroke-rose-500 stroke-[0.3] ${
+                                isCurrentActive ? 'stroke-dashed fill-rose-500/20' : 'hover:fill-rose-500/15'
+                              }`}
+                              style={{ cursor: 'move', pointerEvents: 'auto' }}
+                              onMouseDown={(e) => handleBoxMouseDown(e, box)}
+                            />
+                          );
+                        })}
+                      </svg>
+
+                      {/* 渲染控制节点和角标、删除按钮 */}
+                      {(uploadMode === 'multi' || uploadMode === 'single') && boxes.map((box, index) => {
+                        const handles = [
+                          { name: 'p0', pt: box.p0, cursor: 'cursor-nwse-resize' },
+                          { name: 'p1', pt: box.p1, cursor: 'cursor-nesw-resize' },
+                          { name: 'p2', pt: box.p2, cursor: 'cursor-nwse-resize' },
+                          { name: 'p3', pt: box.p3, cursor: 'cursor-nesw-resize' },
+                        ] as const;
+                        return (
+                          <div key={box.id} className="absolute inset-0 pointer-events-none z-20">
+                            {/* 题目序号角标 */}
+                            <span
+                              className="absolute bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow select-none pointer-events-none -translate-x-1/2 -translate-y-1/2 animate-bounce"
+                              style={{
+                                left: `${box.p0.x}%`,
+                                top: `${box.p0.y - 3}%`,
+                              }}
+                            >
+                              {uploadMode === 'single' ? '已选区域' : `题目 ${index + 1}`}
+                            </span>
+
+                            {/* 删除按钮 */}
+                            <button
+                              type="button"
+                              onClick={(e) => deleteBox(box.id, e)}
+                              className="absolute w-5 h-5 bg-rose-700 hover:bg-rose-800 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow transition-transform hover:scale-110 cursor-pointer border border-white -translate-x-1/2 -translate-y-1/2 pointer-events-auto z-30"
+                              style={{
+                                left: `${box.p1.x}%`,
+                                top: `${box.p1.y}%`,
+                              }}
+                              title="删除此选区"
+                            >
+                              ✕
+                            </button>
+
+                            {/* 4角调整节点 */}
+                            {handles.map(h => (
+                              <div
+                                key={h.name}
+                                onMouseDown={(e) => handleHandleMouseDown(e, box, h.name)}
+                                className={`absolute w-6 h-6 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 ${h.cursor} pointer-events-auto`}
+                                style={{
+                                  left: `${h.pt.x}%`,
+                                  top: `${h.pt.y}%`,
+                                }}
+                              >
+                                <div className="w-3.5 h-3.5 bg-blue-600 border-2 border-white rounded-full shadow-md hover:scale-125 transition-transform" />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
 
                       {/* 绘制中的临时选区 */}
-                      {uploadMode === 'multi' && isDrawingBox && (
+                      {(uploadMode === 'multi' || uploadMode === 'single') && isDrawingBox && (
                         <div
                           className="absolute border-2 border-dashed border-blue-500 bg-blue-500/15 pointer-events-none"
                           style={{
@@ -1009,13 +1308,13 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
                       >
                         <RotateCw className="w-3.5 h-3.5" /> 顺时针旋转 90°
                       </button>
-                      {uploadMode === 'multi' && boxes.length > 0 && (
+                      {(uploadMode === 'multi' || uploadMode === 'single') && boxes.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setBoxes([])}
                           className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                         >
-                          清空选框 ({boxes.length})
+                          清空选框 {uploadMode === 'multi' && `(${boxes.length})`}
                         </button>
                       )}
                       <button
@@ -1032,7 +1331,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
                       onClick={extractQuestions}
                       className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition text-sm cursor-pointer"
                     >
-                      <Sparkles className="w-4.5 h-4.5" /> {enableBgTask ? "提交至后台排队提取" : "开始 AI 切题提取文本"}
+                      <Sparkles className="w-4.5 h-4.5" /> {enableBgTask ? "提交至后台智能分析" : "开始 AI 切题提取文本"}
                     </button>
                   ) : (
                     <div className="bg-white p-8 rounded-3xl border border-slate-150 flex flex-col items-center justify-center space-y-4 shadow-sm">
@@ -1623,6 +1922,103 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
           </div>
         </div>
       )}
+
+      {showNotebookModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                <span>📓</span> 新建错题本
+              </h3>
+              <button
+                onClick={() => setShowNotebookModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">名称</label>
+                <input
+                  type="text"
+                  value={nbForm.name}
+                  onChange={e => setNbForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="例如：初二"
+                  className="w-full px-4 py-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">年级</label>
+                  <select
+                    value={nbForm.grade}
+                    onChange={e => {
+                      const selectedGrade = e.target.value;
+                      setNbForm(prev => {
+                        const available = getAvailableSubjects(selectedGrade);
+                        const newSubject = available.includes(prev.subject) ? prev.subject : (available[0] || '');
+                        return {
+                          ...prev,
+                          grade: selectedGrade,
+                          subject: newSubject
+                        };
+                      });
+                    }}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择年级</option>
+                    {GRADE_OPTIONS.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">学科</label>
+                  <select
+                    value={nbForm.subject}
+                    onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择学科</option>
+                    {getAvailableSubjects(nbForm.grade).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">描述（可选）</label>
+                <textarea
+                  rows={3}
+                  value={nbForm.description}
+                  onChange={e => setNbForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="例如：方程、函数、几何证明等重点易错题集合"
+                  className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none text-slate-800"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowNotebookModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveNotebookSubmit}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-blue-500/10 text-center"
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

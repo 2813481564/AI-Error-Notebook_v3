@@ -228,7 +228,7 @@ export default function QuestionDetail({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto">
+    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 w-full">
 
       <div className="flex items-center justify-between">
         <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-950 font-bold text-sm transition-colors">

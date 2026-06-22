@@ -886,7 +886,7 @@ export default function App() {
 
         {/* Content Area */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
-          <div className={`${(currentView === 'users' || currentView === 'settings' || currentView === 'announcements') ? 'max-w-6xl' : 'max-w-4xl'} mx-auto space-y-6 transition-all`}>
+          <div className="w-full space-y-6 transition-all">
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
             {currentView === 'tasks' && <TaskCenter onNavigate={handleNavigate} />}
