@@ -53,7 +53,8 @@ db.exec(`
     score INTEGER,
     notebookId TEXT,
     masteryStatus TEXT DEFAULT 'not_mastered',
-    errorAnalysis TEXT
+    errorAnalysis TEXT,
+    examDirection TEXT
   );
   
   CREATE INDEX IF NOT EXISTS idx_questions_userId ON questions(userId);
@@ -229,6 +230,12 @@ try {
   if (!hasMasteryStatus) {
     console.log("正在升级 questions 表以支持 masteryStatus 字段...");
     db.exec("ALTER TABLE questions ADD COLUMN masteryStatus TEXT DEFAULT 'not_mastered'");
+  }
+
+  const hasExamDirection = tableInfo.some(col => col.name === 'examDirection');
+  if (!hasExamDirection) {
+    console.log("正在升级 questions 表以支持 examDirection 考察方向字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN examDirection TEXT");
   }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);

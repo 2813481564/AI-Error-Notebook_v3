@@ -32,6 +32,7 @@ export interface ErrorQuestion {
   score?: number;
   notebookId?: string;
   notebookName?: string;
+  examDirection?: string;
 }
 
 export interface Stats {

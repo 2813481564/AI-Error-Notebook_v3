@@ -4,7 +4,8 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
 import { getSetting } from "../services/settingService";
 import crypto from "crypto";
-import { isBase64Image, saveBase64Image } from "../services/fileService";
+import { isBase64Image, saveBase64Image, deleteImageFile } from "../services/fileService";
+import { enhanceImageForOcr } from "../utils/imageOptimizer";
 
 // ================= 后台任务队列处理器 =================
 
@@ -75,7 +76,11 @@ const processTask = async (id: string) => {
       db.prepare("UPDATE background_tasks SET status = 'extracting', progress = 20, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
       console.log(`[TaskQueue] [${id}] 进入文本提取阶段`);
       
-      const extracted = await runAiExtract(payload.imageBase64, payload.mimeType, payload.extractMode || task.uploadMode);
+      // 【物理外挂】：在发给视觉大模型之前，对原始图片进行“锐化、去底灰”处理
+      console.log(`[TaskQueue] [${id}] 正在执行图像增强外挂...`);
+      const optimizedBase64 = await enhanceImageForOcr(payload.imageBase64);
+      
+      const extracted = await runAiExtract(optimizedBase64, payload.mimeType, payload.extractMode || task.uploadMode);
       payload.extractedQuestions = extracted;
 
       db.prepare("UPDATE background_tasks SET payload = ?, updatedAt = ? WHERE id = ?").run(JSON.stringify(payload), Date.now(), id);
@@ -175,7 +180,7 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
       }
     ],
     config: {
-      temperature: 0.1
+      temperature: 0.3
     },
     model: getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo'),
     systemPrompt
@@ -241,6 +246,51 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
     });
   }
 
+  // 二阶段逻辑纠错
+  const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
+  if (result.length > 0) {
+    for (let i = 0; i < result.length; i++) {
+      const q = result[i];
+      if (q.studentAnswer) {
+        try {
+          const correctPrompt = `你是一个极其严谨的 OCR 文本校对专家。你的唯一任务是：基于数学上下文，修复视觉模型（OCR）在提取【原题干】和【手写作答】时产生的“视觉识别错误”（如小数点漏识别、40%识别成0.4%、+识别成4、2.1识别成21等）。
+
+【严禁触碰的红线】：
+1. 绝对不要帮学生修改他们真实的计算错误！如果学生算错了（比如 2.1×1 算成了 2.7），必须原封不动地保留！
+2. 绝对不要帮学生把解题步骤补充完整，更不能自己去计算正确答案并覆盖学生的作答！
+
+【双向推导校对策略】：
+如果【手写作答】里的数字和【原题干】里的数字“长得很像”但存在细微差异（例如 2.1 和 21），且根据上下文发现【手写作答】里的推导是连贯的，那说明是 OCR 把【原题干】的数字识别漏了（漏了小数点）！此时你应该把【原题干】里的错误数字修正为学生抄写的数字，让题干符合逻辑。
+
+【原题干（可能有 OCR 错误）】：${q.originalText}
+【手写作答（可能有真实的计算错，也可能有 OCR 错误）】：${q.studentAnswer}
+
+请仅修复纯粹的 OCR 字符错漏，并严格返回 JSON 对象格式，不要包含 Markdown 标记：
+{
+  "originalText": "修复 OCR 错误后的题干...",
+  "studentAnswer": "修复 OCR 错误后的手写作答（务必保留学生真实的算错或写错）..."
+}`;
+          const correctionResponse = await generateContentWithFallback({
+            contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
+            config: { temperature: 0.1 },
+            model: textModel,
+            systemPrompt: "你是一个只输出合法 JSON 对象的校对助手。不得包含任何多余解释或 Markdown 标记。"
+          });
+          const correctedText = (correctionResponse.text || '').trim();
+          try {
+            const parsed = JSON.parse(extractJsonString(correctedText));
+            if (parsed.originalText) q.originalText = parsed.originalText;
+            if (parsed.studentAnswer) q.studentAnswer = parsed.studentAnswer;
+          } catch (parseError) {
+            console.warn("[TaskQueue] 二阶段校对 JSON 解析失败，沿用原文");
+          }
+        } catch (e) {
+          console.warn("[TaskQueue] 二阶段校对失败，跳过", e);
+        }
+      }
+    }
+  }
+
   return result;
 };
 
@@ -283,21 +333,39 @@ ${standardAnswerSection}
 
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点，最多列出 3 个，存入数组。
-2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。数学公式用 $ 或 $$ 包围。
-3. **错误原因分析** ("errorAnalysis"):
-   - 如果 "学生作答内容" 不为空，请结合学生作答、题干和标准答案，诊断出具体的犯错原因。
-   - 如果 "学生作答内容" 为空或缺失，请结合本题的核心考点与推导步骤，分析学生在解答此题时【最容易掉入的常见错误陷阱】以及其【概念/习惯层面的根本原因】。
-   - 无论何种情况，都必须输出结构化文本，严格包含以下两项：
-     1. 常见错误：[描述学生在解答该题时的常见逻辑或计算错误]
-     2. 根本原因：[剖析学生由于哪些概念不清、公式记错或基础不牢导致该错因]
-4. **学生本题所得评分** ("score"): 评估学生本题得分，0到100之间的整数（未作答或缺失则为0）。
+2. **考察方向** ("examDirection"): 简明扼要地概括题目的主要测试意图或考法（如"函数最值与导数综合"、"数形结合考法"等）。
+3. **错因标签** ("errorReason"): 必须**严格且只能**从以下五个类别的子标签池中挑选 1 个最符合的标签输出（如 "【概念/审题】读题粗心"）：
+   - 【概念/审题】：概念模糊、读题粗心、条件遗漏、隐含条件未挖掘
+   - 【逻辑/建模】：思路跑偏、公式错用、图形构造错误、无法建立模型
+   - 【计算/执行】：计算粗心、符号错误、方程解错、单位换算错误
+   - 【规范/表达】：步骤跳跃、格式不规范、字迹潦草
+   - 【完全掌握】：完全正确、思路清晰
+   如果未提供学生作答内容，则根据考点推测最易犯的错误标签输出。
+4. **标准解析** ("solution"): 必须以名师讲课的口吻，【分步骤】详细解答该题。每一步都要有清晰且富有亲和力的中文文字解释（例如：“首先，我们将百分数转换为小数...”），严禁只甩出一堆冷冰冰的数学等式。数学公式用 $ 或 $$ 包围。
+5. **错误原因分析** ("errorAnalysis"):
+   - 如果 "学生作答内容" 完全正确（满分），请输出以下正向激励格式（换行请用 \\n）：
+     【关键错误定位】：完全正确，无错因。
+     \\n你写的是：\\n> [此处原样复现学生最核心/最精彩的一步解答]
+     \\n✅ 答对了！
+     - 你的解题思路非常清晰，推导准确无误。
+     - -> 恭喜你，继续保持！
+   - 如果 "学生作答内容" 不为空且有错误，请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
+     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱，符号混用”）。
+     \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
+     \\n❌ 错在哪？
+     - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
+     - [用对话语气指出错误] -> 你误把...当成了...！
+   - 如果为空，请结合本题考点分析最容易掉入的【常见错误陷阱】及【根本原因】。
+6. **学生本题所得评分** ("score"): 评估学生本题得分，0到100之间的整数。
 
 请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记：
 {
   "knowledgePoints": ["核心考点1", "核心考点2"],
+  "examDirection": "考察方向...",
+  "errorReason": "【计算/执行】计算粗心",
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorAnalysis": "1. 常见错误：...\n2. 根本原因：..."
+  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！"
 }
 `;
 
@@ -316,11 +384,13 @@ ${standardAnswerSection}
     const text = response.text || '';
     let resultObj = {
       knowledgePoints: ["需手动分析"],
+      examDirection: "未提取",
+      errorReason: "【逻辑/建模】无法建立模型",
       solution: text || '无解析步骤',
       score: 0,
       errorAnalysis: "识别异常，请手动分析",
       errorDiagnosis: []
-    };
+    } as any;
 
     try {
       const parsedText = extractJsonString(text);
@@ -337,7 +407,8 @@ ${standardAnswerSection}
       originalText: item.originalText,
       subject: item.subject || '数学',
       knowledgePoints: resultObj.knowledgePoints || [],
-      errorReason: '概念不清',
+      examDirection: resultObj.examDirection || '未提取',
+      errorReason: resultObj.errorReason || '【概念/审题】概念模糊',
       solution: resultObj.solution || '',
       createdAt: Date.now(),
       studentAnswer: item.studentAnswer || '',
@@ -375,8 +446,8 @@ const saveFinalQuestionsToLibrary = async (
 
   const stmt = db.prepare(`
     INSERT INTO questions (
-      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer
-    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?)
+      id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer, examDirection
+    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?, ?)
   `);
 
   for (let i = 0; i < activeQuestions.length; i++) {
@@ -398,7 +469,8 @@ const saveFinalQuestionsToLibrary = async (
       q.errorAnalysis || '',
       notebookId || null,
       q.score !== undefined ? q.score : null,
-      q.standardAnswer || null
+      q.standardAnswer || null,
+      q.examDirection || null
     );
   }
 };

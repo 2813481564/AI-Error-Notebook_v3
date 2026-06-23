@@ -73,6 +73,7 @@ export default function QuestionDetail({
 
   // 用于支持多道题数量选择与保存状态跟踪
   const [similarCount, setSimilarCount] = useState<number>(1);
+  const [variantMode, setVariantMode] = useState<'同考点换壳' | '条件升级' | '逆向陷阱'>('同考点换壳');
   const [savedStatus, setSavedStatus] = useState<Record<number, boolean>>({});
 
   // 解析题干中包含的子题
@@ -127,6 +128,7 @@ export default function QuestionDetail({
   const [editedStudentAnswer, setEditedStudentAnswer] = useState(question.studentAnswer || '');
   const [editedErrorAnalysis, setEditedErrorAnalysis] = useState(question.errorAnalysis || '');
   const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
+  const [editedExamDirection, setEditedExamDirection] = useState(question.examDirection || '');
   const [saving, setSaving] = useState(false);
 
 
@@ -140,6 +142,7 @@ export default function QuestionDetail({
     setEditedStudentAnswer(question.studentAnswer || '');
     setEditedErrorAnalysis(question.errorAnalysis || '');
     setEditedErrorDiagnosis(question.errorDiagnosis || []);
+    setEditedExamDirection(question.examDirection || '');
     setIsEditing(false);
   }, [question]);
 
@@ -168,7 +171,8 @@ export default function QuestionDetail({
           subject: question.subject,
           knowledgePoints: question.knowledgePoints,
           count: similarCount,
-          grade: originalGrade
+          grade: originalGrade,
+          variantMode
         })
       });
 
@@ -212,7 +216,8 @@ export default function QuestionDetail({
         status: newStatus,
         studentAnswer: editedStudentAnswer,
         errorAnalysis: editedErrorAnalysis,
-        errorDiagnosis: editedErrorDiagnosis
+        errorDiagnosis: editedErrorDiagnosis,
+        examDirection: editedExamDirection
       };
       await db.saveQuestion(updatedQuestion);
       if (onUpdate) {
@@ -282,18 +287,25 @@ export default function QuestionDetail({
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
-                  <select
+                  <input
+                    type="text"
                     value={editedErrorReason}
                     onChange={e => setEditedErrorReason(e.target.value)}
+                    placeholder="如：【概念/审题】读题粗心"
                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                  >
-                    <option value="概念不清">概念不清</option>
-                    <option value="粗心大意">粗心大意</option>
-                    <option value="思路错误">思路错误</option>
-                    <option value="完全不会">完全不会</option>
-                    <option value="其他">其他</option>
-                  </select>
+                  />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考察方向 (选填)</label>
+                <input
+                  type="text"
+                  value={editedExamDirection}
+                  onChange={e => setEditedExamDirection(e.target.value)}
+                  placeholder="如：函数最值与导数综合"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-semibold text-slate-800"
+                />
               </div>
 
               <div className="space-y-1">
@@ -508,6 +520,25 @@ export default function QuestionDetail({
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择变式训练模式</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {(['同考点换壳', '条件升级', '逆向陷阱'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setVariantMode(mode)}
+                        className={`py-3 px-1 text-[11px] sm:text-xs font-bold rounded-xl border transition-all ${variantMode === mode
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/10'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成题目数量</label>

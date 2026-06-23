@@ -121,7 +121,6 @@ function NormalSegment({ text }: { text: string; key?: any }) {
           );
         }
 
-        // Check if paragraph starts with markdown list symbols or bold numbered items e.g., "1. " or "• "
         const listMatch = para.match(/^(\s*)([•\-*]|\d+\.)\s+(.*)/);
         if (listMatch) {
           const indent = listMatch[1].length;
@@ -130,7 +129,7 @@ function NormalSegment({ text }: { text: string; key?: any }) {
           return (
             <div 
               key={pIndex} 
-              className="flex gap-2 text-slate-700 leading-relaxed py-1 items-start" 
+              className="flex gap-2 text-slate-700 leading-relaxed py-1.5 items-start" 
               style={{ paddingLeft: `${indent * 12}px` }}
               id={`list-item-${pIndex}`}
             >
@@ -140,8 +139,20 @@ function NormalSegment({ text }: { text: string; key?: any }) {
           );
         }
 
+        if (para.trim().startsWith('>')) {
+          const cleanText = para.trim().replace(/^>\s*/, '');
+          return (
+            <div 
+              key={pIndex} 
+              className="border-l-[4px] border-slate-300 bg-slate-50/80 text-slate-600 pl-4 py-2.5 my-2.5 rounded-r-xl font-medium text-[13px] leading-relaxed shadow-sm shadow-slate-100/50"
+            >
+              <InlineContent text={cleanText} />
+            </div>
+          );
+        }
+
         return (
-          <p key={pIndex} id={`para-${pIndex}`} className="leading-relaxed text-slate-700 font-semibold">
+          <p key={pIndex} id={`para-${pIndex}`} className="leading-relaxed text-slate-700 font-semibold my-1">
             <InlineContent text={para} />
           </p>
         );

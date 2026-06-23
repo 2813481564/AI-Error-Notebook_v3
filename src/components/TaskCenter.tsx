@@ -148,6 +148,12 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
     setReviewPayload(next);
   };
 
+  const handleUpdateExamDirection = (idx: number, val: string) => {
+    const next = [...reviewPayload];
+    next[idx] = { ...next[idx], examDirection: val };
+    setReviewPayload(next);
+  };
+
   const toggleSolutionExpanded = (idx: number) => {
     setExpandedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
@@ -795,33 +801,50 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             </div>
                           )}
 
-                          {/* Knowledge Points */}
-                          {item.knowledgePoints && item.knowledgePoints.length > 0 && !isExcluded && (
-                            <div className="flex items-center gap-1.5 flex-wrap pt-2">
-                              <span className="text-[10px] font-bold text-slate-400">考点标签:</span>
-                              {item.knowledgePoints.map((kp: string, kIdx: number) => (
-                                <span key={kIdx} className="bg-indigo-50 border border-indigo-100/50 text-indigo-600 text-[10px] font-extrabold px-2 py-0.5 rounded-md">
-                                  #{kp}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          {/* Knowledge Points & Exam Direction */}
+                          <div className="flex items-center gap-2 flex-wrap pt-2">
+                            {item.examDirection && (
+                              <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200/60 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                🎯 {item.examDirection}
+                              </span>
+                            )}
+                            {item.knowledgePoints && item.knowledgePoints.length > 0 && !isExcluded && (
+                              <>
+                                {item.knowledgePoints.map((kp: string, kIdx: number) => (
+                                  <span key={kIdx} className="bg-purple-50 border border-purple-200 text-purple-600 text-xs font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                    📖 {kp}
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                          </div>
 
-                          {/* Error Reason Dropdown */}
-                          <div className="pt-4 border-t border-slate-200/40 flex items-center gap-3">
-                            <label className="text-xs font-bold text-slate-450 whitespace-nowrap">归档错误原因：</label>
-                            <select
-                              value={item.errorReason || '概念不清'}
-                              onChange={e => handleUpdateErrorReason(idx, e.target.value)}
-                              className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-xs font-bold text-slate-700 cursor-pointer"
-                            >
-                              <option value="概念不清">概念不清</option>
-                              <option value="粗心大意">粗心大意</option>
-                              <option value="思路错误">思路错误</option>
-                              <option value="完全不会">完全不会</option>
-                              <option value="其他">其他</option>
-                              <option value="不纳入归档">不纳入归档 (学生完全做对 / 无需录入)</option>
-                            </select>
+                          {/* Error Reason Input */}
+                          <div className="pt-4 border-t border-slate-200/40 flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              <label className="text-xs font-bold text-slate-450 whitespace-nowrap w-24">考察方向：</label>
+                              <input
+                                value={item.examDirection || ''}
+                                onChange={e => handleUpdateExamDirection(idx, e.target.value)}
+                                placeholder="如：函数最值与导数综合"
+                                className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-xs font-bold text-slate-700"
+                              />
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <label className="text-xs font-bold text-slate-450 whitespace-nowrap w-24">归档错误原因：</label>
+                              <input
+                                value={item.errorReason || ''}
+                                onChange={e => handleUpdateErrorReason(idx, e.target.value)}
+                                placeholder="如：【逻辑/建模】公式错用 (填 不纳入归档 可丢弃本题)"
+                                className={`flex-1 p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:border-transparent outline-none text-xs font-bold ${
+                                  (item.errorReason || '').includes('概念/审题') ? 'focus:ring-orange-500 text-orange-700' :
+                                  (item.errorReason || '').includes('逻辑/建模') ? 'focus:ring-pink-500 text-pink-700' :
+                                  (item.errorReason || '').includes('计算/执行') ? 'focus:ring-yellow-500 text-yellow-800' :
+                                  (item.errorReason || '').includes('规范/表达') ? 'focus:ring-teal-500 text-teal-700' :
+                                  'focus:ring-blue-500 text-slate-700'
+                                }`}
+                              />
+                            </div>
                           </div>
                         </div>
                       );

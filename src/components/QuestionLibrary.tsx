@@ -967,13 +967,32 @@ export default function QuestionLibrary({
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 mt-auto">
                           {/* 左侧：标签列表与转移下拉菜单 */}
                           <div className="flex flex-wrap items-center gap-2">
+                            {/* 考察方向标签 */}
+                            {q.examDirection && (
+                              <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200/60 px-2.5 py-1 rounded-xl font-bold transition-all">
+                                🎯 {q.examDirection}
+                              </span>
+                            )}
+                            {/* 错因标签 */}
+                            {q.errorReason && q.errorReason !== 'AI变式题' && (
+                              <span className={`text-xs px-2.5 py-1 rounded-xl border font-bold ${
+                                q.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                q.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                q.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
+                                q.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                q.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
+                                'bg-rose-50 text-rose-600 border-rose-100'
+                              }`}>
+                                {q.errorReason.includes('完全掌握') ? '✅' : '⚠️'} {q.errorReason}
+                              </span>
+                            )}
                             {/* 知识点标签 */}
-                            {q.knowledgePoints.map(p => (
+                            {q.knowledgePoints.map((p: string) => (
                               <span
                                 key={p}
-                                className="text-xs bg-slate-50 text-slate-600 border border-slate-200/60 px-2.5 py-1 rounded-xl font-bold transition-all"
+                                className="text-xs bg-purple-50 text-purple-600 border border-purple-200/60 px-2.5 py-1 rounded-xl font-bold transition-all"
                               >
-                                {p}
+                                📖 {p}
                               </span>
                             ))}
 

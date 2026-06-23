@@ -4,3 +4,26 @@
 html {
   font-size: 20.8px;
 }
+
+/* 优化与兼容性调整：增加全局 select 下拉框的高度和内边距，解决在不同浏览器下控件被挤压的问题 */
+select {
+  min-height: 2.2rem !important;
+  line-height: 1.5 !important;
+  padding-top: 0.4rem !important;
+  padding-bottom: 0.4rem !important;
+  box-sizing: border-box;
+}
+
+/* 适配小型下拉框（如 py-1.5） */
+select.py-1\.5, select[class*="py-1.5"] {
+  min-height: 1.8rem !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+}
+
+/* 适配大号下拉框（如 py-3） */
+select.py-3, select[class*="py-3"] {
+  min-height: 2.5rem !important;
+  padding-top: 0.6rem !important;
+  padding-bottom: 0.6rem !important;
+}

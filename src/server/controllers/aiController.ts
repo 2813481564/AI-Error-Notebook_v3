@@ -258,6 +258,36 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
         standardAnswer: ""
       });
     }
+    // 二阶段逻辑纠错
+    const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
+    if (result.length > 0) {
+      for (let i = 0; i < result.length; i++) {
+        const q = result[i];
+        if (q.studentAnswer) {
+          try {
+            const correctPrompt = `作为一名严谨的数学教师校对员。以下是粗提取的题目文本和学生手写作答。手写作答中可能因笔画粘连导致数字识别错误（例如 0.6 被误认成 0.5、+被误认成4等）。请结合题目上下文数学逻辑（如分配律、计算步骤等），在不改变学生解题本意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
+【原题干】：${q.originalText}
+【手写作答】：${q.studentAnswer}
+【参考答案】：${q.standardAnswer || '无'}
+
+请直接返回校正后的【手写作答】纯文本，不要包含任何前缀或额外解释。如果完全无需修正，请直接原样返回原手写作答文本。`;
+            const correctionResponse = await generateContentWithFallback({
+              contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
+              config: { temperature: 0.1 },
+              model: textModel,
+              systemPrompt: "你是一个纯文本校对助手。只返回校对后的结果文本，不要 Markdown，不要多余废话。"
+            });
+            const correctedText = (correctionResponse.text || '').trim();
+            if (correctedText && !correctedText.startsWith('无') && !correctedText.startsWith('空')) {
+              q.studentAnswer = correctedText;
+            }
+          } catch (e) {
+            console.warn("AI 二阶段校对失败，跳过", e);
+          }
+        }
+      }
+    }
+
     res.json(result);
 
   } catch (error: any) {
@@ -312,22 +342,33 @@ ${standardAnswerSection}
 
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
-2. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
-3. **错误原因分析** ("errorAnalysis"):
-   - 如果 "学生作答内容" 不为空，请结合学生作答、题干和标准答案，诊断出具体的犯错原因。
-   - 如果 "学生作答内容" 为空或缺失，请结合本题的核心考点与推导步骤，分析学生在解答此题时【最容易掉入的常见错误陷阱】以及其【概念/习惯层面的根本原因】。
-   - 无论何种情况，都必须输出结构化文本，严格包含以下两项：
-     1. 常见错误：[描述学生在解答该题时的常见逻辑或计算错误]
-     2. 根本原因：[剖析学生由于哪些概念不清、公式记错或基础不牢导致该错因]
-4. **学生本题所得评分** ("score"):
-   - 根据学生的解答步骤与提供的【老师提供的参考标准答案】（如果提供了）的比对程度，评估学生本题的最终得分，只能是 0 到 100 之间的整数（如果学生完全未作答，或者 "学生作答内容" 缺失，则返回 0）。
+2. **考察方向** ("examDirection"): 简明扼要地概括题目的主要测试意图或考法（如"函数最值与导数综合"、"数形结合考法"等）。
+3. **错因标签** ("errorReason"): 必须**严格且只能**从以下四个阶段的子标签池中挑选 1 个最符合的标签输出（如 "【概念/审题】读题粗心"）：
+   - 【概念/审题】：概念模糊、读题粗心、条件遗漏、隐含条件未挖掘
+   - 【逻辑/建模】：思路跑偏、公式错用、图形构造错误、无法建立模型
+   - 【计算/执行】：计算粗心、符号错误、方程解错、单位换算错误
+   - 【规范/表达】：步骤跳跃、格式不规范、字迹潦草
+   如果未提供学生作答内容，则根据考点推测最易犯的错误标签输出。
+4. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
+5. **错误原因分析** ("errorAnalysis"):
+   - 如果 "学生作答内容" 不为空，请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
+     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱，符号混用”）。
+     \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
+     \\n❌ 错在哪？
+     - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
+     - [用对话语气指出错误] -> 你误把...当成了...！
+   - 如果为空，请结合本题考点分析最容易掉入的【常见错误陷阱】及【根本原因】。
+6. **学生本题所得评分** ("score"):
+   - 根据学生的解答步骤与提供的参考标准答案的比对程度，评估学生本题的最终得分，0 到 100 之间的整数。
 
 请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
 {
   "knowledgePoints": ["核心考点1", "核心考点2"],
+  "examDirection": "考察方向...",
+  "errorReason": "【计算/执行】计算粗心",
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorAnalysis": "1. 常见错误：...\n2. 根本原因：..."
+  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！"
 }
 `;
 
@@ -364,6 +405,8 @@ ${standardAnswerSection}
       console.warn("Failed to parse AI diagnosis response as JSON. Falling back to default format.", e);
       resultObj = {
         knowledgePoints: ["需手动分析"],
+        examDirection: "未提取",
+        errorReason: "【逻辑/建模】无法建立模型",
         solution: text,
         score: 0,
         errorAnalysis: "识别异常，请手动分析",
@@ -387,8 +430,14 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
       return res.status(403).json({ error: "权限不足，学生角色无法生成同类题" });
     }
 
-    const { originalText, subject, knowledgePoints, count, grade } = req.body;
+    const { originalText, subject, knowledgePoints, count, grade, variantMode } = req.body;
     const numQuestions = Math.min(3, Math.max(1, count || 1));
+
+    const modeInstruction = variantMode === '条件升级'
+      ? "【条件升级模式】：在原考点基础上增加隐蔽条件，或者将直接已知条件转为需要通过其他定理或计算先求出的间接条件，整体难度提升一星，但不要超纲。"
+      : variantMode === '逆向陷阱'
+      ? "【逆向陷阱模式】：强制要求采用逆向思维出题（例如给出原题的结果，要求反推原题的某个初始条件）；或者在题目中设置该知识点常见的易错陷阱（如定义域陷阱、单位陷阱、隐含的分类讨论），重点考察学生是否真正理解，而非死记硬背套公式。"
+      : "【同考点换壳模式】：保持原始难度和解题路径，仅修改具体的数值、已知条件的描述方式或情境背景，使题目成为一道全新的换壳题。";
 
     const prompt = `
 你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出 ${numQuestions} 道【相似度约80%】的同类练习题。
@@ -400,8 +449,8 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
 
 【命题要求】
 1. 核心知识点与原题完全相同。
-2. 题型、步骤数量、公式类型与原题保持一致。
-3. 修改具体数值/已知条件/情境背景，使题目全新（约20%差异）。
+2. 题型、核心公式类型尽量与原题保持一致（除非变式模式要求提升难度或逆向推理）。
+3. ${modeInstruction}
 4. 【极度重要 - 逆向推导命题法】：为了保证计算结果是干净的有限小数或整数，涉及圆柱、圆锥体积计算时，你必须先在后台预设好合理的半径 r 和高 h，且**强制规定高 h 必须是 3 的倍数**（如 3, 6, 9），以消除圆锥公式中 1/3 导致的无限循环小数。算好题干需要的表面积等数值后，再输出题目。
 5. 知识点/图形/公式均不超出原题所述学段水平。
 6. 数学公式必须用标准 $ 或 $$ 包围。**注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\\\pi, \\\\frac, \\\\text），否则会导致 JSON 解析失败！**

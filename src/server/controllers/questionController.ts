@@ -95,6 +95,7 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
         originalText: row.originalText,
         subject: row.subject,
         knowledgePoints: row.knowledgePoints ? JSON.parse(row.knowledgePoints) : [],
+        examDirection: row.examDirection || undefined,
         errorReason: row.errorReason || "",
         solution: row.solution || "",
         createdAt: row.createdAt,
@@ -148,6 +149,7 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       originalText: row.originalText,
       subject: row.subject,
       knowledgePoints: row.knowledgePoints ? JSON.parse(row.knowledgePoints) : [],
+      examDirection: row.examDirection || undefined,
       errorReason: row.errorReason || "",
       solution: row.solution || "",
       createdAt: row.createdAt,
@@ -230,8 +232,8 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
 
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO questions (
-        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, errorAnalysis, paperName, standardAnswer, score, notebookId, masteryStatus
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, examDirection, errorReason, solution, createdAt, similarQuestion, studentAnswer, errorDiagnosis, errorAnalysis, paperName, standardAnswer, score, notebookId, masteryStatus
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -243,6 +245,7 @@ export const saveQuestion = (req: AuthenticatedRequest, res: express.Response) =
       question.originalText,
       question.subject || "其他",
       question.knowledgePoints ? JSON.stringify(question.knowledgePoints) : "[]",
+      question.examDirection || null,
       question.errorReason || "",
       question.solution || "",
       question.createdAt || Date.now(),
