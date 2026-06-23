@@ -320,16 +320,8 @@ export default function TestPaper({
             )}
           </button>
 
-          {/* AI Variant Switcher Button */}
-          {paperMode === 'original' ? (
-            <button
-              onClick={generateVariants}
-              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/10 cursor-pointer w-full sm:w-auto justify-center"
-            >
-              <Sparkles className="w-4 h-4 text-white" />
-              <span>⚡ 生成 AI 变式练习卷</span>
-            </button>
-          ) : (
+          {/* AI Variant Switcher Button - 已隐藏原按钮 */}
+          {paperMode !== 'original' && (
             <button
               onClick={() => setPaperMode('original')}
               className="flex items-center gap-1.5 px-4.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer w-full sm:w-auto justify-center"
