@@ -9,15 +9,25 @@ interface FormattedMathProps {
 export default function FormattedMath({ text = '', className = '' }: FormattedMathProps) {
   if (!text) return null;
 
-  // Split text by block math blocks ($$.*?$$)
-  const segments = text.split(/(\$\$\s*[\s\S]*?\s*\$\$)/gs);
+  // Split text by block math blocks ($$.*?$$) and HTML tables
+  const segments = text.split(/(\$\$\s*[\s\S]*?\s*\$\$|<table[\s\S]*?<\/table>)/gi);
 
   return (
     <div className={`space-y-4 font-medium text-slate-700 leading-relaxed text-sm xl:text-base ${className}`}>
       {segments.map((segment, index) => {
+        // Checking if it's an HTML table
+        if (/^\s*<table/i.test(segment)) {
+          return (
+            <div key={index} className="overflow-x-auto my-4 w-full">
+              <InlineContent text={segment} />
+            </div>
+          );
+        }
+
         // Checking if it's block math
-        if (segment.startsWith('$$') && segment.endsWith('$$')) {
-          const rawMath = segment.slice(2, -2).trim();
+        const trimmedSegment = segment.trim();
+        if (trimmedSegment.startsWith('$$') && trimmedSegment.endsWith('$$')) {
+          const rawMath = trimmedSegment.slice(2, -2).trim();
           try {
             const sanitizedMath = rawMath
               .replace(/\\\\/g, '\\')

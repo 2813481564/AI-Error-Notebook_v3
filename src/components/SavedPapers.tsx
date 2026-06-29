@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 
 interface SavedPapersProps {
   onNavigate: (view: any) => void;
-  onOpenPaper: (questions: any[]) => void;
+  onOpenPaper: (questions: any[], options?: { customImages?: Record<string, string>, hiddenImages?: Record<string, boolean> }) => void;
 }
 
 export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProps) {
@@ -63,7 +63,7 @@ export default function SavedPapers({ onNavigate, onOpenPaper }: SavedPapersProp
       if (!confirmOpen) return;
     }
 
-    onOpenPaper(resolvedQuestions);
+    onOpenPaper(resolvedQuestions, { customImages: paper.customImages, hiddenImages: paper.hiddenImages });
   };
 
   if (loading) {

@@ -93,7 +93,8 @@ db.exec(`
     createdAt INTEGER NOT NULL,
     grade TEXT,
     subject TEXT,
-    description TEXT
+    description TEXT,
+    type TEXT DEFAULT 'normal'
   );
   
   CREATE INDEX IF NOT EXISTS idx_notebooks_userId ON notebooks(userId);
@@ -104,7 +105,9 @@ db.exec(`
     userId TEXT NOT NULL,
     createdAt INTEGER NOT NULL,
     questionIds TEXT NOT NULL,
-    mode TEXT NOT NULL DEFAULT 'original'
+    mode TEXT NOT NULL DEFAULT 'original',
+    customImages TEXT,
+    hiddenImages TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_papers_userId ON papers(userId);
@@ -325,9 +328,107 @@ try {
       console.log("正在升级 notebooks 表以支持 description 字段...");
       db.exec("ALTER TABLE notebooks ADD COLUMN description TEXT");
     }
+    // 5. 检查并添加 notebooks 表的 type 字段 (用于隔离 AI变题库)
+    try {
+      const tableInfo = db.prepare("PRAGMA table_info(notebooks)").all() as any[];
+      const hasType = tableInfo.some(col => col.name === 'type');
+      if (!hasType) {
+        console.log("正在升级 notebooks 表以支持 type 字段...");
+        db.prepare("ALTER TABLE notebooks ADD COLUMN type TEXT DEFAULT 'normal'").run();
+        console.log("notebooks 表升级完成！");
+      }
+    } catch (error) {
+      console.error("检查/升级 notebooks 表出错:", error);
+    }
+
+    // 6. 数据迁移：将旧的孤立错题和 AI变题 自动归档
+    try {
+      const users = db.prepare("SELECT username FROM users").all() as { username: string }[];
+      
+      let migratedNormalCount = 0;
+      let migratedVariationCount = 0;
+
+      for (const user of users) {
+        const userId = user.username;
+        
+        // 处理该用户的AI变式题 (不论原来在哪个本子里，强制移动到专属变题本)
+        const varQuestions = db.prepare(`
+          SELECT id FROM questions 
+          WHERE userId = ? 
+          AND (knowledgePoints LIKE '%AI变式题%' OR examDirection LIKE '%变式强化题%')
+        `).all(userId) as { id: string }[];
+        
+        if (varQuestions.length > 0) {
+          let varNotebook = db.prepare(`SELECT id FROM notebooks WHERE userId = ? AND type = 'variation' LIMIT 1`).get(userId) as { id: string } | undefined;
+          if (!varNotebook) {
+            const newNbId = "nb_auto_var_" + Math.random().toString(36).substring(2, 9);
+            db.prepare(`
+              INSERT INTO notebooks (id, name, userId, createdAt, type) 
+              VALUES (?, '公共题库', ?, ?, 'variation')
+            `).run(newNbId, userId, Date.now());
+            varNotebook = { id: newNbId };
+          }
+          
+          for (const q of varQuestions) {
+            db.prepare(`UPDATE questions SET notebookId = ? WHERE id = ?`).run(varNotebook.id, q.id);
+            migratedVariationCount++;
+          }
+        }
+
+        // 处理该用户的常规错题 (没有本子且不是AI变式题)
+        const normalQuestions = db.prepare(`
+          SELECT id FROM questions 
+          WHERE userId = ? 
+          AND (notebookId IS NULL OR notebookId = '')
+          AND (knowledgePoints NOT LIKE '%AI变式题%' AND (examDirection IS NULL OR examDirection NOT LIKE '%变式强化题%'))
+        `).all(userId) as { id: string }[];
+
+        if (normalQuestions.length > 0) {
+          let normalNotebook = db.prepare(`SELECT id FROM notebooks WHERE userId = ? AND type = 'normal' LIMIT 1`).get(userId) as { id: string } | undefined;
+          if (!normalNotebook) {
+            const newNbId = "nb_auto_norm_" + Math.random().toString(36).substring(2, 9);
+            db.prepare(`
+              INSERT INTO notebooks (id, name, userId, createdAt, type) 
+              VALUES (?, '默认错题本', ?, ?, 'normal')
+            `).run(newNbId, userId, Date.now());
+            normalNotebook = { id: newNbId };
+          }
+
+          for (const q of normalQuestions) {
+            db.prepare(`UPDATE questions SET notebookId = ? WHERE id = ?`).run(normalNotebook.id, q.id);
+            migratedNormalCount++;
+          }
+        }
+      }
+      
+      if (migratedVariationCount > 0 || migratedNormalCount > 0) {
+        console.log(`数据自动归档迁移完成: 迁移了 ${migratedVariationCount} 道AI变式题，${migratedNormalCount} 道未分类错题。`);
+      }
+    } catch (error) {
+      console.error("执行数据归档迁移出错:", error);
+    }
   }
 } catch (err) {
   console.error("notebooks 数据库迁移检查失败:", err);
+}
+
+// 数据库迁移逻辑：检测 papers 表是否缺少 customImages 和 hiddenImages 字段
+try {
+  const tableInfo = db.pragma("table_info(papers)") as any[];
+  if (tableInfo.length > 0) {
+    const hasCustomImages = tableInfo.some(col => col.name === 'customImages');
+    if (!hasCustomImages) {
+      console.log("正在升级 papers 表以支持 customImages 字段...");
+      db.exec("ALTER TABLE papers ADD COLUMN customImages TEXT");
+    }
+    const hasHiddenImages = tableInfo.some(col => col.name === 'hiddenImages');
+    if (!hasHiddenImages) {
+      console.log("正在升级 papers 表以支持 hiddenImages 字段...");
+      db.exec("ALTER TABLE papers ADD COLUMN hiddenImages TEXT");
+    }
+  }
+} catch (err) {
+  console.error("papers 数据库迁移检查失败:", err);
 }
 
 // 数据库迁移逻辑：检测 redemption_codes 表是否缺少 days 字段

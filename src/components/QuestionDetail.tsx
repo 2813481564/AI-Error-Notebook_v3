@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import {
   ArrowLeft,
@@ -10,12 +10,38 @@ import {
   ChevronRight,
   Sparkles,
   CheckCircle2,
-  FolderSymlink
+  FolderSymlink,
+  Folder
 } from 'lucide-react';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import ReadOnlyDetail, { BrainCircuitIcon } from './ReadOnlyDetail';
 import { parseIndividualQuestions } from '../lib/parser';
+
+const GRADE_OPTIONS = [
+  '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
+  '初一', '初二', '初三',
+  '高一', '高二', '高三'
+];
+
+function getAvailableSubjects(grade: string): string[] {
+  const allSubjects = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
+  if (!grade) return allSubjects;
+
+  if (['一年级', '二年级', '三年级', '四年级', '五年级', '六年级'].includes(grade)) {
+    return ['语文', '数学', '英语'];
+  }
+
+  if (grade === '初一' || grade === '七年级') {
+    return ['语文', '数学', '英语', '生物', '历史', '地理', '政治'];
+  }
+
+  if (grade === '初二' || grade === '八年级') {
+    return ['语文', '数学', '英语', '物理', '生物', '历史', '地理', '政治'];
+  }
+
+  return allSubjects;
+}
 
 export default function QuestionDetail({
   question,
@@ -36,6 +62,18 @@ export default function QuestionDetail({
   const [similarData, setSimilarData] = useState<any>(question.similarQuestion || null);
   const [generating, setGenerating] = useState(false);
   const [showMoveDropdown, setShowMoveDropdown] = useState(false);
+
+  const isMountedRef = useRef(true);
+  const currentQuestionIdRef = useRef(question.id);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    currentQuestionIdRef.current = question.id;
+  }, [question.id]);
 
   const handleToggleMasteryStatus = async () => {
     const nextStatus = question.masteryStatus === 'mastered' ? 'not_mastered' : 'mastered';
@@ -76,41 +114,110 @@ export default function QuestionDetail({
   const [variantMode, setVariantMode] = useState<'同考点换壳' | '条件升级' | '逆向陷阱'>('同考点换壳');
   const [savedStatus, setSavedStatus] = useState<Record<number, boolean>>({});
 
-  // 解析题干中包含的子题
-  const parsedQs = parseIndividualQuestions(question.originalText);
-  const [selectedSubQIndex, setSelectedSubQIndex] = useState<number>(0);
+  // 举一反三保存逻辑状态
+  const [showVariationModal, setShowVariationModal] = useState(false);
+  const [pendingVariationItem, setPendingVariationItem] = useState<{ item: any, idx: number } | null>(null);
+  const [variationNotebooks, setVariationNotebooks] = useState<any[]>([]);
+  const [selectedVariationNb, setSelectedVariationNb] = useState('');
+  const [showCreateVarNbModal, setShowCreateVarNbModal] = useState(false);
+  const [nbForm, setNbForm] = useState({ name: '公共题库', grade: '', subject: '', description: '' });
+  const [showVarDropdown, setShowVarDropdown] = useState(false);
+
+  useEffect(() => {
+    if (variationNotebooks.length === 0) {
+      const token = localStorage.getItem('errorbook_token');
+      fetch('/api/notebooks?type=variation', {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setVariationNotebooks(data);
+          if (data.length > 0) {
+            setSelectedVariationNb(data[0].id);
+          } else {
+            setShowCreateVarNb(true);
+          }
+        }
+      })
+      .catch(err => console.error('加载AI变题库失败', err));
+    }
+  }, []);
+
+  const handleCreateVariationNb = async () => {
+    if (!nbForm.name.trim()) {
+      window.alert('请输入变题本名称');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/notebooks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ 
+          name: nbForm.name.trim(), 
+          type: 'variation',
+          grade: nbForm.grade,
+          subject: nbForm.subject,
+          description: nbForm.description
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const nb = data.notebook || data;
+        setVariationNotebooks(prev => [nb, ...prev]);
+        setSelectedVariationNb(nb.id);
+        setShowCreateVarNbModal(false);
+        setNbForm({ name: '公共题库', grade: '', subject: '', description: '' });
+      } else {
+        window.alert(data.error || '创建失败');
+      }
+    } catch (err: any) {
+      window.alert(err.message || '创建失败');
+    }
+  };
 
   useEffect(() => {
     setSavedStatus({});
   }, [similarData]);
 
   useEffect(() => {
-    setSelectedSubQIndex(0);
     setSimilarData(question.similarQuestion || null);
   }, [question]);
 
-  const handleSaveSimilarItem = async (item: any, idx: number) => {
+  const handleDirectSaveVariation = async (item: any, idx: number) => {
+    if (!selectedVariationNb) {
+      window.alert("请先在上方选择一个AI变题本");
+      return;
+    }
     try {
       const newId = "q_similar_" + Math.random().toString(36).substring(2, 9);
-      const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
+      const selectedNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
       const newQuestion: ErrorQuestion = {
         id: newId,
         originalText: item.questionText,
         subject: question.subject,
         knowledgePoints: [...question.knowledgePoints, "AI变式题"],
-        errorReason: "AI变式题",
+        errorReason: question.errorReason, // 继承原题错因，不强行覆盖
+        examDirection: "【变式强化题】 " + (question.examDirection || ""), // 在此处打标记，避免破坏错因统计
         solution: item.solution,
         createdAt: Date.now(),
-        notebookId: question.notebookId,
+        notebookId: selectedVariationNb,
         notebookName: selectedNbObj ? selectedNbObj.name : undefined,
         masteryStatus: "not_mastered",
         status: "audited",
-        similarQuestion: item
+        similarQuestion: item,
+        imageUrl: question.imageUrl,
+        userId: question.userId,
+        studentId: question.studentId
       };
 
       await db.saveQuestion(newQuestion);
       setSavedStatus(prev => ({ ...prev, [idx]: true }));
-      window.alert(`成功将变式题 ${idx + 1} 保存至错题库！您可以直接在“组卷练习”中进行添加。`);
+      window.alert(`成功将变式题保存至AI变题本【${selectedNbObj?.name || '未知'}】！`);
     } catch (err: any) {
       window.alert(err.message || "保存失败，请重试");
     }
@@ -148,17 +255,46 @@ export default function QuestionDetail({
 
   const generateSimilar = async () => {
     if (generating) return;
+    if (!selectedVariationNb) {
+      window.alert("请先选择一个归属的AI变题本");
+      return;
+    }
 
     setGenerating(true);
+    const placeholders: ErrorQuestion[] = [];
+
     try {
+      window.alert("已为您在选定的AI变题库中插入占位符，正在拼命生成中，请耐心等待...");
+      
+      const selectedVarNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
+      
+      // 插入占位符
+      for (let i = 0; i < similarCount; i++) {
+        const newId = "q_similar_ph_" + Math.random().toString(36).substring(2, 9);
+        const placeholderQuestion: ErrorQuestion = {
+          id: newId,
+          originalText: `【AI变式生成中...】正在基于原题为您生成第 ${i + 1} 道变式题，请稍候...`,
+          subject: question.subject,
+          knowledgePoints: [...question.knowledgePoints, "AI变式题"],
+          errorReason: question.errorReason,
+          examDirection: "【变式强化题】 " + (question.examDirection || ""),
+          solution: "AI正在拼命思考中，请稍候...",
+          createdAt: Date.now(),
+          notebookId: selectedVariationNb,
+          notebookName: selectedVarNbObj ? selectedVarNbObj.name : undefined,
+          masteryStatus: "not_mastered",
+          status: "pending",
+          userId: question.userId,
+          studentId: question.studentId,
+          imageUrl: question.imageUrl
+        };
+        await db.saveQuestion(placeholderQuestion);
+        placeholders.push(placeholderQuestion);
+      }
+
       const token = localStorage.getItem('errorbook_token');
       const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
       const originalGrade = selectedNbObj?.grade;
-
-      let targetText = question.originalText;
-      if (parsedQs.length > 1 && selectedSubQIndex >= 0 && selectedSubQIndex < parsedQs.length) {
-        targetText = parsedQs[selectedSubQIndex].content;
-      }
 
       const res = await fetch('/api/similar', {
         method: 'POST',
@@ -167,12 +303,13 @@ export default function QuestionDetail({
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          originalText: targetText,
+          originalText: question.originalText,
           subject: question.subject,
           knowledgePoints: question.knowledgePoints,
           count: similarCount,
           grade: originalGrade,
-          variantMode
+          variantMode,
+          visualContext: (question as any).visualContext || ''
         })
       });
 
@@ -185,18 +322,50 @@ export default function QuestionDetail({
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSimilarData(data);
+
+      const dataArray = Array.isArray(data) ? data : [data];
+
+      // 更新占位符为真实生成的题目
+      for (let i = 0; i < dataArray.length; i++) {
+        if (placeholders[i]) {
+          const updatedPh: ErrorQuestion = {
+            ...placeholders[i],
+            originalText: dataArray[i].questionText || dataArray[i].originalText || dataArray[i].question || '',
+            solution: dataArray[i].solution || '',
+            status: "audited",
+            similarQuestion: dataArray[i]
+          };
+          await db.saveQuestion(updatedPh);
+          if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
+            setSavedStatus(prev => ({ ...prev, [i]: true }));
+          }
+        }
+      }
 
       const updatedQuestion = { ...question, similarQuestion: data };
       await db.saveQuestion(updatedQuestion);
-      if (onUpdate) {
-        onUpdate(updatedQuestion);
+
+      if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
+        setSimilarData(data);
+        if (onUpdate) {
+          onUpdate(updatedQuestion);
+        }
       }
     } catch (err: any) {
       console.error(err);
-      window.alert(err.message || '生成同类题失败，请重试');
+      if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
+        window.alert(err.message || '生成同类题失败，请重试');
+      }
+      // 如果失败，尝试删除占位符
+      for (const ph of placeholders) {
+        try {
+          await db.deleteQuestion(ph.id);
+        } catch(e) {}
+      }
     } finally {
-      setGenerating(false);
+      if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
+        setGenerating(false);
+      }
     }
   };
 
@@ -444,7 +613,7 @@ export default function QuestionDetail({
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleSaveSimilarItem(item, idx)}
+                          onClick={() => handleDirectSaveVariation(item, idx)}
                           disabled={isSaved}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSaved
                             ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default'
@@ -499,27 +668,57 @@ export default function QuestionDetail({
                   </p>
                 </div>
 
-                {parsedQs.length > 1 && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择生成推荐题的子题</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {parsedQs.map((qItem, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setSelectedSubQIndex(idx)}
-                          className={`p-3 text-left text-xs font-semibold rounded-xl border transition-all ${selectedSubQIndex === idx
-                            ? 'bg-blue-50 border-blue-500 text-blue-805 ring-1 ring-blue-500 shadow-sm'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                            }`}
-                        >
-                          <div className="font-bold text-slate-800 mb-0.5">{qItem.number || `第 ${idx + 1} 题`}</div>
-                          <div className="text-[10px] text-slate-500 truncate">{qItem.content}</div>
-                        </button>
-                      ))}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">归属AI变题本 (必选)</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowVarDropdown(!showVarDropdown)}
+                        className="w-full flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:border-blue-400 transition-all shadow-sm"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Folder className="w-4 h-4 text-blue-500/70" />
+                          {selectedVariationNb ? variationNotebooks.find(n => n.id === selectedVariationNb)?.name : '请选择变题本...'}
+                        </span>
+                        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showVarDropdown ? 'rotate-90' : ''}`} />
+                      </button>
+
+                      {showVarDropdown && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setShowVarDropdown(false)} />
+                          <div className="absolute left-0 top-full mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] p-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-200 max-h-48 overflow-y-auto">
+                            {variationNotebooks.length === 0 ? (
+                              <div className="p-3 text-center text-xs text-slate-400">暂无变题本</div>
+                            ) : (
+                              variationNotebooks.map(nb => (
+                                <button
+                                  key={nb.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedVariationNb(nb.id);
+                                    setShowVarDropdown(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-3 text-xs font-bold rounded-xl transition-all flex items-center justify-between ${selectedVariationNb === nb.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                  {nb.name}
+                                  {selectedVariationNb === nb.id && <Check className="w-4 h-4 text-blue-600" />}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateVarNbModal(true)}
+                      className="px-4 py-3.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition shadow-sm cursor-pointer"
+                    >
+                      新建
+                    </button>
                   </div>
-                )}
+                </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">选择变式训练模式</label>
@@ -562,9 +761,22 @@ export default function QuestionDetail({
                 <button
                   type="button"
                   onClick={generateSimilar}
-                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer flex justify-center items-center gap-2"
+                  disabled={generating || !selectedVariationNb}
+                  className={`w-full py-3.5 rounded-xl text-xs font-black transition cursor-pointer flex justify-center items-center gap-2 ${
+                    generating || !selectedVariationNb 
+                      ? 'bg-blue-400 text-white cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10'
+                  }`}
                 >
-                  <BrainCircuitIcon className="w-4 h-4" /> 开始智能生成推荐题
+                  {generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> 正在拼命生成中，请耐心等待...
+                    </>
+                  ) : (
+                    <>
+                      <BrainCircuitIcon className="w-4 h-4" /> 开始智能生成推荐题
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -638,6 +850,155 @@ export default function QuestionDetail({
             <Trash2 className="w-4 h-4 text-rose-500" />
             <span>删除错题</span>
           </button>
+        </div>
+      )}
+
+      {/* AI变题库保存弹窗 */}
+      {showVariationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-sm w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-extrabold text-slate-900">选择保存的AI变题库</h3>
+              <button onClick={() => setShowVariationModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <select 
+                value={selectedVariationNb} 
+                onChange={(e) => setSelectedVariationNb(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-800"
+              >
+                {variationNotebooks.length === 0 && <option value="">暂无变题本，请创建</option>}
+                {variationNotebooks.map(nb => (
+                  <option key={nb.id} value={nb.id}>{nb.name}</option>
+                ))}
+              </select>
+
+              {!showCreateVarNb ? (
+                <button onClick={() => setShowCreateVarNb(true)} className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer">
+                  <PlusCircle className="w-3.5 h-3.5" /> 新建变题本
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newVarNbName} 
+                    onChange={e => setNewVarNbName(e.target.value)} 
+                    placeholder="输入变题本名称"
+                    className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs"
+                  />
+                  <button onClick={handleCreateVariationNb} className="px-3 bg-blue-600 text-white rounded-lg text-xs font-bold cursor-pointer">
+                    创建
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSaveSimilarItem}
+              disabled={!selectedVariationNb}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer"
+            >
+              确认保存
+            </button>
+          </div>
+        </div>
+      )}
+      {/* 新建变题本弹窗 */}
+      {showCreateVarNbModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                <span>📓</span> 新建AI变题本
+              </h3>
+              <button
+                onClick={() => setShowCreateVarNbModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">变题本名称</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={nbForm.name}
+                  onChange={e => setNbForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="例如：初二常错题"
+                  className="w-full px-4 py-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">年级 (选填)</label>
+                  <select
+                    value={nbForm.grade}
+                    onChange={e => {
+                      const selectedGrade = e.target.value;
+                      setNbForm(prev => {
+                        const available = getAvailableSubjects(selectedGrade);
+                        const newSubject = available.includes(prev.subject) ? prev.subject : (available[0] || '');
+                        return {
+                          ...prev,
+                          grade: selectedGrade,
+                          subject: newSubject
+                        };
+                      });
+                    }}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择年级</option>
+                    {GRADE_OPTIONS.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">学科 (选填)</label>
+                  <select
+                    value={nbForm.subject}
+                    onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择学科</option>
+                    {getAvailableSubjects(nbForm.grade).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">描述 (选填)</label>
+                <textarea
+                  rows={3}
+                  value={nbForm.description}
+                  onChange={e => setNbForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="该变题本的主要内容"
+                  className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none text-slate-800"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowCreateVarNbModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreateVariationNb}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-blue-500/10 text-center"
+                >
+                  确认创建
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

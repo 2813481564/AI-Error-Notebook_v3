@@ -21,13 +21,13 @@ export async function enhanceImageForOcr(base64Data: string): Promise<string> {
     const imageBuffer = Buffer.from(pureBase64, 'base64');
 
     const optimizedBuffer = await sharp(imageBuffer)
-      .grayscale() // 1. 灰度化
-      .normalize() // 2. 增强对比度
+      // .grayscale() // 移除灰度化，保留色彩，让多模态大模型能通过颜色（如红色）过滤老师的批改痕迹
+      .normalize() // 1. 增强对比度
       .sharpen({
-        sigma: 1.5, // 锐化半径
-        m1: 1,      // 平坦区域的斜率
-        m2: 2       // 边缘区域的斜率
-      })           // 3. 锐化，极大地突出铅笔字和小数点
+        sigma: 0.5, // 显著降低锐化半径（原1.5），防止细线笔画（如 '4', '0.6'）断裂或扭曲
+        m1: 0.5,    
+        m2: 1       
+      })           // 2. 轻度锐化，仅做基础清晰化
       .jpeg({ quality: 85 }) // 压缩优化，避免 Base64 体积过大
       .toBuffer();
 

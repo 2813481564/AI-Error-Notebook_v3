@@ -25,6 +25,7 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
       const notebookId = (req.query.notebookId as string) || 'all';
       const masteryStatus = (req.query.masteryStatus as string) || 'all';
       const search = (req.query.search as string) || '';
+      const notebookType = (req.query.notebookType as string) || 'all';
 
       const offset = (page - 1) * limit;
 
@@ -64,12 +65,20 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
         params.push(searchTerm, searchTerm);
       }
 
+      // 错题本类型过滤
+      if (notebookType === 'normal') {
+        whereClauses.push("(n.type = 'normal' OR q.notebookId IS NULL OR q.notebookId = '')");
+      } else if (notebookType === 'variation') {
+        whereClauses.push("n.type = 'variation'");
+      }
+
       const whereSql = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
 
       // 查总数
       const countQuery = `
         SELECT COUNT(*) as count 
         FROM questions q
+        LEFT JOIN notebooks n ON q.notebookId = n.id
         ${whereSql}
       `;
       const countRow = db.prepare(countQuery).get(...params) as { count: number };
@@ -121,20 +130,37 @@ export const getQuestions = (req: AuthenticatedRequest, res: express.Response) =
 
     // 保持原本无分页时的兼容逻辑
     let rows: any[];
+    const notebookType = (req.query.notebookType as string) || 'all';
+    
     if (user.role === 'admin') {
+      let typeWhere = '';
+      if (notebookType === 'normal') {
+        typeWhere = "WHERE (n.type = 'normal' OR q.notebookId IS NULL OR q.notebookId = '')";
+      } else if (notebookType === 'variation') {
+        typeWhere = "WHERE n.type = 'variation'";
+      }
+
       const stmt = db.prepare(`
         SELECT q.*, n.name as notebookName 
         FROM questions q
         LEFT JOIN notebooks n ON q.notebookId = n.id
+        ${typeWhere}
         ORDER BY q.createdAt DESC
       `);
       rows = stmt.all() as any[];
     } else {
+      let whereClause = `WHERE (q.userId = ? OR q.studentId = ?)`;
+      if (notebookType === 'normal') {
+        whereClause += ` AND (n.type = 'normal' OR q.notebookId IS NULL OR q.notebookId = '')`;
+      } else if (notebookType === 'variation') {
+        whereClause += ` AND n.type = 'variation'`;
+      }
+
       const stmt = db.prepare(`
         SELECT q.*, n.name as notebookName 
         FROM questions q
         LEFT JOIN notebooks n ON q.notebookId = n.id
-        WHERE q.userId = ? OR q.studentId = ?
+        ${whereClause}
         ORDER BY q.createdAt DESC
       `);
       rows = stmt.all(req.userId, req.userId) as any[];
@@ -412,7 +438,8 @@ export const adminGetUsers = (req: express.Request, res: express.Response) => {
         COUNT(q.id) as questionCount
       FROM users u
       LEFT JOIN questions q ON u.username = q.userId
-      WHERE u.username != 'admin'
+      LEFT JOIN notebooks n ON q.notebookId = n.id
+      WHERE u.username != 'admin' AND (n.type = 'normal' OR q.notebookId IS NULL OR q.notebookId = '')
       GROUP BY u.username
       ORDER BY u.username ASC
     `);
@@ -690,17 +717,26 @@ export const adminDeleteUser = (req: express.Request, res: express.Response) => 
 // 12. 获取错题本列表
 export const getNotebooks = (req: AuthenticatedRequest, res: express.Response) => {
   try {
+    const type = req.query.type as string | undefined;
+    let typeSql = "";
+    let params: any[] = [req.userId, req.userId, req.userId];
+    
+    if (type) {
+      typeSql = " AND n.type = ? ";
+      params.push(type);
+    }
+
     const stmt = db.prepare(`
       SELECT n.*, 
              COUNT(q.id) as questionCount,
              SUM(CASE WHEN q.masteryStatus != 'mastered' THEN 1 ELSE 0 END) as unmasteredCount
       FROM notebooks n 
       LEFT JOIN questions q ON n.id = q.notebookId AND (q.userId = ? OR q.studentId = ?)
-      WHERE n.userId = ? 
+      WHERE n.userId = ? ${typeSql}
       GROUP BY n.id
       ORDER BY n.createdAt DESC
     `);
-    const rows = stmt.all(req.userId, req.userId, req.userId);
+    const rows = stmt.all(...params);
     res.json(rows);
   } catch (error: any) {
     console.error("Get Notebooks Error:", error);
@@ -735,14 +771,14 @@ export const getUnclassifiedQuestionsCount = (req: AuthenticatedRequest, res: ex
 // 13. 创建错题本
 export const createNotebook = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { name, grade, subject, description } = req.body;
+    const { name, grade, subject, description, type } = req.body;
     if (!name || name.trim() === "") {
       return res.status(400).json({ error: "错题本名称不能为空" });
     }
     const id = "nb_" + Math.random().toString(36).substring(2, 9);
-    const stmt = db.prepare("INSERT INTO notebooks (id, name, userId, createdAt, grade, subject, description) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    stmt.run(id, name.trim(), req.userId, Date.now(), grade || null, subject || null, description || null);
-    res.json({ success: true, notebook: { id, name: name.trim(), grade, subject, description } });
+    const stmt = db.prepare("INSERT INTO notebooks (id, name, userId, createdAt, grade, subject, description, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    stmt.run(id, name.trim(), req.userId, Date.now(), grade || null, subject || null, description || null, type || 'normal');
+    res.json({ success: true, notebook: { id, name: name.trim(), grade, subject, description, type: type || 'normal' } });
   } catch (error: any) {
     console.error("Create Notebook Error:", error);
     res.status(500).json({ error: error.message || "创建错题本失败" });
@@ -842,7 +878,9 @@ export const getPapers = (req: AuthenticatedRequest, res: express.Response) => {
       userId: row.userId,
       createdAt: row.createdAt,
       questionIds: JSON.parse(row.questionIds),
-      mode: row.mode
+      mode: row.mode,
+      customImages: row.customImages ? JSON.parse(row.customImages) : {},
+      hiddenImages: row.hiddenImages ? JSON.parse(row.hiddenImages) : {}
     }));
 
     res.json(papers);
@@ -855,16 +893,16 @@ export const getPapers = (req: AuthenticatedRequest, res: express.Response) => {
 // 18. 保存试卷
 export const savePaper = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { title, questionIds, mode } = req.body;
+    const { title, questionIds, mode, customImages, hiddenImages } = req.body;
     if (!title || !questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
       return res.status(400).json({ error: "试卷数据不完整" });
     }
 
     const id = "paper_" + Math.random().toString(36).substring(2, 9);
     db.prepare(`
-      INSERT INTO papers (id, title, userId, createdAt, questionIds, mode)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, title.trim(), req.userId, Date.now(), JSON.stringify(questionIds), mode || 'original');
+      INSERT INTO papers (id, title, userId, createdAt, questionIds, mode, customImages, hiddenImages)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, title.trim(), req.userId, Date.now(), JSON.stringify(questionIds), mode || 'original', JSON.stringify(customImages || {}), JSON.stringify(hiddenImages || {}));
 
     res.json({ success: true, paper: { id, title: title.trim(), createdAt: Date.now() } });
   } catch (error: any) {
@@ -896,5 +934,22 @@ export const deletePaper = (req: AuthenticatedRequest, res: express.Response) =>
   } catch (error: any) {
     console.error("Delete Paper Error:", error);
     res.status(500).json({ error: error.message || "删除试卷失败" });
+  }
+};
+
+import { saveBase64Image, isBase64Image } from "../services/fileService";
+
+// 20. 上传单张图片（用于裁剪等功能）
+export const uploadImage = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { image } = req.body;
+    if (!image || !isBase64Image(image)) {
+      return res.status(400).json({ error: "无效的 Base64 图片数据" });
+    }
+    const url = saveBase64Image(image);
+    res.json({ success: true, url });
+  } catch (error: any) {
+    console.error("Upload Image Error:", error);
+    res.status(500).json({ error: error.message || "上传图片失败" });
   }
 };

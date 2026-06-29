@@ -48,6 +48,8 @@ export interface SavedPaper {
   createdAt: number;
   questionIds: string[];
   mode: 'original' | 'variant';
+  customImages?: Record<string, string>;
+  hiddenImages?: Record<string, boolean>;
 }
 
 
@@ -63,8 +65,9 @@ function getHeaders(): HeadersInit {
 
 // Net wrapper around SQLite API endpoints
 export const db = {
-  async getAllQuestions(): Promise<ErrorQuestion[]> {
-    const res = await fetch(`${API_PREFIX}/questions`, {
+  async getAllQuestions(notebookType?: string): Promise<ErrorQuestion[]> {
+    const query = notebookType ? `?notebookType=${notebookType}` : '';
+    const res = await fetch(`${API_PREFIX}/questions${query}`, {
       headers: getHeaders()
     });
     if (res.status === 401) {
@@ -202,11 +205,11 @@ export const db = {
     return res.json();
   },
 
-  async savePaper(title: string, questionIds: string[], mode: 'original' | 'variant'): Promise<void> {
+  async savePaper(title: string, questionIds: string[], mode: 'original' | 'variant', customImages?: Record<string, string>, hiddenImages?: Record<string, boolean>): Promise<void> {
     const res = await fetch(`${API_PREFIX}/papers`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ title, questionIds, mode })
+      body: JSON.stringify({ title, questionIds, mode, customImages, hiddenImages })
     });
     if (res.status === 401) {
       localStorage.removeItem('errorbook_token');
@@ -235,6 +238,19 @@ export const db = {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '删除试卷失败');
     }
+  },
+
+  async uploadImage(base64Str: string): Promise<string> {
+    const res = await fetch(`${API_PREFIX}/upload-image`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ image: base64Str })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || '上传图片失败');
+    }
+    return data.url;
   },
 
   async getTasks(): Promise<any[]> {
@@ -333,6 +349,7 @@ export const db = {
     notebookId?: string;
     masteryStatus?: string;
     search?: string;
+    notebookType?: string;
   }): Promise<{ total: number; page: number; limit: number; questions: ErrorQuestion[] }> {
     const query = new URLSearchParams({
       page: String(params.page),
@@ -340,7 +357,8 @@ export const db = {
       ...(params.subject ? { subject: params.subject } : {}),
       ...(params.notebookId ? { notebookId: params.notebookId } : {}),
       ...(params.masteryStatus ? { masteryStatus: params.masteryStatus } : {}),
-      ...(params.search ? { search: params.search } : {})
+      ...(params.search ? { search: params.search } : {}),
+      ...(params.notebookType ? { notebookType: params.notebookType } : {})
     }).toString();
 
     const res = await fetch(`${API_PREFIX}/questions?${query}`, {

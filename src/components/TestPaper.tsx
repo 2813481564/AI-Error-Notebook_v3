@@ -1,15 +1,21 @@
-import { useState } from 'react';
-import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2, RefreshCw, Save } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Printer, ArrowLeft, Eye, EyeOff, Edit, Check, Sparkles, Loader2, Undo2, RefreshCw, Save, Crop, ImageOff, Image as ImageIcon } from 'lucide-react';
 import { db, ErrorQuestion } from '../lib/db';
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
+import ReactCrop, { type Crop as CropType, type PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
 export default function TestPaper({ 
-  questions, 
+  questions,
+  initialCroppedImages,
+  initialHiddenImages,
   onBack 
 }: { 
   questions: ErrorQuestion[];
+  initialCroppedImages?: Record<string, string>;
+  initialHiddenImages?: Record<string, boolean>;
   onBack: () => void;
 }) {
   const [isTeacherMode, setIsTeacherMode] = useState(false);
@@ -29,6 +35,64 @@ export default function TestPaper({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [croppedImages, setCroppedImages] = useState<Record<string, string>>(initialCroppedImages || {});
+  const [hiddenImages, setHiddenImages] = useState<Record<string, boolean>>(initialHiddenImages || {});
+  const [cropModalData, setCropModalData] = useState<{ id: string; url: string } | null>(null);
+  const [crop, setCrop] = useState<CropType>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [isUploadingCrop, setIsUploadingCrop] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const handleSaveCrop = async () => {
+    if (!completedCrop || !imgRef.current || !cropModalData) return;
+    const image = imgRef.current;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    const pixelRatio = window.devicePixelRatio;
+
+    canvas.width = Math.floor(completedCrop.width * scaleX * pixelRatio);
+    canvas.height = Math.floor(completedCrop.height * scaleY * pixelRatio);
+
+    ctx.scale(pixelRatio, pixelRatio);
+    ctx.imageSmoothingQuality = 'high';
+
+    const cropX = completedCrop.x * scaleX;
+    const cropY = completedCrop.y * scaleY;
+
+    ctx.save();
+    ctx.translate(-cropX, -cropY);
+    ctx.drawImage(
+      image,
+      0,
+      0,
+      image.naturalWidth,
+      image.naturalHeight,
+      0,
+      0,
+      image.naturalWidth,
+      image.naturalHeight
+    );
+    ctx.restore();
+
+    const base64Image = canvas.toDataURL('image/jpeg', 0.95);
+    setIsUploadingCrop(true);
+    try {
+      const url = await db.uploadImage(base64Image);
+      setCroppedImages(prev => ({ ...prev, [cropModalData.id]: url }));
+      setCropModalData(null);
+      setCrop(undefined);
+      setCompletedCrop(undefined);
+    } catch (error: any) {
+      alert(error.message || '图片保存失败，请重试');
+    } finally {
+      setIsUploadingCrop(false);
+    }
+  };
+
   const handleOpenSaveModal = () => {
     setPaperTitleInput(title + (paperMode === 'variant' ? ' (AI变式)' : ''));
     setSaveError(null);
@@ -41,7 +105,7 @@ export default function TestPaper({
     setSaveError(null);
     try {
       const qIds = questions.map(q => q.id);
-      await db.savePaper(paperTitleInput.trim(), qIds, paperMode);
+      await db.savePaper(paperTitleInput.trim(), qIds, paperMode, croppedImages, hiddenImages);
       setShowSaveModal(false);
       alert('试卷保存成功！您可以到“我的试卷”中查看。');
     } catch (err: any) {
@@ -180,24 +244,33 @@ export default function TestPaper({
 
   // 决定最终渲染的题目列表
   const displayedQuestions = paperMode === 'original' 
-    ? questions.map((q, idx) => ({
-        id: q.id,
-        subject: q.subject,
-        text: q.originalText,
-        solution: q.solution,
-        errorReason: q.errorReason,
-        geometry: (q.errorReason === 'AI变式题' && q.similarQuestion)
-          ? (Array.isArray(q.similarQuestion) 
-              ? q.similarQuestion[0]?.geometry 
-              : q.similarQuestion.geometry)
-          : undefined
-      }))
+    ? questions.map((q, idx) => {
+        const isAIVariant = q.errorReason === 'AI变式题' || 
+                            (q.knowledgePoints && q.knowledgePoints.includes('AI变式题')) || 
+                            (q.id && q.id.startsWith('q_similar_')) || 
+                            (q.examDirection || '').includes('【变式强化题】');
+                            
+        return {
+          id: q.id,
+          subject: q.subject,
+          text: q.originalText,
+          solution: q.solution,
+          errorReason: q.errorReason,
+          imageUrl: isAIVariant ? undefined : q.imageUrl,
+          geometry: (isAIVariant && q.similarQuestion)
+            ? (Array.isArray(q.similarQuestion) 
+                ? q.similarQuestion[0]?.geometry 
+                : q.similarQuestion.geometry)
+            : undefined
+        };
+      })
     : variants.map((v, idx) => ({
         id: `variant-${idx}`,
         subject: v.subject || '数学',
         text: v.variantText,
         solution: v.solution,
         errorReason: 'AI 变式题',
+        imageUrl: v.imageUrl,
         geometry: v.geometry
       }));
 
@@ -429,6 +502,18 @@ export default function TestPaper({
                 </span>
                 <span className="no-print text-slate-400 font-bold flex items-center gap-3">
                   {paperMode === 'original' ? `# 错题 ID: ${q.id.slice(0, 8)}` : '# AI 命制变式题'}
+                  
+                  {q.imageUrl && hiddenImages[q.id] && (
+                    <button
+                      onClick={() => setHiddenImages(prev => { const next = {...prev}; delete next[q.id]; return next; })}
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                      title="恢复显示原图"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>恢复图片</span>
+                    </button>
+                  )}
+
                   {paperMode === 'variant' && (
                     <button
                       onClick={() => regenerateSingleVariant(index)}
@@ -446,6 +531,31 @@ export default function TestPaper({
                   )}
                 </span>
               </div>
+
+              {/* Question Image (if any) */}
+              {q.imageUrl && !hiddenImages[q.id] && (
+                <div className="py-2 flex justify-center group relative">
+                  <img src={croppedImages[q.id] || q.imageUrl} alt="题目图片" className="max-w-full max-h-[300px] object-contain rounded-lg border border-slate-200" />
+                  <div className="no-print absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => setCropModalData({ id: q.id, url: q.imageUrl! })}
+                      className="bg-slate-900/80 hover:bg-slate-900 text-white p-2 rounded-xl backdrop-blur-md cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-lg"
+                      title="自由裁剪图片"
+                    >
+                      <Crop className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">裁剪</span>
+                    </button>
+                    <button 
+                      onClick={() => setHiddenImages(prev => ({ ...prev, [q.id]: true }))}
+                      className="bg-rose-500/90 hover:bg-rose-600 text-white p-2 rounded-xl backdrop-blur-md cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-lg"
+                      title="删除原错题图片"
+                    >
+                      <ImageOff className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">删除图片</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Geometry Area */}
               {q.geometry && q.geometry.type !== 'none' && (
@@ -547,6 +657,84 @@ export default function TestPaper({
                     </>
                   ) : (
                     <span>确认保存</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Crop Modal */}
+      {cropModalData && (
+        <div className="no-print fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col w-full max-w-4xl max-h-[90vh]">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white z-10">
+              <h3 className="font-black text-slate-800 flex items-center gap-2">
+                <Crop className="w-5 h-5 text-blue-600" />
+                自由裁剪错题原图
+              </h3>
+              <button onClick={() => { setCropModalData(null); setCrop(undefined); setCompletedCrop(undefined); }} className="text-slate-400 hover:text-slate-600 font-bold px-2 py-1 cursor-pointer">关闭</button>
+            </div>
+            
+            <div className="p-6 bg-slate-100 flex-1 overflow-auto flex items-center justify-center min-h-[300px]">
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onComplete={(c) => setCompletedCrop(c)}
+                className="max-h-[60vh] rounded-xl shadow-md bg-white max-w-full"
+              >
+                <img 
+                  ref={imgRef}
+                  src={cropModalData.url} 
+                  alt="裁剪区域" 
+                  className="max-h-[60vh] w-auto object-contain pointer-events-none" 
+                  crossOrigin="anonymous"
+                />
+              </ReactCrop>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-white flex justify-between items-center shrink-0 z-10 flex-wrap gap-4">
+              <span className="text-xs text-slate-500 font-bold hidden sm:inline-block">提示：在图片上拖拽框选您想要保留的区域，不框选则取消</span>
+              <div className="flex gap-2 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => { setCropModalData(null); setCrop(undefined); setCompletedCrop(undefined); }}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  取消
+                </button>
+                {croppedImages[cropModalData.id] && (
+                  <button
+                    onClick={() => {
+                      setCroppedImages(prev => {
+                        const next = { ...prev };
+                        delete next[cropModalData.id];
+                        return next;
+                      });
+                      setCropModalData(null);
+                      setCrop(undefined);
+                      setCompletedCrop(undefined);
+                    }}
+                    className="px-5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200 font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    恢复原图
+                  </button>
+                )}
+                <button
+                  onClick={handleSaveCrop}
+                  disabled={!completedCrop?.width || !completedCrop?.height || isUploadingCrop}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl transition shadow-md shadow-blue-500/10 cursor-pointer flex items-center gap-1.5"
+                >
+                  {isUploadingCrop ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      确认裁剪
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      确认裁剪
+                    </>
                   )}
                 </button>
               </div>

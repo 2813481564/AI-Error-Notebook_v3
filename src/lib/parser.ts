@@ -1,6 +1,8 @@
 export function parseIndividualQuestions(text: string): { id: string; number: string; content: string }[] {
   if (!text) return [];
-  const regex = /(?:^|\n)\s*([0-9一二三四五六七八九十]+[.\u3001、\uFF0E\-\s_]|第[0-9一二三四五六七八九十]+[题问小题步]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六七八九十]+）)/g;
+  // 移除对 (1) 和 （1） 的匹配，防止将一道大题内的多个小问强行拆散成多个独立的卡片
+  // 扩展匹配模式，覆盖更多样的题号标记，例如：5、(6)等
+  const regex = /(?:^|\n)\s*([0-9一二三四五六七八九十]+[\.\u3001、\uFF0E\-\s_\)\(]|第[0-9一二三四五六七八九十]+[题问小题步])/g;
   
   const matches: { index: number; text: string }[] = [];
   let match;

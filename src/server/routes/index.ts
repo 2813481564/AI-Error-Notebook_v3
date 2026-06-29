@@ -44,6 +44,8 @@ router.get("/papers", requireAuth, qCtrl.getPapers);
 router.post("/papers", requireAuth, qCtrl.savePaper);
 router.delete("/papers/:id", requireAuth, qCtrl.deletePaper);
 
+router.post("/upload-image", requireAuth, qCtrl.uploadImage);
+
 router.get("/notebooks", requireAuth, qCtrl.getNotebooks);
 router.post("/notebooks", requireAuth, qCtrl.createNotebook);
 router.put("/notebooks/:id", requireAuth, qCtrl.updateNotebook);

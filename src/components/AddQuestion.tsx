@@ -231,7 +231,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
   // 获取错题本列表
   useEffect(() => {
     const token = localStorage.getItem('errorbook_token');
-    fetch('/api/notebooks', {
+    fetch('/api/notebooks?type=normal', {
       headers: {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
@@ -283,7 +283,8 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
           name: nbForm.name.trim(),
           grade: nbForm.grade,
           subject: nbForm.subject,
-          description: nbForm.description
+          description: nbForm.description,
+          type: 'normal'
         })
       });
       const data = await res.json();

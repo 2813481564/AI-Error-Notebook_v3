@@ -12,9 +12,10 @@ import CreatePaperExercise from './components/CreatePaperExercise';
 import SavedPapers from './components/SavedPapers';
 import TaskCenter from './components/TaskCenter';
 import UserProfile, { UserAvatar } from './components/UserProfile';
+import AIVariationLibrary from './components/AIVariationLibrary';
 import { db } from './lib/db';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation';
 
 const API_PREFIX = '/api';
 
@@ -22,6 +23,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [showSqlTip, setShowSqlTip] = useState(false);
   const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
+  const [paperOptions, setPaperOptions] = useState<{ customImages?: Record<string, string>, hiddenImages?: Record<string, boolean> }>({});
   const [paperSourceView, setPaperSourceView] = useState<View>('library');
   const [libraryNotebookId, setLibraryNotebookId] = useState<string | null>(null);
   const [librarySearchKey, setLibrarySearchKey] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export default function App() {
     searchKey?: string | null;
     masteryStatus?: 'all' | 'not_mastered' | 'mastered' | null;
   }) => {
-    if (view === 'library') {
+    if (view === 'library' || view === 'aiVariation') {
       setLibraryNotebookId(params?.notebookId !== undefined ? params.notebookId : null);
       setLibrarySearchKey(params?.searchKey || null);
       setLibraryMasteryStatus(params?.masteryStatus || null);
@@ -677,6 +679,20 @@ export default function App() {
             <span>我的错题本</span>
           </button>
 
+          <button
+            onClick={() => handleNavigate('aiVariation')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'aiVariation'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+          >
+            {currentView === 'aiVariation' && (
+              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+            )}
+            <BookOpen className="w-4 h-4 ml-1" />
+            <span>AI变题库</span>
+          </button>
+
           {role === 'admin' && (
             <button
               onClick={() => setCurrentView('tasks')}
@@ -905,6 +921,21 @@ export default function App() {
                 }}
               />
             )}
+            {currentView === 'aiVariation' && (
+              <AIVariationLibrary
+                onNavigate={handleNavigate}
+                userInfo={userInfo}
+                onRefreshUserInfo={fetchUserInfo}
+                initialNotebookId={libraryNotebookId}
+                initialSearchKey={librarySearchKey}
+                initialMasteryStatus={libraryMasteryStatus}
+                onGeneratePaper={(selected) => {
+                  setPaperQuestions(selected);
+                  setPaperSourceView('aiVariation');
+                  setCurrentView('paper');
+                }}
+              />
+            )}
             {currentView === 'exercise' && (
               <CreatePaperExercise
                 onNavigate={handleNavigate}
@@ -918,8 +949,9 @@ export default function App() {
             {currentView === 'papers' && (
               <SavedPapers
                 onNavigate={handleNavigate}
-                onOpenPaper={(selected) => {
+                onOpenPaper={(selected, options) => {
                   setPaperQuestions(selected);
+                  setPaperOptions(options || {});
                   setPaperSourceView('papers');
                   setCurrentView('paper');
                 }}
@@ -949,6 +981,8 @@ export default function App() {
             {currentView === 'paper' && (
               <TestPaper
                 questions={paperQuestions}
+                initialCroppedImages={paperOptions.customImages}
+                initialHiddenImages={paperOptions.hiddenImages}
                 onBack={() => setCurrentView(paperSourceView)}
               />
             )}

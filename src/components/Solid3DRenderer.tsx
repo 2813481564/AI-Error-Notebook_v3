@@ -13,6 +13,12 @@ function RenderCylinder({ s }: { s: CylinderSolid }) {
 
   // 切割面（水平椭圆），从顶部向下偏移
   const cuts = s.cuts ?? [];
+  
+  // 统计水平切割的数量，用于前端接管等距计算（防御 AI 算错间距）
+  const horizontalCutsCount = cuts.filter(c => typeof c === 'number' || (typeof c === 'object' && c.type === 'horizontal')).length;
+  const horizontalSpacing = horizontalCutsCount > 0 ? h / (horizontalCutsCount + 1) : 0;
+  let currentHorizontalIndex = 0;
+
   // 收集需要渲染在最顶层的切割线（顶面切线与前面竖线）
   const frontCutLines: React.JSX.Element[] = [];
 
@@ -28,7 +34,9 @@ function RenderCylinder({ s }: { s: CylinderSolid }) {
       {/* 切割面（水平或竖直） */}
       {cuts.map((cut, i) => {
         if (typeof cut === 'number' || (typeof cut === 'object' && cut.type === 'horizontal')) {
-          const offset = typeof cut === 'number' ? cut : cut.offset;
+          currentHorizontalIndex++;
+          // 强制前端接管间距计算，忽略 AI 给出的错误 offset
+          const offset = horizontalSpacing * currentHorizontalIndex;
           const cutY = cy + offset;
           return (
             <ellipse

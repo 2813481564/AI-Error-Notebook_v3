@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
-import { Sparkles, ListChecks, Search, BookOpen, Check, HelpCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, ListChecks, Search, BookOpen, Check, HelpCircle, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 import FormattedMath from './FormattedMath';
 
 interface CreatePaperExerciseProps {
@@ -206,7 +206,7 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
         // ======================== 智能一键组卷 ========================
         <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/60 shadow-sm space-y-6">
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 学科筛选 */}
             {/* <div className="space-y-2">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
@@ -229,17 +229,24 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                 <span>归属错题本</span>
               </label>
-              <select
-                value={smartNotebook}
-                onChange={e => setSmartNotebook(e.target.value)}
-                className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none text-xs font-extrabold text-slate-700 transition-all cursor-pointer"
-              >
-                <option value="all">不限错题本</option>
-                <option value="unclassified">未分类错题</option>
-                {notebooks.map(nb => (
-                  <option key={nb.id} value={nb.id}>{nb.name}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={smartNotebook}
+                  onChange={e => setSmartNotebook(e.target.value)}
+                  className="appearance-none w-full min-w-[200px] py-3.5 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none text-xs font-extrabold text-slate-700 transition-all cursor-pointer leading-relaxed"
+                >
+                  <option value="all">不限错题本</option>
+                  <option value="unclassified">未分类错题</option>
+                  {notebooks.filter(nb => nb.type !== 'variation').map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name}</option>
+                  ))}
+                  {notebooks.some(nb => nb.type === 'variation') && <optgroup label="AI变题库" />}
+                  {notebooks.filter(nb => nb.type === 'variation').map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name} (AI变题)</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
             </div>
 
             {/* 掌握状态 */}
@@ -248,15 +255,18 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 <span>错题掌握程度</span>
               </label>
-              <select
-                value={smartMastery}
-                onChange={e => setSmartMastery(e.target.value)}
-                className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none text-xs font-extrabold text-slate-700 transition-all cursor-pointer"
-              >
-                <option value="all">不限掌握状态</option>
-                <option value="not_mastered">未掌握（推荐强化）</option>
-                <option value="mastered">已掌握</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={smartMastery}
+                  onChange={e => setSmartMastery(e.target.value)}
+                  className="appearance-none w-full min-w-[200px] py-3.5 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none text-xs font-extrabold text-slate-700 transition-all cursor-pointer leading-relaxed"
+                >
+                  <option value="all">不限掌握状态</option>
+                  <option value="not_mastered">未掌握（推荐强化）</option>
+                  <option value="mastered">已掌握</option>
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
             </div>
           </div>
 
@@ -393,36 +403,49 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <select
-                value={manualSubject}
-                onChange={e => setManualSubject(e.target.value)}
-                className="py-2.5 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer flex-1 sm:flex-initial"
-              >
-                <option value="all">所有学科</option>
-                {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <div className="relative flex-1 sm:flex-initial min-w-[130px]">
+                <select
+                  value={manualSubject}
+                  onChange={e => setManualSubject(e.target.value)}
+                  className="appearance-none w-full py-2.5 pl-4 pr-9 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">所有学科</option>
+                  {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
 
-              <select
-                value={manualNotebook}
-                onChange={e => setManualNotebook(e.target.value)}
-                className="py-2.5 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer flex-1 sm:flex-initial"
-              >
-                <option value="all">所有错题本</option>
-                <option value="unclassified">未分类错题</option>
-                {notebooks.map(nb => (
-                  <option key={nb.id} value={nb.id}>{nb.name}</option>
-                ))}
-              </select>
+              <div className="relative flex-1 sm:flex-initial min-w-[130px]">
+                <select
+                  value={manualNotebook}
+                  onChange={e => setManualNotebook(e.target.value)}
+                  className="appearance-none w-full py-2.5 pl-4 pr-9 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">所有错题本</option>
+                  <option value="unclassified">未分类错题</option>
+                  {notebooks.filter(nb => nb.type !== 'variation').map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name}</option>
+                  ))}
+                  {notebooks.some(nb => nb.type === 'variation') && <optgroup label="AI变题库" />}
+                  {notebooks.filter(nb => nb.type === 'variation').map(nb => (
+                    <option key={nb.id} value={nb.id}>{nb.name} (AI变题)</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
 
-              <select
-                value={manualMastery}
-                onChange={e => setManualMastery(e.target.value as any)}
-                className="py-2.5 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer flex-1 sm:flex-initial"
-              >
-                <option value="all">所有掌握状态</option>
-                <option value="not_mastered">未掌握</option>
-                <option value="mastered">已掌握</option>
-              </select>
+              <div className="relative flex-1 sm:flex-initial min-w-[130px]">
+                <select
+                  value={manualMastery}
+                  onChange={e => setManualMastery(e.target.value as any)}
+                  className="appearance-none w-full py-2.5 pl-4 pr-9 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">所有掌握状态</option>
+                  <option value="not_mastered">未掌握</option>
+                  <option value="mastered">已掌握</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
 
               <button
                 onClick={handleSelectAll}

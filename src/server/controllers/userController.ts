@@ -227,7 +227,12 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
     else if (currentRole === 'vip') capacityLimit = parseInt(getSetting("CAPACITY_VIP", "500"));
     else capacityLimit = parseInt(getSetting("CAPACITY_USER", "50"));
 
-    const countRow = db.prepare("SELECT COUNT(*) as count FROM questions WHERE userId = ?").get(username) as { count: number } | undefined;
+    const countRow = db.prepare(`
+      SELECT COUNT(q.id) as count 
+      FROM questions q
+      LEFT JOIN notebooks n ON q.notebookId = n.id
+      WHERE q.userId = ? AND (n.type = 'normal' OR q.notebookId IS NULL OR q.notebookId = '')
+    `).get(username) as { count: number } | undefined;
     const questionCount = countRow ? countRow.count : 0;
 
     // 如果天数变了，使用次数今天重置

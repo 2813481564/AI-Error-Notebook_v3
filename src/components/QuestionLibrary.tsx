@@ -284,7 +284,8 @@ export default function QuestionLibrary({
       page: 1,
       limit: 100000,
       notebookId: activeNotebookId,
-      search: debouncedSearch
+      search: debouncedSearch,
+      notebookType: 'normal'
     }).then(res => {
       const total = res.questions.length;
       const mastered = res.questions.filter(q => q.masteryStatus === 'mastered').length;
@@ -309,7 +310,7 @@ export default function QuestionLibrary({
 
   const loadNotebooks = () => {
     const token = localStorage.getItem('errorbook_token');
-    fetch('/api/notebooks', {
+    fetch('/api/notebooks?type=normal', {
       headers: {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
@@ -332,7 +333,8 @@ export default function QuestionLibrary({
       subject: filterSubject,
       notebookId: activeNotebookId,
       masteryStatus: filterMastery,
-      search: debouncedSearch
+      search: debouncedSearch,
+      notebookType: 'normal'
     }).then(res => {
       setQuestions(res.questions);
       setTotalQuestions(res.total);
@@ -368,7 +370,7 @@ export default function QuestionLibrary({
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
-          body: JSON.stringify(nbForm)
+          body: JSON.stringify({ ...nbForm, type: 'normal' })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '创建失败');
@@ -901,19 +903,97 @@ export default function QuestionLibrary({
 
                 {filtered.map((q, index) => {
                   const isSelected = selectedIds.has(q.id);
+                  const isPending = q.status === 'pending';
+                  const isAIVariant = q.originalText.includes('【AI变式生成中...】');
+                  const isTimeout = isPending && isAIVariant && (Date.now() - q.createdAt > 10 * 60 * 1000); // 10分钟超时
                   const formattedDate = format(new Date(q.createdAt), 'MM/dd');
+
+                  if (isPending && isAIVariant) {
+                    if (isTimeout) {
+                      // 超时/失效卡片
+                      return (
+                        <div key={q.id} className="relative group bg-rose-50/30 rounded-3xl border border-rose-200 p-5 gap-5 flex items-stretch shadow-sm">
+                          <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-white border border-rose-100 flex flex-col items-center justify-center shrink-0">
+                            <span className="text-3xl mb-1">❌</span>
+                            <span className="text-[10px] font-bold text-rose-500">生成失败</span>
+                          </div>
+                          <div className="flex-1 flex flex-col justify-center min-w-0">
+                            <h4 className="text-sm md:text-base font-black text-rose-700 mb-2 flex items-center gap-2">
+                              ⚠️ 变式题生成失败或已超时
+                            </h4>
+                            <p className="text-xs text-rose-500/80 font-bold leading-relaxed mb-4">
+                              该任务等待已超过 10 分钟，可能由于您的网络波动、意外刷新页面或 AI 接口断开导致本地数据进程丢失。这只是一个占位符残余，请直接删除。
+                            </p>
+                            <div className="mt-auto">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(q.id); }}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-500/20 cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span>删除失效任务残余</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      // 极致加载骨架屏卡片 (Wow UX)
+                      return (
+                        <div key={q.id} className="relative group bg-white rounded-3xl border border-blue-200 ring-2 ring-blue-500/10 p-5 gap-5 flex flex-col md:flex-row items-stretch shadow-md overflow-hidden">
+                          {/* 光效扫描线动画 */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-50/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                          
+                          {/* 左侧封面 */}
+                          <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shrink-0 relative z-10">
+                            <Sparkles className="w-8 h-8 text-blue-500 animate-pulse mb-2" />
+                            <span className="text-[10px] font-black tracking-widest uppercase text-blue-600">AI 命题中</span>
+                          </div>
+
+                          {/* 右侧骨架屏区 */}
+                          <div className="flex-1 flex flex-col min-w-0 relative z-10 space-y-4 pt-1">
+                            <div className="flex items-center gap-3">
+                              <span className="inline-flex items-center gap-1.5 bg-blue-100/50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-black shadow-sm">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> 正在智能生成
+                              </span>
+                              <div className="h-4 bg-slate-100 rounded-md w-1/3 animate-pulse"></div>
+                            </div>
+                            
+                            <div className="space-y-2.5">
+                              <div className="h-3 bg-slate-50 rounded w-full animate-pulse"></div>
+                              <div className="h-3 bg-slate-50 rounded w-5/6 animate-pulse"></div>
+                              <div className="h-3 bg-slate-50 rounded w-4/6 animate-pulse"></div>
+                            </div>
+
+                            <div className="mt-auto border-t border-slate-50 pt-3 flex items-center gap-2">
+                              <div className="h-6 bg-blue-50 rounded-lg w-20 animate-pulse"></div>
+                              <div className="h-6 bg-slate-50 rounded-lg w-16 animate-pulse"></div>
+                              <div className="h-6 bg-slate-50 rounded-lg w-24 animate-pulse"></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  }
+
                   return (
                     <div
                       key={q.id}
-                      className={`relative group bg-white rounded-3xl border transition-all flex flex-col md:flex-row p-5 gap-5 items-stretch ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:shadow-md hover:border-blue-400'
-                        }`}
+                      className={`relative group bg-white rounded-3xl border transition-all flex flex-col md:flex-row p-5 gap-5 items-stretch ${
+                        isPending ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30 shadow-md' :
+                        isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:shadow-md hover:border-blue-400'
+                      }`}
                     >
                       {/* 卡片左侧：缩略图/原图 */}
                       <div
-                        onClick={() => setSelectedQuestion(q)}
-                        className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer shadow-inner"
+                        onClick={() => !isPending && setSelectedQuestion(q)}
+                        className={`w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0 shadow-inner ${isPending ? 'cursor-default' : 'cursor-pointer'}`}
                       >
-                        {q.imageUrl ? (
+                        {isPending ? (
+                          <div className="flex flex-col items-center justify-center text-amber-500 space-y-2">
+                            <Sparkles className="w-8 h-8 animate-pulse" />
+                            <span className="text-[10px] font-black tracking-widest uppercase">AI 演算中</span>
+                          </div>
+                        ) : q.imageUrl ? (
                           <img src={q.imageUrl} alt="缩略图" className="w-full h-full object-cover rounded-2xl hover:scale-105 transition duration-300" />
                         ) : (
                           <div className="flex flex-col items-center justify-center text-slate-350">
@@ -928,11 +1008,18 @@ export default function QuestionLibrary({
                         {/* 第一行：序号、题干与日期 */}
                         <div className="flex justify-between items-start gap-4 mb-2">
                           <div
-                            onClick={() => setSelectedQuestion(q)}
-                            className="text-slate-800 font-bold text-sm md:text-base leading-relaxed line-clamp-2 cursor-pointer flex-1"
+                            onClick={() => !isPending && setSelectedQuestion(q)}
+                            className={`font-bold text-sm md:text-base leading-relaxed line-clamp-2 flex-1 ${isPending ? 'text-amber-700 cursor-default animate-pulse' : 'text-slate-800 cursor-pointer'}`}
                           >
                             <span className="mr-1.5">{index + 1 + (currentPage - 1) * pageSize}.</span>
-                            <InlineContent text={q.originalText} />
+                            {isPending ? (
+                              <span className="inline-flex items-center gap-2 bg-amber-100/50 px-2 py-0.5 rounded-lg border border-amber-200/50">
+                                <Loader2 className="w-4 h-4 animate-spin inline" />
+                                {q.originalText}
+                              </span>
+                            ) : (
+                              <InlineContent text={q.originalText} />
+                            )}
                           </div>
                           <div className="text-xs text-slate-400 font-extrabold shrink-0 pt-0.5 flex items-center gap-1">
                             {formattedDate}
@@ -941,7 +1028,7 @@ export default function QuestionLibrary({
 
                         {/* 第二行：错因分析 */}
                         {q.errorAnalysis && (() => {
-                          const cleanText = q.errorAnalysis.replace(/\n+/g, ' ').trim();
+                          const cleanText = q.errorAnalysis.replace(/\n+/g, ' ').replace(/>\s?/g, '').trim();
                           return (
                             <div
                               onClick={() => setSelectedQuestion(q)}
@@ -1035,22 +1122,26 @@ export default function QuestionLibrary({
                           {/* 右侧：已/未掌握状态胶囊 & 删除按钮 */}
                           <div className="flex items-center gap-2 shrink-0">
                             <button
-                              onClick={(e) => handleToggleMastery(q.id, q.masteryStatus, e)}
-                              className={`text-xs font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1 cursor-pointer border ${q.masteryStatus === 'mastered'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                : 'bg-rose-50/70 text-rose-600 border-rose-200/60 hover:bg-rose-100/80'
+                              onClick={(e) => !isPending && handleToggleMastery(q.id, q.masteryStatus, e)}
+                              disabled={isPending}
+                              className={`text-xs font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1 border ${
+                                isPending ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-50' :
+                                q.masteryStatus === 'mastered'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
+                                : 'bg-rose-50/70 text-rose-600 border-rose-200/60 hover:bg-rose-100/80 cursor-pointer'
                                 }`}
-                              title="点击一键切换掌握状态"
+                              title={isPending ? "生成中，暂不可操作" : "点击一键切换掌握状态"}
                             >
                               {q.masteryStatus === 'mastered' ? '已掌握' : '未掌握'}
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDelete(q.id);
+                                if (!isPending) handleDelete(q.id);
                               }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="删除此错题"
+                              disabled={isPending}
+                              className={`p-1.5 rounded-lg transition-colors ${isPending ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'}`}
+                              title={isPending ? "生成中不可删除，请等待完成后操作" : "删除此错题"}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

@@ -56,7 +56,8 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
         name: newNotebookName.trim(),
         grade: newNotebookGrade,
         subject: newNotebookSubject,
-        description: newNotebookDescription.trim() || null
+        description: newNotebookDescription.trim() || null,
+        type: 'normal'
       })
     })
       .then(res => {
@@ -88,6 +89,15 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
       iconBg: 'bg-blue-50 text-blue-600 border border-blue-100/50',
       hoverBorder: 'hover:border-blue-200 hover:shadow-blue-500/5',
       view: 'library',
+      show: true,
+    },
+    {
+      title: 'AI变题库',
+      desc: '管理举一反三生成的变式题',
+      icon: BookOpen,
+      iconBg: 'bg-purple-50 text-purple-600 border border-purple-100/50',
+      hoverBorder: 'hover:border-purple-200 hover:shadow-purple-500/5',
+      view: 'aiVariation',
       show: true,
     },
     {
@@ -143,7 +153,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
   useEffect(() => {
     const token = localStorage.getItem('errorbook_token');
 
-    const fetchQuestions = db.getAllQuestions();
+    const fetchQuestions = db.getAllQuestions('normal');
     const fetchNotebooks = fetch('/api/notebooks', {
       headers: {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -611,7 +621,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {notebooks.map((nb) => {
+            {notebooks.filter(nb => nb.type !== 'variation').map((nb) => {
               const nbQuestions = questions.filter(q => q.notebookId === nb.id);
               const totalCount = nbQuestions.length;
               const unmasteredCount = nbQuestions.filter(q => q.masteryStatus !== 'mastered').length;
