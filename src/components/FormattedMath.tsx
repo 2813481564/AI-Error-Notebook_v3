@@ -162,7 +162,39 @@ function NormalSegment({ text }: { text: string; key?: any }) {
 }
 
 export function InlineContent({ text }: { text: string }) {
-  // Parse inline math $...$
+  // If the text contains HTML structure tags (like table), splitting into React nodes 
+  // breaks the HTML because dangerouslySetInnerHTML fragments get auto-closed by the browser.
+  // We must process all $math$ and **bold** into raw HTML strings first, and render it whole.
+  if (/<(table|tbody|thead|tr|td|th)(>|\s[^>]*>)/i.test(text)) {
+    let processedHtml = text;
+    // Replace $math$ with Katex HTML
+    processedHtml = processedHtml.replace(/\$(.*?)\$/g, (match, rawMath) => {
+      try {
+        const sanitizedMath = rawMath
+          .replace(/\\\\/g, '\\')
+          .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+        const html = katex.renderToString(sanitizedMath, {
+          displayMode: false,
+          throwOnError: false,
+        });
+        return `<span class="inline-block mx-1 font-mono text-slate-950 bg-slate-50/50 border border-slate-200/50 rounded-xl px-2 py-0.5 text-xs font-semibold shadow-sm">${html}</span>`;
+      } catch (e) {
+        return match;
+      }
+    });
+
+    // Replace **bold** with <strong>
+    processedHtml = processedHtml.replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-slate-950 tracking-tight">$1</strong>');
+
+    return (
+      <span 
+        dangerouslySetInnerHTML={{ __html: processedHtml }} 
+        className="[&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_table]:text-sm [&_td]:border [&_td]:border-slate-300 [&_td]:p-2.5 [&_td]:text-center [&_td]:align-middle [&_th]:border [&_th]:border-slate-300 [&_th]:p-2.5 [&_th]:bg-slate-100 [&_th]:text-center [&_th]:font-bold" 
+      />
+    );
+  }
+
+  // Parse inline math $...$ (Standard non-HTML text path)
   const inlineMathSegments = text.split(/(\$.*?\$)/g);
 
   return (
@@ -205,21 +237,36 @@ export function InlineContent({ text }: { text: string }) {
 }
 
 function BoldTextRenderer({ text }: { text: string; key?: any }) {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+  // Safe split by <br/> to natively render line breaks without dangerous HTML
+  const brSegments = text.split(/<br\s*\/?>/gi);
 
   return (
     <>
-      {parts.map((part, pIdx) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          const cleanPart = part.slice(2, -2);
-          return (
-            <strong key={pIdx} className="font-extrabold text-slate-950 tracking-tight" id={`bold-text-${pIdx}`}>
-              {cleanPart}
-            </strong>
-          );
-        }
-        return part;
-      })}
+      {brSegments.map((brSeg, brIdx) => (
+        <React.Fragment key={brIdx}>
+          {brIdx > 0 && <br />}
+          {(() => {
+            const parts = brSeg.split(/(\*\*.*?\*\*)/g);
+            return parts.map((part, pIdx) => {
+              if (part.startsWith('**') && part.endsWith('**')) {
+                const cleanPart = part.slice(2, -2);
+                return (
+                  <strong key={pIdx} className="font-extrabold text-slate-950 tracking-tight" id={`bold-text-${pIdx}`}>
+                    {cleanPart}
+                  </strong>
+                );
+              }
+              
+              // Fallback to dangerouslySetInnerHTML for safe inline tags (b, i, u, strong, em)
+              if (/<(b|i|u|strong|em)(\/?>|\s[^>]*>)/i.test(part)) {
+                 return <span key={pIdx} dangerouslySetInnerHTML={{ __html: part }} />;
+              }
+              
+              return <React.Fragment key={pIdx}>{part}</React.Fragment>;
+            });
+          })()}
+        </React.Fragment>
+      ))}
     </>
   );
 }

@@ -7,6 +7,51 @@ import {
   sanitizeJsonString
 } from "../services/aiService";
 import { getSetting } from "../services/settingService";
+import { stringSimilarity } from "../utils/stringUtils";
+
+const GEOMETRY_PROMPT_TEMPLATE = `
+【几何图形数据规范（必须填写 geometry 字段）】
+根据题目类型填写 geometry.type：
+
+A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
+   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
+
+B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
+   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
+   shapes 坐标直接使用题目中的数学坐标值。
+
+C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
+   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上，合理分布在画面中。
+
+D) 立体几何类（有圆柱/圆锥/球/长方体等三维立体图形）: type="solid_3d"
+   使用 solids 数组（shapes 填 []），SVG坐标左上为(0,0)，x向右，y向下，画布800×320。
+   【极其重要 - 布局与嵌套】：
+   - 独立的图形（分别代表图1、图2等）必须使用不同的 cx 坐标水平隔开，绝对不能重叠！
+   - **例外（极度重要）**：如果题意是“将圆柱削成一个最大的圆锥”（如图3），你**必须**在同一个 cx 坐标处，同时放一个 'fill:"none"' 的圆柱和一个圆锥，让它们完全重叠，以此完美还原“圆锥在圆柱内部”的几何透视关系！
+   圆柱: {"type":"cylinder","cx":150,"cy":60,"rx":60,"ry":20,"h":140,"fill":"#dbeafe","stroke":"#374151","cuts":[]}
+     cx/cy:顶部椭圆圆心，rx:水平半轴，ry:垂直半轴，h:高度。
+     【极其重要 - 关于圆柱的切割 cuts】：
+     - 若为【横向水平切割】（截成n段），切 n-1 刀，增加 2(n-1) 个底面。cuts 填入向下偏移的像素值列表，如 [40, 80, 120]。**【防错警告】：如果横切成 n 段，你的 cuts 数组必须严格包含 n-1 个数值元素，绝不能少切！**
+     - 若为【纵向竖直切割】（沿直径切开），切 n 刀成 2n 块，增加 2n 个长方形截面。
+     - 【视觉排版要求】：对于纵切，若切成 2n 块（切 n 刀），你**必须在 cuts 中填入 n 个不同 angle 的 vertical 对象**（例如切 4 块填 2 个对象如 {"type":"vertical","angle":0.78} 和 {"type":"vertical","angle":2.35}），系统会自动渲染出完美的 3D 交叉切面！**注意：不要使用 0 和 1.57，它们会与圆柱外轮廓线重合导致图形隐身！**
+     - 【数学逻辑极度警告！！！】：在改变题目数字时，**必须保持原题的切割方式和顺序**！如果原题图1是纵切（偶数块），变式题图1也必须是纵切。**【推荐约束】：为了图形美观及符合考纲，纵切建议优先出“切成2块（两半）”或“交叉切成4块”。**如果切多块，题干必须表述为“过底面中心交叉纵切成 x 等份”。如果原题图2是横切，变式题图2也必须是横切（块数任意）。**绝对不允许写出“沿直径纵切成3块”这种违背几何常识的荒谬题目！**
+   圆锥: {"type":"cone","cx":150,"cy":230,"rx":70,"ry":23,"h":160,"fill":"#dcfce7","stroke":"#374151"}
+     cx/cy:底面椭圆圆心(底面在下)，h:锥高(向上)
+   球体: {"type":"sphere","cx":150,"cy":160,"r":80,"fill":"#fef9c3","stroke":"#374151"}
+   长方体: {"type":"cuboid","lx":60,"ty":80,"w":120,"h":100,"d":60,"fill":"#e0f2fe","stroke":"#374151"}
+   文字标签: {"type":"label_3d","text":"r","x":220,"y":250,"color":"#1e293b"}
+     【注意】：文字标签的 y 坐标必须放在图形正下方，绝对不要和图形的底边重合！例如，若圆柱 cy=60, h=140, ry=20，其底边 y=220，那么文字的 y 必须填 250！
+   辅助虚线: {"type":"dashed_line_3d","from":[100,150],"to":[200,150],"stroke":"#374151"}
+
+E) 纯计算/代数题，无需图形: type="none", shapes=[]
+
+shapes 元素格式（仅 A/B/C 类使用）：
+polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
+line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
+circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
+point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
+label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
+`;
 
 // 1. 分析图片并生成相似题目
 export const analyze = async (req: AuthenticatedRequest, res: express.Response) => {
@@ -37,27 +82,7 @@ export const analyze = async (req: AuthenticatedRequest, res: express.Response) 
 4. 知识点/图形/公式均不超出高中范围。
 5. 数学公式必须用标准 $ 或 $$ 包围。
 
-【几何图形数据规范（必须填写 geometry 字段）】
-根据题目类型填写 geometry.type：
-
-A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
-   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
-
-B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
-   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
-   shapes 坐标直接使用题目中的数学坐标值。
-
-C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
-   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上，合理分布在画面中。
-
-D) 纯计算/代数题，无需图形: type="none", shapes=[]
-
-shapes 元素格式：
-polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
-line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
-circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
-point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
-label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
+${GEOMETRY_PROMPT_TEMPLATE}
 
 请严格按以下 JSON 格式返回，不要包含 Markdown 代码块标记：
 {
@@ -144,13 +169,14 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
     let prompt = ``;
     if (isSingle) {
       prompt += `
-识别我提供的图片中的题目文本及手写内容。
+识别我提供的图片中的题目文本、配图信息及手写内容。
 【重要指令】：当前为单题提取模式。请不要将图片切分为多道题，只将其中的最核心的一道题完整提取出来，作为一个整体题目返回。
 我提供了一张【学生试卷/作业图片】（第一张图）。
 `;
     } else {
       prompt += `
-识别我提供的图片中的所有独立大题或子题（如"20."、"21."、"22."等）。
+识别我提供的图片中的所有独立题目。
+【大题合并铁律】：对于包含 (1)(2)(3) 等多个小问的综合题、阅读理解题、表格题，绝对禁止将小问拆分为独立题目！你必须将公共题干与所有小问作为一个不可分割的整体，完整保存在一个题目的 originalText 中。
 我提供了一张【学生试卷/作业图片】（第一张图）。
 `;
     }
@@ -162,20 +188,21 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
     }
     prompt += `
 【具体输出字段要求】：
-对于每一道独立的题目，请严格按照以下文本格式输出（不同题目之间用 ===题目分割=== 进行隔开，不要包含 Markdown 代码块标记如 \`\`\`）：
+请严格以 JSON 数组的形式返回（即使只有一题也要用数组包围），数组中的每个对象代表一道题，包含以下字段：
+- subject: [学科名称，如数学/物理/化学等]
+- boundingBox: [题目所在区域的矩形框坐标，格式为 {"x": 10, "y": 20, "w": 400, "h": 200}]
+- originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
+- studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
+- standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
 
-===题目分割===
-学科: [学科名称，如数学/物理/化学等]
-题干: [本题的高精度完整题干印刷体文字，包含题号，绝对不能写“略”]
-学生作答: [本题区域内学生手写作答出的答案或步骤，若无则留空]
-标准答案: [根据上传的【标准答案参考图片】或【参考答案文本】匹配得到的本题标准参考答案，包含推导过程和最终正确答案，若无则留空]
-
-【注意事项】：
-1. 不要输出任何解释性前言或后缀（如“以下是识别内容：”），直接以第一个 ===题目分割=== 开始。
-2. 公式必须用标准的 $ 或 $$ 包围输出为 LaTeX 格式。
+【深度校准与格式规约（极度重要）】：
+1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
+2. **表格原生化**：若题目包含表格，绝对禁止使用 Markdown 的 | 语法！必须使用原生的 HTML 标签（<table>, <tr>, <td>）重建表格，并在表格内正常使用 $ 包围 LaTeX 公式。
+3. **公式规范**：公式必须用标准的 $ 或 $$ 包围输出为 LaTeX 格式。注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\\\pi, \\\\frac），否则会导致 JSON 解析失败！
 `;
 
-    const systemPrompt = `你是一个只输出结构化纯文本的 OCR 助手。你的整个回复必须严格按照 ===题目分割=== 的格式输出各字段，不要包含 Markdown 代码块标记（如 \`\`\`）或任何额外的多余废话。`;
+    const systemPrompt = "你是一个只输出结构化 JSON 的 OCR 助手。你的整个回复必须是一个合法的 JSON 数组，不要包含 Markdown 代码块标记（如 ```json）或任何额外的多余废话。";
 
     const response = await generateContentWithFallback({
       contents: [
@@ -188,6 +215,12 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
                 mimeType: mimeType || 'image/jpeg'
               }
             },
+            ...(answerImageBase64 ? [{
+              inlineData: {
+                data: answerImageBase64.split(',')[1] || answerImageBase64,
+                mimeType: answerMimeType || 'image/jpeg'
+              }
+            }] : []),
             { text: prompt }
           ]
         }
@@ -203,61 +236,33 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
     if (!text) throw new Error("Empty response from AI");
 
     const result: any[] = [];
-    const parts = text.split(/===+题目分割===+/);
-    for (const part of parts) {
-      const trimmedPart = part.trim();
-      if (!trimmedPart) continue;
-
-      const subjectMatch = trimmedPart.match(/学科:\s*(.+)/);
-      const subject = subjectMatch ? subjectMatch[1].trim() : "数学";
-
-      const qIndex = trimmedPart.indexOf("题干:");
-      const aIndex = trimmedPart.indexOf("学生作答:");
-      const sIndex = trimmedPart.indexOf("标准答案:");
-
-      let originalText = "";
-      let studentAnswer = "";
-      let standardAnswer = "";
-
-      if (qIndex !== -1) {
-        if (aIndex !== -1) {
-          originalText = trimmedPart.substring(qIndex + 3, aIndex).trim();
-          if (sIndex !== -1) {
-            studentAnswer = trimmedPart.substring(aIndex + 5, sIndex).trim();
-            standardAnswer = trimmedPart.substring(sIndex + 5).trim();
-          } else {
-            studentAnswer = trimmedPart.substring(aIndex + 5).trim();
-          }
-        } else {
-          if (sIndex !== -1) {
-            originalText = trimmedPart.substring(qIndex + 3, sIndex).trim();
-            standardAnswer = trimmedPart.substring(sIndex + 5).trim();
-          } else {
-            originalText = trimmedPart.substring(qIndex + 3).trim();
-          }
-        }
-      } else {
-        originalText = trimmedPart.replace(/学科:\s*.+/, "").trim();
+    try {
+      const extracted = extractJsonString(text);
+      const parsedData = JSON.parse(sanitizeJsonString(extracted));
+      const items = Array.isArray(parsedData) ? parsedData : [parsedData];
+      
+      for (const item of items) {
+         if (!item.originalText && !item.studentAnswer) continue;
+         result.push({
+           subject: item.subject || "数学",
+           originalText: item.originalText || "",
+           studentAnswer: item.studentAnswer || "",
+           standardAnswer: item.standardAnswer || "",
+           visualContext: item.visualContext || "",
+           boundingBox: item.boundingBox || { x: 0, y: 0, w: 0, h: 0 }
+         });
       }
-
-      if (originalText) {
-        result.push({
-          subject: subject.substring(0, 10),
-          originalText,
-          studentAnswer,
-          standardAnswer
-        });
-      }
+    } catch (e) {
+       console.error("Failed to parse extract JSON", e, text);
+       result.push({
+         subject: "数学",
+         originalText: text,
+         studentAnswer: "",
+         standardAnswer: "",
+         visualContext: ""
+       });
     }
 
-    if (result.length === 0) {
-      result.push({
-        subject: "数学",
-        originalText: text,
-        studentAnswer: "",
-        standardAnswer: ""
-      });
-    }
     // 二阶段逻辑纠错
     const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
     if (result.length > 0) {
@@ -265,7 +270,7 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
         const q = result[i];
         if (q.studentAnswer) {
           try {
-            const correctPrompt = `作为一名严谨的数学教师校对员。以下是粗提取的题目文本和学生手写作答。手写作答中可能因笔画粘连导致数字识别错误（例如 0.6 被误认成 0.5、+被误认成4等）。请结合题目上下文数学逻辑（如分配律、计算步骤等），在不改变学生解题本意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
+            const correctPrompt = `作为一名严谨的数学教师校对员。手写作答中可能因笔画粘连导致数字识别错误（例如 0.6 被误认成 0.5、+被误认成4等），或将圆周率“\\pi”误认成汉字“元”、“兀”。请结合上下文，在不改变学生解题本意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
 【原题干】：${q.originalText}
 【手写作答】：${q.studentAnswer}
 【参考答案】：${q.standardAnswer || '无'}
@@ -279,7 +284,10 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
             });
             const correctedText = (correctionResponse.text || '').trim();
             if (correctedText && !correctedText.startsWith('无') && !correctedText.startsWith('空')) {
-              q.studentAnswer = correctedText;
+              const similarity = stringSimilarity(q.studentAnswer, correctedText);
+              if (similarity > 0.5) {
+                q.studentAnswer = correctedText;
+              }
             }
           } catch (e) {
             console.warn("AI 二阶段校对失败，跳过", e);
@@ -306,7 +314,7 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 诊断功能" });
     }
 
-    let { subject, originalText, studentAnswer, standardAnswer, thinkingMode, grade, notebookId } = req.body;
+    let { subject, originalText, visualContext, studentAnswer, standardAnswer, thinkingMode, grade, notebookId } = req.body;
     if (!originalText) {
       return res.status(400).json({ error: "Missing originalText" });
     }
@@ -335,7 +343,8 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
 
 【题目信息】
 - 学科: ${subject || '未指定'}
-- 题干: ${originalText}
+- 题干纯文本: ${originalText}
+- 题干配图/几何拓扑结构描述: ${visualContext || '无图'}
 ${standardAnswerSection}
 - 学生作答内容: ${studentAnswer || '（无学生作答）'}
 - 难度与年级限制: ${gradeConstraint}
@@ -348,7 +357,7 @@ ${standardAnswerSection}
    - 【逻辑/建模】：思路跑偏、公式错用、图形构造错误、无法建立模型
    - 【计算/执行】：计算粗心、符号错误、方程解错、单位换算错误
    - 【规范/表达】：步骤跳跃、格式不规范、字迹潦草
-   如果未提供学生作答内容，则根据考点推测最易犯的错误标签输出。
+   【极度重要】：如果“学生作答内容”为空，绝对禁止强行挑选上述错误标签！必须强制输出标签："【知识盲区/无思路】完全留白"。
 4. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
 5. **错误原因分析** ("errorAnalysis"):
    - 如果 "学生作答内容" 不为空，请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
@@ -357,7 +366,7 @@ ${standardAnswerSection}
      \\n❌ 错在哪？
      - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
      - [用对话语气指出错误] -> 你误把...当成了...！
-   - 如果为空，请结合本题考点分析最容易掉入的【常见错误陷阱】及【根本原因】。
+   - 如果为空，请判定为【知识盲区/无思路】，跳过所有的指责，直接输出该题的解题破局点（切入点）、思维导图提示和所需的关键公式，用温和鼓励的语气指导学生第一步该如何动笔。
 6. **学生本题所得评分** ("score"):
    - 根据学生的解答步骤与提供的参考标准答案的比对程度，评估学生本题的最终得分，0 到 100 之间的整数。
 
@@ -590,43 +599,7 @@ export const paperVariants = async (req: AuthenticatedRequest, res: express.Resp
 4. 对变式题目提供标准、严谨、逻辑清晰的详细名师解题步骤。
 5. 数学公式必须用标准 $ 或 $$ 包围。**注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\\\pi, \\\\frac, \\\\text），否则会导致 JSON 解析失败！**
 
-【几何图形数据规范（仅当题目涉及几何图形时填写 geometry 字段）】
-根据题目类型填写 geometry.type：
-A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
-   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
-B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
-   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
-   shapes 坐标直接使用题目中的数学坐标值。
-C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
-   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上。
-
-shapes 元素格式：
-polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
-line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
-circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
-point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
-label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
-
-D) 立体几何类（有圆柱/圆锥/球/长方体等三维立体图形）: type="solid_3d"
-   使用 solids 数组（shapes 填 []），SVG坐标左上为(0,0)，x向右，y向下，画布800×320。
-   【极其重要 - 布局与嵌套】：
-   - 独立的图形（分别代表图1、图2等）必须使用不同的 cx 坐标水平隔开，绝对不能重叠！
-   - **例外（极度重要）**：如果题意是“将圆柱削成一个最大的圆锥”（如图3），你**必须**在同一个 cx 坐标处，同时放一个 'fill:"none"' 的圆柱和一个圆锥，让它们完全重叠，以此完美还原“圆锥在圆柱内部”的几何透视关系！
-   圆柱: {"type":"cylinder","cx":150,"cy":60,"rx":60,"ry":20,"h":140,"fill":"#dbeafe","stroke":"#374151","cuts":[]}
-     cx/cy:顶部椭圆圆心，rx:水平半轴，ry:垂直半轴，h:高度。
-     【极其重要 - 关于圆柱的切割 cuts】：
-     - 若为【横向水平切割】（截成n段），切 n-1 刀，增加 2(n-1) 个底面。cuts 填入向下偏移的像素值列表，如 [40, 80, 120]。**【防错警告】：如果横切成 n 段，你的 cuts 数组必须严格包含 n-1 个数值元素，绝不能少切！**
-     - 若为【纵向竖直切割】（沿直径切开），切 n 刀成 2n 块，增加 2n 个长方形截面。
-     - 【视觉排版要求】：对于纵切，若切成 2n 块（切 n 刀），你**必须在 cuts 中填入 n 个不同 angle 的 vertical 对象**（例如切 4 块填 2 个对象如 {"type":"vertical","angle":0.78} 和 {"type":"vertical","angle":2.35}），系统会自动渲染出完美的 3D 交叉切面（就像原题一样）！**注意：不要使用 0 和 1.57，它们会与圆柱外轮廓线重合导致图形隐身！**
-     - 【数学逻辑极度警告！！！】：在改变题目数字时，**必须保持原题的切割方式和顺序**！如果原题图1是纵切（偶数块），变式题图1也必须是纵切。**【推荐约束】：为了图形美观及符合考纲，纵切建议优先出“切成2块（两半）”或“交叉切成4块”。**如果切多块，题干必须表述为“过底面中心交叉纵切成 x 等份”。如果原题图2是横切，变式题图2也必须是横切（块数任意）。**绝对不允许写出“沿直径纵切成3块”这种违背几何常识的荒谬题目！**
-   圆锥: {"type":"cone","cx":150,"cy":230,"rx":70,"ry":23,"h":160,"fill":"#dcfce7","stroke":"#374151"}
-     cx/cy:底面椭圆圆心(底面在下)，h:锥高(向上)
-   球体: {"type":"sphere","cx":150,"cy":160,"r":80,"fill":"#fef9c3","stroke":"#374151"}
-   长方体: {"type":"cuboid","lx":60,"ty":80,"w":120,"h":100,"d":60,"fill":"#e0f2fe","stroke":"#374151"}
-   文字标签: {"type":"label_3d","text":"r","x":220,"y":250,"color":"#1e293b"}
-     【注意】：文字标签的 y 坐标必须放在图形正下方，绝对不要和图形的底边重合！例如，若圆柱 cy=60, h=140, ry=20，其底边 y=220，那么文字的 y 必须填 250！
-   辅助虚线: {"type":"dashed_line_3d","from":[100,150],"to":[200,150],"stroke":"#374151"}
-E) 纯计算/代数题，无需图形: type="none", shapes=[]
+${GEOMETRY_PROMPT_TEMPLATE}
 
 输入错题列表：
 ${JSON.stringify(questions.map((q: any, idx: number) => ({ index: idx + 1, text: q.originalText, subject: q.subject, knowledgePoints: q.knowledgePoints })))}
@@ -725,43 +698,7 @@ ${currentVariant.text}
 4. 对变式题目提供标准、严谨、逻辑清晰的详细名师解题步骤。
 5. 数学公式必须用标准 $ 或 $$ 包围。**注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\\\pi, \\\\frac, \\\\text），否则会导致 JSON 解析失败！**
 
-【几何图形数据规范（仅当题目涉及几何图形时填写 geometry 字段）】
-根据题目类型填写 geometry.type：
-A) 格点/网格类（题干含"格点"/"网格"/"方格"）: type="grid", gridSize=网格大小
-   shapes 坐标: (0,0) 在左下角，Y轴向上，以格点为单位。
-B) 坐标系类（题干给出如 A(-4,-1) 等具体坐标）: type="coordinate"
-   xRange=[x最小-1, x最大+1], yRange=[y最小-1, y最大+1]
-   shapes 坐标直接使用题目中的数学坐标值。
-C) 平面几何类（有三角形/圆/四边形等，但无坐标数值）: type="plane"
-   shapes 坐标用 0-100 比例值，(0,0) 在左下角，Y轴向上。
-
-shapes 元素格式：
-polygon: {"type":"polygon","points":[[x1,y1],[x2,y2],...],"fill":"#eff6ff","stroke":"#374151"}
-line:    {"type":"line","from":[x1,y1],"to":[x2,y2],"stroke":"#374151","dashed":false}
-circle:  {"type":"circle","cx":x,"cy":y,"r":radius,"fill":"none","stroke":"#374151"}
-point:   {"type":"point","x":x,"y":y,"r":3,"fill":"#374151"}
-label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"middle"}
-
-D) 立体几何类（有圆柱/圆锥/球/长方体等三维立体图形）: type="solid_3d"
-   使用 solids 数组（shapes 填 []），SVG坐标左上为(0,0)，x向右，y向下，画布800×320。
-   【极其重要 - 布局与嵌套】：
-   - 独立的图形（分别代表图1、图2等）必须使用不同的 cx 坐标水平隔开，绝对不能重叠！
-   - **例外（极度重要）**：如果题意是“将圆柱削成一个最大的圆锥”（如图3），你**必须**在同一个 cx 坐标处，同时放一个 'fill:"none"' 的圆柱和一个圆锥，让它们完全重叠，以此完美还原“圆锥在圆柱内部”的几何透视关系！
-   圆柱: {"type":"cylinder","cx":150,"cy":60,"rx":60,"ry":20,"h":140,"fill":"#dbeafe","stroke":"#374151","cuts":[]}
-     cx/cy:顶部椭圆圆心，rx:水平半轴，ry:垂直半轴，h:高度。
-     【极其重要 - 关于圆柱的切割 cuts】：
-     - 若为【横向水平切割】（截成n段），切 n-1 刀，增加 2(n-1) 个底面。cuts 填入向下偏移的像素值列表，如 [40, 80, 120]。**【防错警告】：如果横切成 n 段，你的 cuts 数组必须严格包含 n-1 个数值元素，绝不能少切！**
-     - 若为【纵向竖直切割】（沿直径切开），切 n 刀成 2n 块，增加 2n 个长方形截面。
-     - 【视觉排版要求】：对于纵切，若切成 2n 块（切 n 刀），你**必须在 cuts 中填入 n 个不同 angle 的 vertical 对象**（例如切 4 块填 2 个对象如 {"type":"vertical","angle":0.78} 和 {"type":"vertical","angle":2.35}），系统会自动渲染出完美的 3D 交叉切面（就像原题一样）！**注意：不要使用 0 和 1.57，它们会与圆柱外轮廓线重合导致图形隐身！**
-     - 【数学逻辑极度警告！！！】：在改变题目数字时，**必须保持原题的切割方式和顺序**！如果原题图1是纵切（偶数块），变式题图1也必须是纵切。**【推荐约束】：为了图形美观及符合考纲，纵切建议优先出“切成2块（两半）”或“交叉切成4块”。**如果切多块，题干必须表述为“过底面中心交叉纵切成 x 等份”。如果原题图2是横切，变式题图2也必须是横切（块数任意）。**绝对不允许写出“沿直径纵切成3块”这种违背几何常识的荒谬题目！**
-   圆锥: {"type":"cone","cx":150,"cy":230,"rx":70,"ry":23,"h":160,"fill":"#dcfce7","stroke":"#374151"}
-     cx/cy:底面椭圆圆心(底面在下)，h:锥高(向上)
-   球体: {"type":"sphere","cx":150,"cy":160,"r":80,"fill":"#fef9c3","stroke":"#374151"}
-   长方体: {"type":"cuboid","lx":60,"ty":80,"w":120,"h":100,"d":60,"fill":"#e0f2fe","stroke":"#374151"}
-   文字标签: {"type":"label_3d","text":"r","x":220,"y":250,"color":"#1e293b"}
-     【注意】：文字标签的 y 坐标必须放在图形正下方，绝对不要和图形的底边重合！例如，若圆柱 cy=60, h=140, ry=20，其底边 y=220，那么文字的 y 必须填 250！
-   辅助虚线: {"type":"dashed_line_3d","from":[100,150],"to":[200,150],"stroke":"#374151"}
-E) 纯计算/代数题，无需图形: type="none", shapes=[]
+${GEOMETRY_PROMPT_TEMPLATE}
 
 请务必返回以下格式的严格 JSON 对象（一个对象，不是数组！），不要包含任何 Markdown 格式的 \`\`\`json 标记：
 {
@@ -806,5 +743,269 @@ E) 纯计算/代数题，无需图形: type="none", shapes=[]
   } catch (error: any) {
     console.error("Regenerate Variant Error:", error);
     res.status(500).json({ error: error.message || "重新生成变式失败" });
+  }
+};
+
+
+// 7. 全自动编排管线 (SSE 流式推送)
+export const processAllStream = async (req: AuthenticatedRequest, res: express.Response) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const sendEvent = (event: string, data: any) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const user = db.prepare("SELECT role FROM users WHERE username = ?").get(req.userId) as { role: string } | undefined;
+    const allowStudentAi = getSetting("ALLOW_STUDENT_AI", "true") === "true";
+    if (!user || (user.role === 'student' && !allowStudentAi)) {
+      sendEvent('error', { message: "权限不足，学生角色无法使用 AI 解析功能" });
+      res.end();
+      return;
+    }
+
+    let { imageBase64, mimeType, answerImageBase64, answerMimeType, answerText, mode, notebookId, grade, thinkingMode } = req.body;
+    if (!imageBase64) {
+      sendEvent('error', { message: "Missing imageBase64" });
+      res.end();
+      return;
+    }
+
+    const isSingle = mode === 'single';
+
+    // ========== 阶段 1: 提取 (Extract) ==========
+    sendEvent('status', { phase: 'extract', status: 'start', message: '正在提取题目与作答...' });
+    
+    let extractPrompt = ``;
+    if (isSingle) {
+      extractPrompt += `
+识别我提供的图片中的题目文本、配图信息及手写内容。
+【重要指令】：当前为单题提取模式。请不要将图片切分为多道题，只将其中的最核心的一道题完整提取出来，作为一个整体题目返回。
+我提供了一张【学生试卷/作业图片】（第一张图）。
+`;
+    } else {
+      extractPrompt += `
+识别我提供的图片中的所有独立题目。
+【大题合并铁律】：对于包含 (1)(2)(3) 等多个小问的综合题、阅读理解题、表格题，绝对禁止将小问拆分为独立题目！你必须将公共题干与所有小问作为一个不可分割的整体，完整保存在一个题目的 originalText 中。
+我提供了一张【学生试卷/作业图片】（第一张图）。
+`;
+    }
+    if (answerImageBase64) {
+      extractPrompt += `另外，我提供了一张对应的【标准答案参考图片】（第二张图）。请务必对照两张图，将同一道题的题干、学生手写作答以及参考的标准答案进行一一匹配提取。\\n`;
+    }
+    if (answerText) {
+      extractPrompt += `另外，我提供了一段参考答案文本如下：\\n【完整参考答案文本开始】\\n${answerText}\\n【完整参考答案文本结束】\\n请结合此参考文本，将其中的各题答案切分并匹配到对应题目的标准答案字段中。\\n`;
+    }
+    extractPrompt += `
+【具体输出字段要求】：
+请严格以 JSON 数组的形式返回（即使只有一题也要用数组包围），数组中的每个对象代表一道题，包含以下字段：
+- subject: [学科名称，如数学/物理/化学等]
+- boundingBox: [题目所在区域的矩形框坐标，格式为 {"x": 10, "y": 20, "w": 400, "h": 200}]
+- originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
+- studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
+- standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
+
+【深度校准与格式规约（极度重要）】：
+1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
+2. **表格原生化**：若题目包含表格，绝对禁止使用 Markdown 的 | 语法！必须使用原生的 HTML 标签（<table>, <tr>, <td>）重建表格，并在表格内正常使用 $ 包围 LaTeX 公式。
+3. **公式规范**：公式必须用标准的 $ 或 $$ 包围输出为 LaTeX 格式。注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\pi, \\frac），否则会导致 JSON 解析失败！
+`;
+
+    const extractSystemPrompt = `你是一个只输出结构化 JSON 的 OCR 助手。你的整个回复必须是一个合法的 JSON 数组，不要包含 Markdown 代码块标记或额外废话。`;
+
+    const extractResponse = await generateContentWithFallback({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { data: imageBase64.split(',')[1] || imageBase64, mimeType: mimeType || 'image/jpeg' } },
+            ...(answerImageBase64 ? [{ inlineData: { data: answerImageBase64.split(',')[1] || answerImageBase64, mimeType: answerMimeType || 'image/jpeg' } }] : []),
+            { text: extractPrompt }
+          ]
+        }
+      ],
+      config: { temperature: 0.1 },
+      model: getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo'),
+      systemPrompt: extractSystemPrompt
+    });
+
+    let extractResult: any[] = [];
+    try {
+      const extractedStr = extractJsonString(extractResponse.text || '');
+      const parsedData = JSON.parse(sanitizeJsonString(extractedStr));
+      const items = Array.isArray(parsedData) ? parsedData : [parsedData];
+      for (const item of items) {
+         if (!item.originalText && !item.studentAnswer) continue;
+         extractResult.push({
+           subject: item.subject || "数学",
+           originalText: item.originalText || "",
+           studentAnswer: item.studentAnswer || "",
+           standardAnswer: item.standardAnswer || "",
+           visualContext: item.visualContext || "",
+           boundingBox: item.boundingBox || { x: 0, y: 0, w: 0, h: 0 }
+         });
+      }
+    } catch (e) {
+       console.error("Failed to parse extract JSON", e);
+       extractResult.push({
+         subject: "数学", originalText: extractResponse.text, studentAnswer: "", standardAnswer: "", visualContext: "", boundingBox: {x:0, y:0, w:0, h:0}
+       });
+    }
+
+    const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
+    if (extractResult.length > 0) {
+      for (let i = 0; i < extractResult.length; i++) {
+        const q = extractResult[i];
+        if (q.studentAnswer || q.originalText) {
+          try {
+            const correctPrompt = `作为一名严谨的数学教师校对员。OCR 识别中可能因笔画粘连导致数字或字母识别错误（例如 0.6 被误认成 0.5、0错认成O、1错认成l、+被误认成4等），或将圆周率“\\pi”误认成汉字“元”、“兀”。请结合上下文，在不改变原意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
+【图形上下文】：${q.visualContext || '无'}
+【需要校对的题干】：${q.originalText || '无'}
+【需要校对的手写作答】：${q.studentAnswer || '无'}
+【参考答案】：${q.standardAnswer || '无'}
+请严格以 JSON 格式返回校正后的结果，包含 "correctedOriginalText" 和 "correctedStudentAnswer" 两个字段，不要包含任何额外废话。如果某项完全无需修正，请直接原样返回。`;
+            const correctionRes = await generateContentWithFallback({
+              contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
+              config: { temperature: 0.1 },
+              model: textModel,
+              systemPrompt: "你是一个纯文本校对助手。只返回包含 correctedOriginalText 和 correctedStudentAnswer 的合法 JSON 对象。"
+            });
+            const dJsonStr = extractJsonString(correctionRes.text || '');
+            const parsed = JSON.parse(sanitizeJsonString(dJsonStr));
+            
+            if (parsed.correctedOriginalText && q.originalText && parsed.correctedOriginalText !== '无' && parsed.correctedOriginalText !== '空') {
+              if (stringSimilarity(q.originalText, parsed.correctedOriginalText) > 0.85) {
+                q.originalText = parsed.correctedOriginalText;
+              }
+            }
+            if (parsed.correctedStudentAnswer && q.studentAnswer && parsed.correctedStudentAnswer !== '无' && parsed.correctedStudentAnswer !== '空') {
+              if (stringSimilarity(q.studentAnswer, parsed.correctedStudentAnswer) > 0.85) {
+                q.studentAnswer = parsed.correctedStudentAnswer;
+              }
+            }
+          } catch (e) {
+            console.error("双向校验报错（可忽略）", e);
+          }
+        }
+      }
+    }
+
+    sendEvent('status', { phase: 'extract', status: 'done', data: extractResult });
+
+    // ========== 阶段 2: 诊断与变式 ==========
+    if (!grade && notebookId) {
+      try {
+        const nb = db.prepare("SELECT grade FROM notebooks WHERE id = ?").get(notebookId) as { grade: string | null } | undefined;
+        if (nb && nb.grade) grade = nb.grade;
+      } catch (dbErr) {}
+    }
+    const gradeConstraint = grade 
+      ? `本道题所属年级为：${grade}。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别完全一致，绝对不能超纲。`
+      : `请智能自动识别这道题目所属的实际年级。在给出标准解析和分析错误原因时，必须严格保持完全一致，绝对不能超纲。`;
+
+    const finalResults = [];
+    
+    for (let i = 0; i < extractResult.length; i++) {
+      const q = extractResult[i];
+      
+      // ---------- 诊断 ----------
+      sendEvent('status', { phase: 'diagnose', index: i, status: 'start', message: `正在诊断第 ${i+1} 题...` });
+      
+      const diagPrompt = `
+你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
+【题目信息】
+- 学科: ${q.subject || '未指定'}
+- 题干纯文本: ${q.originalText}
+- 题干配图/几何拓扑结构描述: ${q.visualContext || '无图'}
+${q.standardAnswer ? `- 老师提供的参考标准答案: ${q.standardAnswer}\\n` : ''}
+- 学生作答内容: ${q.studentAnswer || '（无学生作答）'}
+- 难度与年级限制: ${gradeConstraint}
+
+【任务要求】：
+1. **核心考点**: 分析该题考查的核心知识点，最多 3 个，存入数组。
+2. **考察方向**: 简明扼要地概括题目的主要测试意图。
+3. **错因标签**: 严格从四个阶段挑选 1 个标签（【概念/审题】、【逻辑/建模】、【计算/执行】、【规范/表达】）。
+   【极度重要】：如果“学生作答内容”为空，绝对禁止强行挑选上述错误标签！必须强制输出标签："【知识盲区/无思路】完全留白"。
+4. **标准解析**: 给出名师标准解题步骤。公式用 $。
+5. **错误原因分析**:
+   - 如果 "学生作答内容" 不为空，请遵循三段式结构输出：
+     【关键错误定位】：一句话指出错误。\\n你写的是：\\n> [原样复现]\\n❌ 错在哪？\\n- 第一步：[正确的逻辑] —— **这才是正确结果！**\\n- -> 你误把...当成了...！
+   - 如果为空，请判定为【知识盲区/无思路】，跳过指责，直接输出解题破局点、思维导图提示和关键公式，温和鼓励学生。
+6. **学生本题所得评分**: 0 到 100 整数。
+
+返回 JSON 对象格式，不含 markdown 代码块。
+`;
+      let diagnoseResult = null;
+      try {
+        const diagRes = await generateContentWithFallback({
+          contents: [{ role: 'user', parts: [{ text: diagPrompt }] }],
+          config: { temperature: 0.2 },
+          systemPrompt: "你是一个严谨的 AI 智能名师批改助手。整个回复内容只能是纯 JSON 文本。",
+          thinkingMode: thinkingMode || 'disabled'
+        });
+        const dJsonStr = extractJsonString(diagRes.text || '');
+        diagnoseResult = JSON.parse(sanitizeJsonString(dJsonStr));
+      } catch (e) {
+        diagnoseResult = { knowledgePoints: ["手动分析"], examDirection: "", errorReason: "识别异常", solution: "解析失败", score: 0, errorAnalysis: "无法分析" };
+      }
+      sendEvent('status', { phase: 'diagnose', index: i, status: 'done', data: diagnoseResult });
+
+      // ---------- 相似题 ----------
+      sendEvent('status', { phase: 'similar', index: i, status: 'start', message: `正在生成第 ${i+1} 题的相似题...` });
+      
+      const simPrompt = `
+你是一个金牌备考辅导名师。你需要为以下这道错题生成 1 道相似的变式强化题。
+【原题信息】
+- 学科: ${q.subject || '未指定'}
+- 年级限制: ${grade || '自动识别'}
+- 题目内容: ${q.originalText || ''}
+- 核心知识点: ${diagnoseResult?.knowledgePoints?.join(', ') || ''}
+
+【命题要求】
+1. 核心知识点与原题完全相同。
+2. 题型、步骤数量、公式类型与原题保持一致。
+3. 修改具体数值/已知条件/情境背景，使题目全新。
+4. 不超出要求范围。公式必须用标准 $ 或 $$ 包围。
+
+${GEOMETRY_PROMPT_TEMPLATE}
+
+请返回以下 JSON 格式：
+{
+  "questionText": "新题目的完整文字",
+  "solution": "详细解题步骤",
+  "geometry": { "type": "none", "shapes": [] }
+}
+`;
+      let similarResult = null;
+      try {
+        const simRes = await generateContentWithFallback({
+          contents: [{ role: 'user', parts: [{ text: simPrompt }] }],
+          config: { temperature: 0.7 }
+        });
+        const sJsonStr = extractJsonString(simRes.text || '');
+        similarResult = JSON.parse(sanitizeJsonString(sJsonStr));
+        similarResult = Array.isArray(similarResult) ? similarResult[0] : similarResult;
+      } catch (e) {
+        similarResult = { questionText: "生成失败", solution: "", geometry: { type: "none", shapes: [] } };
+      }
+      sendEvent('status', { phase: 'similar', index: i, status: 'done', data: similarResult });
+
+      finalResults.push({
+        extract: q,
+        diagnose: diagnoseResult,
+        similar: similarResult
+      });
+    }
+
+    sendEvent('complete', { message: '全部处理完成', results: finalResults });
+    res.end();
+  } catch (error: any) {
+    console.error("AI Process All Error:", error);
+    sendEvent('error', { message: error.message || "管线执行失败" });
+    res.end();
   }
 };

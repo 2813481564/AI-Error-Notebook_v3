@@ -4,6 +4,12 @@ import { getSetting } from "./settingService";
 
 // 助手函数：从 LLM 原始文本中提取 JSON 字符串
 export function extractJsonString(str: string): string {
+  // 优先匹配 Markdown 的 JSON 代码块，避免前置废话的干扰
+  const mdMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (mdMatch && mdMatch[1]) {
+    str = mdMatch[1];
+  }
+
   const firstArray = str.indexOf('[');
   const firstObject = str.indexOf('{');
 
@@ -73,6 +79,14 @@ export function sanitizeJsonString(rawStr: string): string {
         } else {
           result += '\\'.repeat(backslashCount * 2);
         }
+      } else if (char === '\n') {
+        result += '\\n';
+        i++;
+      } else if (char === '\r') {
+        i++;
+      } else if (char === '\t') {
+        result += '\\t';
+        i++;
       } else {
         result += char;
         i++;

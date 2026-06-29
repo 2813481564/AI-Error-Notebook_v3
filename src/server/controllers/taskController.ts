@@ -6,6 +6,7 @@ import { getSetting } from "../services/settingService";
 import crypto from "crypto";
 import { isBase64Image, saveBase64Image, deleteImageFile } from "../services/fileService";
 import { enhanceImageForOcr } from "../utils/imageOptimizer";
+import { stringSimilarity } from "../utils/stringUtils";
 
 // ================= 后台任务队列处理器 =================
 
@@ -130,39 +131,40 @@ const processTask = async (id: string) => {
 // ================= AI 工具方法封装 =================
 
 const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: string) => {
-  const isSingle = extractMode === 'single'; // 跨页默认也是长图单题或长图多题，但在 extract 时由前端决定单或多
-  // 如果是跨页合并，且我们在接口上传递了最终的 extract 模式，则应该传入真正的 isSingle 逻辑。
-  // 在任务 payload 中，可以保存真正的 mode，下面我们将优先从 payload 中获取 mode
+  const isSingle = extractMode === 'single';
   
   let prompt = ``;
   if (isSingle) {
     prompt += `
-识别我提供的图片中的题目文本及手写内容。
-【重要指令】：当前为单题提取模式。请不要将图片切分为多道题，只将其中的最核心的一道题完整提取出来，作为一个整体题目返回。
+识别我提供的图片中的题目文本、配图信息及手写内容。
+【绝对强制指令】：当前为单题截取模式（物理切图模式）。不论图中包含多少个大题、小问（如 (1)(2)(3)）、或表格，你都必须把图片内的**所有内容**视作**极其完整的一道题**！
+绝对禁止拆分为多个题目，绝对禁止舍弃任何内容。你返回的 JSON 数组必须且只能包含 1 个对象！所有小问和公共题干必须统一放进这个唯一的 originalText 中！
 我提供了一张【学生试卷/作业图片】（第一张图）。
 `;
   } else {
     prompt += `
-识别我提供的图片中的所有独立大题或子题（如"20."、"21."、"22."等）。
+识别我提供的图片中的所有独立题目。
+【大题合并铁律】：对于包含 (1)(2)(3) 等多个小问的综合题、阅读理解题、表格题，绝对禁止将小问拆分为独立题目！你必须将公共题干与所有小问作为一个不可分割的整体，完整保存在一个题目的 originalText 中。
 我提供了一张【学生试卷/作业图片】（第一张图）。
 `;
   }
   prompt += `
 【具体输出字段要求】：
-对于每一道独立的题目，请严格按照以下文本格式输出（不同题目之间用 ===题目分割=== 进行隔开，不要包含 Markdown 代码块标记如 \`\`\`）：
+请严格以 JSON 数组的形式返回（即使只有一题也要用数组包围），数组中的每个对象代表一道题，包含以下字段：
+- subject: [学科名称，如数学/物理/化学等]
+- boundingBox: [题目所在区域的矩形框坐标，格式为 {"x": 10, "y": 20, "w": 400, "h": 200}]
+- originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
+- studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
+- standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
 
-===题目分割===
-学科: [学科名称，如数学/物理/化学等]
-题干: [本题的高精度完整题干印刷体文字，包含题号，绝对不能写“略”]
-学生作答: [本题区域内学生手写作答出的答案或步骤，若无则留空]
-标准答案: [根据参考答案，匹配得到的本题标准参考答案，包含推导过程和最终正确答案，若无则留空]
-
-【注意事项】：
-1. 不要输出任何解释性前言或后缀（如“以下是识别内容：”），直接以第一个 ===题目分割=== 开始。
-2. 公式必须用标准的 $ 或 $$ 包围输出为 LaTeX 格式。
+【深度校准与格式规约（极度重要）】：
+1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
+2. **表格原生化**：若题目包含表格，绝对禁止使用 Markdown 的 | 语法！必须使用原生的 HTML 标签（<table>, <tr>, <td>）重建表格，并在表格内正常使用 $ 包围 LaTeX 公式。
+3. **公式规范**：公式必须用标准的 $ 或 $$ 包围输出为 LaTeX 格式。注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\pi, \\frac），否则会导致 JSON 解析失败！
 `;
 
-  const systemPrompt = `你是一个只输出结构化纯文本的 OCR 助手。你的整个回复必须严格按照 ===题目分割=== 的格式输出各字段，不要包含 Markdown 代码块标记（如 \`\`\`）或任何额外的多余废话。`;
+  const systemPrompt = "你是一个只输出结构化 JSON 的 OCR 助手。你的整个回复必须是一个合法的 JSON 数组，不要包含 Markdown 代码块标记或任何额外的多余废话。";
 
   const response = await generateContentWithFallback({
     contents: [
@@ -180,7 +182,7 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
       }
     ],
     config: {
-      temperature: 0.3
+      temperature: 0.1
     },
     model: getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo'),
     systemPrompt
@@ -189,61 +191,33 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
   const text = response.text || '';
   if (!text) throw new Error("AI 未返回提取文本");
 
-  const result: any[] = [];
-  const parts = text.split(/===+题目分割===+/);
-  for (const part of parts) {
-    const trimmedPart = part.trim();
-    if (!trimmedPart) continue;
-
-    const subjectMatch = trimmedPart.match(/学科:\s*(.+)/);
-    const subject = subjectMatch ? subjectMatch[1].trim() : "数学";
-
-    const qIndex = trimmedPart.indexOf("题干:");
-    const aIndex = trimmedPart.indexOf("学生作答:");
-    const sIndex = trimmedPart.indexOf("标准答案:");
-
-    let originalText = "";
-    let studentAnswer = "";
-    let standardAnswer = "";
-
-    if (qIndex !== -1) {
-      if (aIndex !== -1) {
-        originalText = trimmedPart.substring(qIndex + 3, aIndex).trim();
-        if (sIndex !== -1) {
-          studentAnswer = trimmedPart.substring(aIndex + 5, sIndex).trim();
-          standardAnswer = trimmedPart.substring(sIndex + 5).trim();
-        } else {
-          studentAnswer = trimmedPart.substring(aIndex + 5).trim();
-        }
-      } else {
-        if (sIndex !== -1) {
-          originalText = trimmedPart.substring(qIndex + 3, sIndex).trim();
-          standardAnswer = trimmedPart.substring(sIndex + 5).trim();
-        } else {
-          originalText = trimmedPart.substring(qIndex + 3).trim();
-        }
-      }
-    } else {
-      originalText = trimmedPart.replace(/学科:\s*.+/, "").trim();
+  const result = [];
+  try {
+    const extracted = extractJsonString(text);
+    const parsedData = JSON.parse(sanitizeJsonString(extracted));
+    const items = Array.isArray(parsedData) ? parsedData : [parsedData];
+    
+    for (const item of items) {
+       if (!item.originalText && !item.studentAnswer) continue;
+       result.push({
+         subject: item.subject || "数学",
+         originalText: item.originalText || "",
+         studentAnswer: item.studentAnswer || "",
+         standardAnswer: item.standardAnswer || "",
+         visualContext: item.visualContext || "",
+         boundingBox: item.boundingBox || { x: 0, y: 0, w: 0, h: 0 }
+       });
     }
-
-    if (originalText) {
-      result.push({
-        subject: subject.substring(0, 10),
-        originalText,
-        studentAnswer,
-        standardAnswer
-      });
-    }
-  }
-
-  if (result.length === 0) {
-    result.push({
-      subject: "数学",
-      originalText: text,
-      studentAnswer: "",
-      standardAnswer: ""
-    });
+  } catch (e) {
+     console.error("Failed to parse extract JSON", e, text);
+     result.push({
+       subject: "数学",
+       originalText: text,
+       studentAnswer: "",
+       standardAnswer: "",
+       visualContext: "",
+       boundingBox: { x: 0, y: 0, w: 0, h: 0 }
+     });
   }
 
   // 二阶段逻辑纠错
@@ -251,16 +225,16 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
   if (result.length > 0) {
     for (let i = 0; i < result.length; i++) {
       const q = result[i];
-      if (q.studentAnswer) {
+      if (q.studentAnswer || q.originalText) {
         try {
-          const correctPrompt = `你是一个极其严谨的 OCR 文本校对专家。你的唯一任务是：基于数学上下文，修复视觉模型（OCR）在提取【原题干】和【手写作答】时产生的“视觉识别错误”（如小数点漏识别、40%识别成0.4%、+识别成4、2.1识别成21等）。
+          const correctPrompt = `你是一个极其严谨的 OCR 文本校对专家。你的唯一任务是：基于上下文，修复视觉模型（OCR）在提取【原题干】和【手写作答】时产生的“视觉识别错误”（如小数点漏识别、40%识别成0.4%、+识别成4、2.1识别成21等）。
 
 【严禁触碰的红线】：
 1. 绝对不要帮学生修改他们真实的计算错误！如果学生算错了（比如 2.1×1 算成了 2.7），必须原封不动地保留！
 2. 绝对不要帮学生把解题步骤补充完整，更不能自己去计算正确答案并覆盖学生的作答！
 
 【双向推导校对策略】：
-如果【手写作答】里的数字和【原题干】里的数字“长得很像”但存在细微差异（例如 2.1 和 21），且根据上下文发现【手写作答】里的推导是连贯的，那说明是 OCR 把【原题干】的数字识别漏了（漏了小数点）！此时你应该把【原题干】里的错误数字修正为学生抄写的数字，让题干符合逻辑。
+如果【手写作答】里的数字和【原题干】里的数字“长得很像”但存在细微差异（例如 2.1 和 21），且根据上下文发现【手写作答】里的推导是连贯的，说明是 OCR 漏掉了小数点。此时把【原题干】里的错误数字修正为合理数字。
 
 【原题干（可能有 OCR 错误）】：${q.originalText}
 【手写作答（可能有真实的计算错，也可能有 OCR 错误）】：${q.studentAnswer}
@@ -279,8 +253,28 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
           const correctedText = (correctionResponse.text || '').trim();
           try {
             const parsed = JSON.parse(extractJsonString(correctedText));
-            if (parsed.originalText) q.originalText = parsed.originalText;
-            if (parsed.studentAnswer) q.studentAnswer = parsed.studentAnswer;
+            // 验证相似度防篡改 (threshold = 0.85)
+            if (parsed.originalText && q.originalText) {
+               const sim = stringSimilarity(q.originalText, parsed.originalText);
+               if (sim >= 0.85) {
+                 q.originalText = parsed.originalText;
+               } else {
+                 console.warn(`[TaskQueue] 二阶段 originalText 差异过大 (相似度 ${sim.toFixed(2)})，拒绝篡改`);
+               }
+            } else if (parsed.originalText && !q.originalText) {
+               q.originalText = parsed.originalText;
+            }
+
+            if (parsed.studentAnswer && q.studentAnswer) {
+               const sim = stringSimilarity(q.studentAnswer, parsed.studentAnswer);
+               if (sim >= 0.85) {
+                 q.studentAnswer = parsed.studentAnswer;
+               } else {
+                 console.warn(`[TaskQueue] 二阶段 studentAnswer 差异过大 (相似度 ${sim.toFixed(2)})，拒绝篡改`);
+               }
+            } else if (parsed.studentAnswer && !q.studentAnswer) {
+               q.studentAnswer = parsed.studentAnswer;
+            }
           } catch (parseError) {
             console.warn("[TaskQueue] 二阶段校对 JSON 解析失败，沿用原文");
           }
@@ -349,12 +343,18 @@ ${standardAnswerSection}
      \\n✅ 答对了！
      - 你的解题思路非常清晰，推导准确无误。
      - -> 恭喜你，继续保持！
-   - 如果 "学生作答内容" 不为空且有错误，请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
+  - 如果 "学生作答内容" 不为空且存在错误（算错、想错等），请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
      【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱，符号混用”）。
      \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
      \\n❌ 错在哪？
      - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
      - [用对话语气指出错误] -> 你误把...当成了...！
+   - 如果 "学生作答内容" 部分正确但存在漏答/未写完整（例如答对了第一问但漏了第二问），请输出：
+     【关键错误定位】：明确指出答对了什么，遗漏了什么（如“第一问作答正确，但遗漏了第二问的计算过程”）。
+     \\n你写的是：\\n> [此处原样复现学生已写出的作答]
+     \\n⚠️ 还有缺失喔：
+     - [写出缺失部分的正确计算或逻辑] —— **把这部分补上才是满分解答！**
+     - [用鼓励的语气提醒] -> 题目其实还没做完哦，下次一定要记得把所有小问都回答完整！
    - 如果为空，请结合本题考点分析最容易掉入的【常见错误陷阱】及【根本原因】。
 6. **学生本题所得评分** ("score"): 评估学生本题得分，0到100之间的整数。
 
