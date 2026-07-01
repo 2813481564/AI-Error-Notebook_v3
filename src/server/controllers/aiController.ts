@@ -338,6 +338,31 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
     let standardAnswerSection = '';
     if (standardAnswer) {
       standardAnswerSection = `- 老师提供的参考标准答案: ${standardAnswer}\n`;
+    } else {
+      try {
+        const searchPromise = generateContentWithFallback({
+          contents: [{ role: 'user', parts: [{ text: `请严格检索该题标准解析，纯文本输出。题目：${originalText}` }] }],
+          tools: [{ type: "web_search", web_search: { enable: true } }]
+        });
+        const timeoutPromise = new Promise((_, r) => setTimeout(() => r('TIMEOUT'), 5000));
+        
+        const searchRes = await Promise.race([searchPromise, timeoutPromise]) as any;
+        if (searchRes !== 'TIMEOUT' && searchRes.text) {
+          standardAnswerSection = `- 通过互联网检索获取的参考解答: ${searchRes.text}\n`;
+        }
+      } catch (e) {
+        console.log("搜题超时或失败，平滑降级...");
+      }
+    }
+
+    const isHighSchoolMathScience = grade?.includes('高中') && ['数学', '物理', '化学', '理综'].includes(subject || '');
+    const finalThinkingMode = isHighSchoolMathScience ? 'enabled' : (thinkingMode || 'disabled');
+
+    let dynamicDraftPrompt = `\n【图形防污染熔断铁律】：本题真实的图形特征为：【${visualContext || '无图'}】。你在参考网上的解答时，必须首先核对该解答是否与当前图形特征矛盾！如冲突必须抛弃参考解答。`;
+    if (!isHighSchoolMathScience) {
+      dynamicDraftPrompt += `\n【批改打草稿铁律】：在指出错因前，必须在 JSON 的 "thinkingProcess" 字段写下草稿（仅列核心骨架算式）。逐行验证学生步骤，只要逻辑自洽即判对！`;
+    } else {
+      dynamicDraftPrompt += `\n【深度批改铁律】：已为你开启原生深度思考模式。请在后台详尽推演复杂公式，并以推演结果为绝对标尺进行评判。`;
     }
     const prompt = `
 你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
@@ -349,24 +374,27 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
 ${standardAnswerSection}
 - 学生作答内容: ${studentAnswer || '（无学生作答）'}
 - 难度与年级限制: ${gradeConstraint}
+${dynamicDraftPrompt}
 
 【任务要求】：
 1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
 2. **考察方向** ("examDirection"): 简明扼要地概括题目的主要测试意图或考法（如"函数最值与导数综合"、"数形结合考法"等）。
-3. **错因标签** ("errorReason"): 必须**严格且只能**从以下四个阶段的子标签池中挑选 1 个最符合的标签输出（如 "【概念/审题】读题粗心"）：
-   - 【概念/审题】：概念模糊、读题粗心、条件遗漏、隐含条件未挖掘
-   - 【逻辑/建模】：思路跑偏、公式错用、图形构造错误、无法建立模型
-   - 【计算/执行】：计算粗心、符号错误、方程解错、单位换算错误
-   - 【规范/表达】：步骤跳跃、格式不规范、字迹潦草
-   【极度重要】：如果“学生作答内容”为空，绝对禁止强行挑选上述错误标签！必须强制输出标签："【知识盲区/无思路】完全留白"。
+3. **错因标签** ("errorReason"): 必须**严格且只能**输出以下4个选项之一的字面量，绝对不能增加任何额外文字或解释！
+   - 【概念/审题】
+   - 【逻辑/建模】
+   - 【计算/执行】
+   - 【规范/表达】
+   （错误示范：输出 "【规范/表达】结果未化简" 是绝对禁止的！你只能输出 "【规范/表达】"）
+   【极度重要】：如果“学生作答内容”为空，必须强制输出标签："【知识盲区/无思路】"。
 4. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
 5. **错误原因分析** ("errorAnalysis"):
-   - 如果 "学生作答内容" 不为空，请严格遵循以下三段式结构化 Markdown 文本输出（换行请用 \\n）：
-     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱，符号混用”）。
+   - 如果 "学生作答内容" 不为空，请严格遵循以下四段式结构化 Markdown 文本输出（换行请用 \\n），**【💡 名师避坑指南】作为最后一段绝对不能省略！**
+     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱”）。
      \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
      \\n❌ 错在哪？
      - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
      - [用对话语气指出错误] -> 你误把...当成了...！
+     \\n💡 名师避坑指南：[极度重要！请必须以“💡 名师避坑指南：”作为开头，深度分析产生此错误的根本原因（如不良计算习惯），并给出治本的建议！]
    - 如果为空，请判定为【知识盲区/无思路】，跳过所有的指责，直接输出该题的解题破局点（切入点）、思维导图提示和所需的关键公式，用温和鼓励的语气指导学生第一步该如何动笔。
    - **【阅卷铁律】：遇到数学计算题时，如果学生给出的最终结果分数没有化简为最简分数（例如写了 55/70 而不是 11/14），必须严格判定为错误（属于【规范/表达】错误），绝对不能因为数值等价就判定为完全掌握！**
 6. **学生本题所得评分** ("score"):
@@ -374,12 +402,12 @@ ${standardAnswerSection}
 
 请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
 {
-  "knowledgePoints": ["核心考点1", "核心考点2"],
+${!isHighSchoolMathScience ? '  "thinkingProcess": "步骤1: ...",\n' : ''}  "knowledgePoints": ["核心考点1", "核心考点2"],
   "examDirection": "考察方向...",
-  "errorReason": "【计算/执行】计算粗心",
+  "errorReason": "【计算/执行】",
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！"
+  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！\\n\\n💡 名师避坑指南：计算时不要粗心..."
 }
 `;
 
@@ -401,7 +429,7 @@ ${standardAnswerSection}
         temperature: 0.2
       },
       systemPrompt,
-      thinkingMode: thinkingMode || 'disabled'
+      thinkingMode: finalThinkingMode
     });
 
     const text = response.text;
@@ -445,7 +473,7 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
     const numQuestions = Math.min(3, Math.max(1, count || 1));
 
     const modeInstruction = variantMode === '条件升级'
-      ? "【条件升级模式】：在原考点基础上增加隐蔽条件，或者将直接已知条件转为需要通过其他定理或计算先求出的间接条件，整体难度提升一星，但不要超纲。"
+      ? "【条件升级模式】：在原考点基础上增加隐蔽条件，或者将直接已知条件转为需要通过多一步计算先求出的间接条件，整体难度提升一星。绝对不允许超纲！绝对不允许引入更高年级的知识点（例如小学题绝对禁止考查初中几何定理）！"
       : variantMode === '逆向陷阱'
       ? "【逆向陷阱模式】：强制要求采用逆向思维出题（例如给出原题的结果，要求反推原题的某个初始条件）；或者在题目中设置该知识点常见的易错陷阱（如定义域陷阱、单位陷阱、隐含的分类讨论），重点考察学生是否真正理解，而非死记硬背套公式。"
       : "【同考点换壳模式】：保持原始难度和解题路径，仅修改具体的数值、已知条件的描述方式或情境背景，使题目成为一道全新的换壳题。";
@@ -513,6 +541,7 @@ label:   {"type":"label","text":"A","x":x,"y":y,"color":"#1e293b","anchor":"midd
 ${numQuestions === 1 ? `
 请严格按以下单个 JSON 对象格式返回，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
 {
+  "thinkingProcess": "【极为重要】在写题目和解析前，必须在此处打草稿！预先设定好干净的整数/有限小数值（如 r=2, h=3），计算出需要的表面积/体积数值，然后再生成题目！",
   "questionText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
   "solution": "详细解题步骤（含LaTeX公式，每步用1. 2. 3.标注）",
   "geometry": {
@@ -531,6 +560,7 @@ ${numQuestions === 1 ? `
 请严格按以下 JSON 数组格式返回，包含 ${numQuestions} 个元素对象，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
 [
   {
+    "thinkingProcess": "预先设定变量和数值推演草稿...",
     "questionText": "第1道新题目的完整文字...",
     "solution": "第1道新题的详细解题步骤...",
     "geometry": { ... }
@@ -918,30 +948,79 @@ export const processAllStream = async (req: AuthenticatedRequest, res: express.R
       // ---------- 诊断 ----------
       sendEvent('status', { phase: 'diagnose', index: i, status: 'start', message: `正在诊断第 ${i+1} 题...` });
       
+      let standardAnswerSection = '';
+      if (q.standardAnswer) {
+        standardAnswerSection = `- 老师提供的参考标准答案: ${q.standardAnswer}\n`;
+      } else {
+        try {
+          const searchPromise = generateContentWithFallback({
+            contents: [{ role: 'user', parts: [{ text: `请严格检索该题标准解析，纯文本输出。题目：${q.originalText}` }] }],
+            tools: [{ type: "web_search", web_search: { enable: true } }]
+          });
+          const timeoutPromise = new Promise((_, r) => setTimeout(() => r('TIMEOUT'), 5000));
+          
+          const searchRes = await Promise.race([searchPromise, timeoutPromise]) as any;
+          if (searchRes !== 'TIMEOUT' && searchRes.text) {
+            standardAnswerSection = `- 通过互联网检索获取的参考解答: ${searchRes.text}\n`;
+          }
+        } catch (e) {
+          console.log(`第 ${i+1} 题搜题超时或失败，平滑降级...`);
+        }
+      }
+
+      const isHighSchoolMathScience = grade?.includes('高中') && ['数学', '物理', '化学', '理综'].includes(q.subject || '');
+      const finalThinkingMode = isHighSchoolMathScience ? 'enabled' : (thinkingMode || 'disabled');
+
+      let dynamicDraftPrompt = `\n【图形防污染熔断铁律】：本题真实的图形特征为：【${q.visualContext || '无图'}】。你在参考网上的解答时，必须首先核对该解答是否与当前图形特征矛盾！如冲突必须抛弃参考解答。`;
+      if (!isHighSchoolMathScience) {
+        dynamicDraftPrompt += `\n【批改打草稿铁律】：在指出错因前，必须在 JSON 的 "thinkingProcess" 字段写下草稿（仅列核心骨架算式）。逐行验证学生步骤，只要逻辑自洽即判对！`;
+      } else {
+        dynamicDraftPrompt += `\n【深度批改铁律】：已为你开启原生深度思考模式。请在后台详尽推演复杂公式，并以推演结果为绝对标尺进行评判。`;
+      }
+
       const diagPrompt = `
 你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
 【题目信息】
 - 学科: ${q.subject || '未指定'}
 - 题干纯文本: ${q.originalText}
 - 题干配图/几何拓扑结构描述: ${q.visualContext || '无图'}
-${q.standardAnswer ? `- 老师提供的参考标准答案: ${q.standardAnswer}\\n` : ''}
+${standardAnswerSection}
 - 学生作答内容: ${q.studentAnswer || '（无学生作答）'}
 - 难度与年级限制: ${gradeConstraint}
+${dynamicDraftPrompt}
 
 【任务要求】：
 1. **核心考点**: 分析该题考查的核心知识点，最多 3 个，存入数组。
 2. **考察方向**: 简明扼要地概括题目的主要测试意图。
-3. **错因标签**: 严格从四个阶段挑选 1 个标签（【概念/审题】、【逻辑/建模】、【计算/执行】、【规范/表达】）。
-   【极度重要】：如果“学生作答内容”为空，绝对禁止强行挑选上述错误标签！必须强制输出标签："【知识盲区/无思路】完全留白"。
+3. **错因标签**: 必须**严格且只能**输出以下4个选项之一的字面量，绝对不能增加任何额外文字或解释！
+   - 【概念/审题】
+   - 【逻辑/建模】
+   - 【计算/执行】
+   - 【规范/表达】
+   （错误示范：输出 "【规范/表达】结果未化简" 是绝对禁止的！你只能输出 "【规范/表达】"）
+   【极度重要】：如果“学生作答内容”为空，必须强制输出标签："【知识盲区/无思路】"。
 4. **标准解析**: 给出名师标准解题步骤。公式用 $。
 5. **错误原因分析**:
-   - 如果 "学生作答内容" 不为空，请遵循三段式结构输出：
-     【关键错误定位】：一句话指出错误。\\n你写的是：\\n> [原样复现]\\n❌ 错在哪？\\n- 第一步：[正确的逻辑] —— **这才是正确结果！**\\n- -> 你误把...当成了...！
+   - 如果 "学生作答内容" 不为空，请遵循四段式结构输出，**【💡 名师避坑指南】作为最后一段绝对不能省略！**：
+     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱”）。
+     \\n你写的是：\\n> [原样复现]
+     \\n❌ 错在哪？
+     - 第一步：[正确的逻辑] —— **这才是正确结果！**
+     - -> 你误把...当成了...！
+     \\n💡 名师避坑指南：[极度重要！请必须以“💡 名师避坑指南：”作为开头，深度分析根本原因并给出治本的避坑建议！]
    - 如果为空，请判定为【知识盲区/无思路】，跳过指责，直接输出解题破局点、思维导图提示和关键公式，温和鼓励学生。
    - **【阅卷铁律】：如果学生结果为未化简的分数（如 55/70），必须严格判定为错误，绝对不能因为数值等价判定为全对！**
 6. **学生本题所得评分**: 0 到 100 整数。
 
-返回 JSON 对象格式，不含 markdown 代码块。
+返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
+{
+${!isHighSchoolMathScience ? '  "thinkingProcess": "步骤1: ...",\n' : ''}  "knowledgePoints": ["核心考点1", "核心考点2"],
+  "examDirection": "考察方向...",
+  "errorReason": "【计算/执行】",
+  "solution": "标准详细解答步骤内容...",
+  "score": 85,
+  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！\\n\\n💡 名师避坑指南：计算时不要粗心..."
+}
 `;
       let diagnoseResult = null;
       try {
@@ -949,7 +1028,7 @@ ${q.standardAnswer ? `- 老师提供的参考标准答案: ${q.standardAnswer}\\
           contents: [{ role: 'user', parts: [{ text: diagPrompt }] }],
           config: { temperature: 0.2 },
           systemPrompt: "你是一个严谨的 AI 智能名师批改助手。整个回复内容只能是纯 JSON 文本。",
-          thinkingMode: thinkingMode || 'disabled'
+          thinkingMode: finalThinkingMode
         });
         const dJsonStr = extractJsonString(diagRes.text || '');
         diagnoseResult = JSON.parse(sanitizeJsonString(dJsonStr));

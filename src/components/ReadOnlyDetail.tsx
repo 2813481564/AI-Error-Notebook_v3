@@ -3,13 +3,6 @@ import { db } from '../lib/db';
 import { ChevronRight, Sparkles, Book, Clock } from 'lucide-react';
 import FormattedMath, { InlineContent } from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
-import {
-  parseIndividualQuestions,
-  parseIndividualSolutions,
-  parseIndividualStudentAnswers,
-  parseIndividualStandardAnswers,
-  parseIndividualErrorAnalysis
-} from '../lib/parser';
 
 export function TargetIcon({ className }: { className?: string }) {
   return (
@@ -47,139 +40,71 @@ export default function ReadOnlyDetail({
   notebooks?: any[];
   onUpdate?: (updated: any) => void;
 }) {
-  const parsedQs = parseIndividualQuestions(question.originalText);
-  const parsedSols = parseIndividualSolutions(question.solution);
-  const parsedStudentAnswers = parseIndividualStudentAnswers(question.studentAnswer || '');
-  const parsedStdAnswers = parseIndividualStandardAnswers(question.standardAnswer || '');
-
-  if (parsedQs.length <= 1) {
-    // 原有单题展示逻辑（向下兼容）
-    return (
-      <div className="space-y-6">
-        <div>
-          <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
-          {question.errorReason === 'AI变式题' && question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
-            <div className="py-2">
-              <GeometryRenderer geometry={question.similarQuestion.geometry} />
-            </div>
-          )}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {question.examDirection && (
-              <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-lg border border-blue-200/60 font-bold">🎯 {question.examDirection}</span>
-            )}
-            {question.errorReason && question.errorReason !== 'AI变式题' && (
-              <span className={`text-xs px-3 py-1 rounded-lg border font-bold ${
-                question.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                question.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                question.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
-                question.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                question.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
-                'bg-rose-50 text-rose-600 border-rose-100'
-              }`}>
-                {question.errorReason.includes('完全掌握') ? '✅' : '⚠️'} {question.errorReason}
-              </span>
-            )}
-            {question.knowledgePoints.map((p: string) => (
-              <span key={p} className="text-xs bg-purple-50 text-purple-600 px-3 py-1 rounded-lg border border-purple-200 font-bold">📖 {p}</span>
-            ))}
-          </div>
-        </div>
-        {question.errorAnalysis && (
-          <div className="border-t border-slate-100 pt-6 space-y-4">
-            <div className={`flex items-center gap-2 font-extrabold text-sm ${question.errorReason?.includes('完全掌握') ? 'text-emerald-600' : 'text-rose-600'}`}>
-              <span className="font-bold">{question.errorReason?.includes('完全掌握') ? '✅' : '❌'}</span>
-              <h4 className="text-slate-900 font-black text-sm">{question.errorReason?.includes('完全掌握') ? '诊断分析' : '错因分析'}</h4>
-            </div>
-
-            <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
-              <FormattedMath text={question.errorAnalysis} />
-            </div>
+  return (
+    <div className="space-y-6">
+      <div>
+        <FormattedMath text={question.originalText} className="text-base text-slate-900 font-bold leading-relaxed" />
+        {question.errorReason === 'AI变式题' && question.similarQuestion?.geometry && question.similarQuestion.geometry.type !== 'none' && (
+          <div className="py-2">
+            <GeometryRenderer geometry={question.similarQuestion.geometry} />
           </div>
         )}
-
-        <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">
-              <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
-            </h4>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {question.examDirection && (
+            <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-lg border border-blue-200/60 font-bold">🎯 {question.examDirection}</span>
+          )}
+          {question.errorReason && question.errorReason !== 'AI变式题' && (
+            <span className={`text-xs px-3 py-1 rounded-lg border font-bold ${
+              question.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+              question.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
+              question.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
+              question.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+              question.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
+              'bg-rose-50 text-rose-600 border-rose-100'
+            }`}>
+              {question.errorReason.includes('完全掌握') ? '✅' : '⚠️'} {question.errorReason}
+            </span>
+          )}
+          {question.knowledgePoints.map((p: string) => (
+            <span key={p} className="text-xs bg-purple-50 text-purple-600 px-3 py-1 rounded-lg border border-purple-200 font-bold">📖 {p}</span>
+          ))}
+        </div>
+      </div>
+      
+      {/* 学生手写提取作答文本（如果有） */}
+      {question.studentAnswer && (
+        <div className="border-t border-slate-100 pt-6 space-y-4">
+          <div className="flex items-center gap-2 font-extrabold text-sm text-blue-600">
+            <span className="font-bold">📝</span>
+            <h4 className="text-slate-900 font-black text-sm">您的作答内容</h4>
           </div>
-          <FormattedMath text={question.solution} className="text-slate-805" />
+          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
+            <FormattedMath text={question.studentAnswer} />
+          </div>
         </div>
+      )}
+
+      {question.errorAnalysis && (
+        <div className="border-t border-slate-100 pt-6 space-y-4">
+          <div className={`flex items-center gap-2 font-extrabold text-sm ${question.errorReason?.includes('完全掌握') ? 'text-emerald-600' : 'text-rose-600'}`}>
+            <span className="font-bold">{question.errorReason?.includes('完全掌握') ? '✅' : '❌'}</span>
+            <h4 className="text-slate-900 font-black text-sm">{question.errorReason?.includes('完全掌握') ? '诊断分析' : '错因分析'}</h4>
+          </div>
+
+          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
+            <FormattedMath text={question.errorAnalysis} />
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">
+            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
+          </h4>
+        </div>
+        <FormattedMath text={question.solution} className="text-slate-805" />
       </div>
-    );
-  } else {
-    // 多题折叠/分页展示逻辑
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
-          <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-            <span>📄</span> 本卷共包含 {parsedQs.length} 道题目
-          </h3>
-        </div>
-
-        <div className="space-y-6">
-          {parsedQs.map((qItem, iIdx) => {
-            const stdAns = parsedStdAnswers[iIdx]?.content || '';
-            const stuAns = parsedStudentAnswers[iIdx]?.content || '';
-            const solText = parsedSols[iIdx]?.content || '';
-
-            const parsedErrorAnalyses = parseIndividualErrorAnalysis(question.errorAnalysis || "");
-            let subErrorAnalysis = "";
-            if (parsedErrorAnalyses.length > 1 && parsedErrorAnalyses[iIdx]) {
-              subErrorAnalysis = parsedErrorAnalyses[iIdx].content.replace(parsedErrorAnalyses[iIdx].number || '', '').trim();
-            } else if (parsedErrorAnalyses.length === 1 && parsedQs.length > 1 && iIdx === 0) {
-              subErrorAnalysis = parsedErrorAnalyses[0].content.replace(parsedErrorAnalyses[0].number || '', '').trim();
-            }
-
-            return (
-              <div key={qItem.id} className="bg-slate-50/40 border border-slate-200/80 rounded-3xl p-6 space-y-5 shadow-sm hover:border-slate-300 transition-colors">
-                {/* 题号头部 */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
-                  <span className="text-xs font-black text-slate-900 bg-slate-200 px-3 py-1 rounded-lg">
-                    第 {qItem.number} 题
-                  </span>
-                </div>
-
-                {/* 题干 */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-slate-800 font-extrabold text-xs">
-                    <span className="w-5 h-5 rounded-lg bg-blue-50 flex items-center justify-center border border-blue-100 text-[10px]">📖</span>
-                    <h4>本题题干</h4>
-                  </div>
-                  <FormattedMath text={qItem.content} className="text-sm text-slate-905 font-bold leading-relaxed" />
-                </div>
-
-                {/* 学生作答与诊断步骤 / 错因分析 */}
-                {subErrorAnalysis && (
-                  <div className="border-t border-slate-100 pt-4 space-y-3">
-                    <div className={`flex items-center gap-2 font-extrabold text-xs ${question.errorReason?.includes('完全掌握') ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      <span className="font-bold">{question.errorReason?.includes('完全掌握') ? '✅' : '❌'}</span>
-                      <h4 className="text-slate-900 font-black text-xs">{question.errorReason?.includes('完全掌握') ? '诊断分析' : '错因分析'}</h4>
-                    </div>
-
-                    <div className="p-3.5 bg-white border border-slate-200/80 rounded-2xl text-[11px] leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
-                      <FormattedMath text={subErrorAnalysis} />
-                    </div>
-                  </div>
-                )}
-
-                {/* 名师解析 */}
-                {solText && (
-                  <div className="border-t border-slate-100 pt-4 space-y-2">
-                    <div className="flex items-center gap-2 text-blue-600 font-extrabold text-xs">
-                      <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-                      <h4>AI 智能辅导名师精解步骤</h4>
-                    </div>
-                    <div className="text-xs leading-relaxed text-slate-805">
-                      <FormattedMath text={solText} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 }

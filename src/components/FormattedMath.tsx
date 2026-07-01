@@ -6,11 +6,63 @@ interface FormattedMathProps {
   className?: string;
 }
 
+function parseMarkdownTables(text: string): string {
+  const lines = text.split('\n');
+  let inTable = false;
+  const newLines: string[] = [];
+  let tableHtml: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('|') && line.endsWith('|') && line.length > 1) {
+      if (!inTable) {
+        inTable = true;
+        tableHtml.push('<table><tbody>');
+      }
+      
+      // Skip separator row (e.g. |:---|---:|)
+      const contentWithoutPipes = line.replace(/\|/g, '');
+      if (contentWithoutPipes.replace(/[-:\s]/g, '').length === 0) {
+        continue;
+      }
+
+      const cells = line.slice(1, -1).split('|');
+      let rowHtml = '<tr>';
+      const isHeader = tableHtml.length === 1;
+      const tag = isHeader ? 'th' : 'td';
+      
+      for (const cell of cells) {
+        rowHtml += `<${tag}>${cell.trim()}</${tag}>`;
+      }
+      rowHtml += '</tr>';
+      tableHtml.push(rowHtml);
+    } else {
+      if (inTable) {
+        inTable = false;
+        tableHtml.push('</tbody></table>');
+        newLines.push(tableHtml.join(''));
+        tableHtml = [];
+      }
+      newLines.push(lines[i]);
+    }
+  }
+
+  if (inTable) {
+    tableHtml.push('</tbody></table>');
+    newLines.push(tableHtml.join(''));
+  }
+
+  return newLines.join('\n');
+}
+
 export default function FormattedMath({ text = '', className = '' }: FormattedMathProps) {
   if (!text) return null;
 
+  // Pre-process markdown tables into HTML tables so they can be rendered properly
+  const processedText = parseMarkdownTables(text);
+
   // Split text by block math blocks ($$.*?$$) and HTML tables
-  const segments = text.split(/(\$\$\s*[\s\S]*?\s*\$\$|<table[\s\S]*?<\/table>)/gi);
+  const segments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|<table[\s\S]*?<\/table>)/gi);
 
   return (
     <div className={`space-y-4 font-medium text-slate-700 leading-relaxed text-sm xl:text-base ${className}`}>
@@ -172,11 +224,13 @@ function NormalSegment({ text }: { text: string; key?: any }) {
 }
 
 export function InlineContent({ text }: { text: string }) {
+  const processedTextMarkdown = parseMarkdownTables(text);
+
   // If the text contains HTML structure tags (like table), splitting into React nodes 
   // breaks the HTML because dangerouslySetInnerHTML fragments get auto-closed by the browser.
   // We must process all $math$ and **bold** into raw HTML strings first, and render it whole.
-  if (/<(table|tbody|thead|tr|td|th)(>|\s[^>]*>)/i.test(text)) {
-    let processedHtml = text;
+  if (/<(table|tbody|thead|tr|td|th)(>|\s[^>]*>)/i.test(processedTextMarkdown)) {
+    let processedHtml = processedTextMarkdown;
     // Replace $math$ with Katex HTML
     processedHtml = processedHtml.replace(/\$(.*?)\$/g, (match, rawMath) => {
       try {
@@ -205,7 +259,7 @@ export function InlineContent({ text }: { text: string }) {
   }
 
   // Parse inline math $...$ (Standard non-HTML text path)
-  const inlineMathSegments = text.split(/(\$.*?\$)/g);
+  const inlineMathSegments = processedTextMarkdown.split(/(\$.*?\$)/g);
 
   return (
     <>

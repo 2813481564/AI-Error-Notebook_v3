@@ -103,6 +103,7 @@ export async function generateContentWithFallback(params: {
   model?: string;
   systemPrompt?: string;
   thinkingMode?: 'enabled' | 'disabled';
+  tools?: any[];
 }) {
   const provider = getSetting("AI_PROVIDER", process.env.AI_PROVIDER || 'gemini');
   const apiBaseUrl = getSetting("AI_API_BASE_URL", process.env.AI_API_BASE_URL || '');
@@ -148,6 +149,10 @@ export async function generateContentWithFallback(params: {
       messages: messages,
       temperature: params.config?.temperature ?? 0.7
     };
+
+    if (params.tools) {
+      reqData.tools = params.tools;
+    }
 
     if (modelToUse === 'glm-5.1') {
       reqData.thinking = {

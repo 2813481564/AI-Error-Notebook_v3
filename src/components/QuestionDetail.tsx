@@ -16,7 +16,7 @@ import {
 import FormattedMath from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import ReadOnlyDetail, { BrainCircuitIcon } from './ReadOnlyDetail';
-import { parseIndividualQuestions } from '../lib/parser';
+
 
 const GRADE_OPTIONS = [
   '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
@@ -196,13 +196,17 @@ export default function QuestionDetail({
     try {
       const newId = "q_similar_" + Math.random().toString(36).substring(2, 9);
       const selectedNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
+      
+      const kps = question.knowledgePoints.filter((k: string) => k !== "AI变式题");
+      kps.push("AI变式题");
+
       const newQuestion: ErrorQuestion = {
         id: newId,
         originalText: item.questionText,
         subject: question.subject,
-        knowledgePoints: [...question.knowledgePoints, "AI变式题"],
-        errorReason: question.errorReason, // 继承原题错因，不强行覆盖
-        examDirection: "【变式强化题】 " + (question.examDirection || ""), // 在此处打标记，避免破坏错因统计
+        knowledgePoints: kps,
+        errorReason: "AI变式题", 
+        examDirection: "【变式强化题】 " + (question.examDirection || ""), 
         solution: item.solution,
         createdAt: Date.now(),
         notebookId: selectedVariationNb,
@@ -210,7 +214,7 @@ export default function QuestionDetail({
         masteryStatus: "not_mastered",
         status: "audited",
         similarQuestion: item,
-        imageUrl: question.imageUrl,
+        imageUrl: "",
         userId: question.userId,
         studentId: question.studentId
       };
@@ -261,37 +265,10 @@ export default function QuestionDetail({
     }
 
     setGenerating(true);
-    const placeholders: ErrorQuestion[] = [];
 
     try {
-      window.alert("已为您在选定的AI变题库中插入占位符，正在拼命生成中，请耐心等待...");
+      window.alert("正在拼命生成中，请耐心等待...");
       
-      const selectedVarNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
-      
-      // 插入占位符
-      for (let i = 0; i < similarCount; i++) {
-        const newId = "q_similar_ph_" + Math.random().toString(36).substring(2, 9);
-        const placeholderQuestion: ErrorQuestion = {
-          id: newId,
-          originalText: `【AI变式生成中...】正在基于原题为您生成第 ${i + 1} 道变式题，请稍候...`,
-          subject: question.subject,
-          knowledgePoints: [...question.knowledgePoints, "AI变式题"],
-          errorReason: question.errorReason,
-          examDirection: "【变式强化题】 " + (question.examDirection || ""),
-          solution: "AI正在拼命思考中，请稍候...",
-          createdAt: Date.now(),
-          notebookId: selectedVariationNb,
-          notebookName: selectedVarNbObj ? selectedVarNbObj.name : undefined,
-          masteryStatus: "not_mastered",
-          status: "pending",
-          userId: question.userId,
-          studentId: question.studentId,
-          imageUrl: question.imageUrl
-        };
-        await db.saveQuestion(placeholderQuestion);
-        placeholders.push(placeholderQuestion);
-      }
-
       const token = localStorage.getItem('errorbook_token');
       const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
       const originalGrade = selectedNbObj?.grade;
@@ -325,42 +302,13 @@ export default function QuestionDetail({
 
       const dataArray = Array.isArray(data) ? data : [data];
 
-      // 更新占位符为真实生成的题目
-      for (let i = 0; i < dataArray.length; i++) {
-        if (placeholders[i]) {
-          const updatedPh: ErrorQuestion = {
-            ...placeholders[i],
-            originalText: dataArray[i].questionText || dataArray[i].originalText || dataArray[i].question || '',
-            solution: dataArray[i].solution || '',
-            status: "audited",
-            similarQuestion: dataArray[i]
-          };
-          await db.saveQuestion(updatedPh);
-          if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
-            setSavedStatus(prev => ({ ...prev, [i]: true }));
-          }
-        }
-      }
-
-      const updatedQuestion = { ...question, similarQuestion: data };
-      await db.saveQuestion(updatedQuestion);
-
       if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
-        setSimilarData(data);
-        if (onUpdate) {
-          onUpdate(updatedQuestion);
-        }
+        setSimilarData(dataArray);
       }
     } catch (err: any) {
       console.error(err);
       if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
         window.alert(err.message || '生成同类题失败，请重试');
-      }
-      // 如果失败，尝试删除占位符
-      for (const ph of placeholders) {
-        try {
-          await db.deleteQuestion(ph.id);
-        } catch(e) {}
       }
     } finally {
       if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
@@ -429,8 +377,9 @@ export default function QuestionDetail({
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-        {question.imageUrl && (
+      {!( (!isEditing) && (question.errorReason === 'AI变式题' || question.knowledgePoints?.includes('AI变式题') || question.examDirection?.includes('变式')) && !!question.similarQuestion ) && (
+        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        {question.imageUrl && question.errorReason !== 'AI变式题' && !question.knowledgePoints?.includes('AI变式题') && !question.examDirection?.includes('变式') && (
           <div className="w-full bg-slate-50/50 border-b border-slate-100 flex justify-center py-5 px-4">
             <img
               src={question.imageUrl}
@@ -577,6 +526,7 @@ export default function QuestionDetail({
           )}
         </div>
       </div>
+      )}
 
       {/* 错题举一反三 */}
       {!isEditing && (
