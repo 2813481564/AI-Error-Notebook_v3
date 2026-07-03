@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { db, ErrorQuestion, DiagnosisStep } from '../lib/db';
 import { Search, Book, Clock, ChevronRight, X, Sparkles, Loader2, ArrowLeft, Trash2, Check, PlusCircle, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
-import FormattedMath, { InlineContent } from './FormattedMath';
+import FormattedMath, { InlineContent, cleanTextForSummary } from './FormattedMath';
 import { parseIndividualErrorAnalysis } from '../lib/parser';
 import GeometryRenderer from './GeometryRenderer';
 import type { GeometryData } from '../types/geometry';
@@ -1007,7 +1007,7 @@ export default function AIVariationLibrary({
                             className="text-slate-800 font-bold text-sm md:text-base leading-relaxed line-clamp-2 cursor-pointer flex-1"
                           >
                             <span className="mr-1.5">{index + 1 + (currentPage - 1) * pageSize}.</span>
-                            <InlineContent text={q.originalText} />
+                            <InlineContent text={cleanTextForSummary(q.originalText)} />
                           </div>
                           <div className="text-xs text-slate-400 font-extrabold shrink-0 pt-0.5 flex items-center gap-1">
                             {formattedDate}
@@ -1016,7 +1016,7 @@ export default function AIVariationLibrary({
 
                         {/* 第二行：错因分析 */}
                         {q.errorAnalysis && (() => {
-                          const cleanText = q.errorAnalysis.replace(/\n+/g, ' ').replace(/>\s?/g, '').trim();
+                          const cleanText = cleanTextForSummary(q.errorAnalysis);
                           return (
                             <div
                               onClick={() => setSelectedQuestion(q)}

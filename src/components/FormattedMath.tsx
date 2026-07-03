@@ -55,11 +55,24 @@ function parseMarkdownTables(text: string): string {
   return newLines.join('\n');
 }
 
+// 自动把未被 $...$ 包裹的 \frac{}{}、\sqrt{}、\times 等裸露数学 LaTeX 符号套上 $...$，确保 KaTeX 完美渲染
+function autoWrapBareLatex(text: string): string {
+  if (!text) return '';
+  const cleaned = text.replace(/(?:\\\\)(frac|sqrt|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, '\\$1');
+  return cleaned.split(/(\$\$.*?\$\$|\$.*?\$)/g).map((seg, idx) => {
+    if (idx % 2 === 1) return seg;
+    return seg.replace(/(?:\\+)(frac\{[^{}]*\}\{[^{}]*\}|sqrt(?:\[[^[\]]*\])?\{[^{}]*\}|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, (m, p1) => '$\\' + p1 + '$');
+  }).join('');
+}
+
 export default function FormattedMath({ text = '', className = '' }: FormattedMathProps) {
   if (!text) return null;
 
+  // 自动修复并包裹“裸露”的分数、根号等公式命令
+  const wrappedText = autoWrapBareLatex(text);
+
   // Pre-process markdown tables into HTML tables so they can be rendered properly
-  const processedText = parseMarkdownTables(text);
+  const processedText = parseMarkdownTables(wrappedText);
 
   // Split text by block math blocks ($$.*?$$) and HTML tables
   const segments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|<table[\s\S]*?<\/table>)/gi);
@@ -81,9 +94,7 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
         if (trimmedSegment.startsWith('$$') && trimmedSegment.endsWith('$$')) {
           const rawMath = trimmedSegment.slice(2, -2).trim();
           try {
-            const sanitizedMath = rawMath
-              .replace(/\\\\/g, '\\')
-              .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+            const sanitizedMath = fixLatexCommands(rawMath);
 
             const html = katex.renderToString(sanitizedMath, {
               displayMode: true,
@@ -223,8 +234,41 @@ function NormalSegment({ text }: { text: string; key?: any }) {
   );
 }
 
+function fixLatexCommands(math: string): string {
+  return math
+    .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
+    .replace(/\f(?=rac)/g, '\\f')
+    .replace(/\b(?=eta|egin|ar)/g, '\\b')
+    .replace(/\r(?=ightarrow|ight)/g, '\\r')
+    .replace(/\\\\/g, '\\')
+    .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+}
+
+// 极简卡片摘要清洗：只处理 \n、\\n、\t、\\t 等转义与空白，不破坏 Markdown 与公式
+export function cleanTextForSummary(text: string): string {
+  if (!text) return '';
+  const cleaned = text
+    .replace(/\\\\n/g, ' ')
+    .replace(/\\n/g, ' ')
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
+    .replace(/\\t(?!(imes|ext|au|heta|riangle|o\b|op|an))/g, ' ')
+    .replace(/\x09/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return autoWrapBareLatex(cleaned);
+}
+
 export function InlineContent({ text }: { text: string }) {
-  const processedTextMarkdown = parseMarkdownTables(text);
+  if (!text) return null;
+  // 处理 \n、\\n、\t 等转义，同时保护 \times、\text 等 LaTeX 公式命令不被误伤，并包裹裸露公式
+  const unescapedText = autoWrapBareLatex(text)
+    .replace(/\\\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
+    .replace(/\\t(?!(imes|ext|au|heta|riangle|o\b|op|an))/g, ' ')
+    .replace(/\x09/g, ' ');
+  const processedTextMarkdown = parseMarkdownTables(unescapedText);
 
   // If the text contains HTML structure tags (like table), splitting into React nodes 
   // breaks the HTML because dangerouslySetInnerHTML fragments get auto-closed by the browser.
@@ -234,9 +278,7 @@ export function InlineContent({ text }: { text: string }) {
     // Replace $math$ with Katex HTML
     processedHtml = processedHtml.replace(/\$(.*?)\$/g, (match, rawMath) => {
       try {
-        const sanitizedMath = rawMath
-          .replace(/\\\\/g, '\\')
-          .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+        const sanitizedMath = fixLatexCommands(rawMath);
         const html = katex.renderToString(sanitizedMath, {
           displayMode: false,
           throwOnError: false,
@@ -267,10 +309,7 @@ export function InlineContent({ text }: { text: string }) {
         if (seg.startsWith('$') && seg.endsWith('$')) {
           const rawMath = seg.slice(1, -1).trim();
           try {
-            // Unescape occasionally double-escaped backend slashes like \\times or \\div
-            const sanitizedMath = rawMath
-              .replace(/\\\\/g, '\\')
-              .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+            const sanitizedMath = fixLatexCommands(rawMath);
 
             const html = katex.renderToString(sanitizedMath, {
               displayMode: false,
@@ -301,8 +340,8 @@ export function InlineContent({ text }: { text: string }) {
 }
 
 function BoldTextRenderer({ text }: { text: string; key?: any }) {
-  // Safe split by <br/> to natively render line breaks without dangerous HTML
-  const brSegments = text.split(/<br\s*\/?>/gi);
+  // Safe split by <br/> or \n to natively render line breaks without dangerous HTML
+  const brSegments = text.split(/(?:<br\s*\/?>|\r?\n)/gi);
 
   return (
     <>

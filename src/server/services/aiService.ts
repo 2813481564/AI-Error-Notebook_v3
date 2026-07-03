@@ -36,10 +36,10 @@ export function sanitizeJsonString(rawStr: string): string {
   let result = '';
   let inString = false;
   let i = 0;
-  
+
   while (i < rawStr.length) {
     const char = rawStr[i];
-    
+
     if (!inString) {
       result += char;
       if (char === '"') {
@@ -57,9 +57,9 @@ export function sanitizeJsonString(rawStr: string): string {
           backslashCount++;
           i++;
         }
-        
+
         const nextChar = rawStr[i] || '';
-        
+
         let isLatexN = false;
         if (nextChar === 'n') {
           const nextNextChar = rawStr[i + 1] || '';
@@ -67,7 +67,7 @@ export function sanitizeJsonString(rawStr: string): string {
             isLatexN = true;
           }
         }
-        
+
         if (nextChar === '"') {
           const literalCount = backslashCount - 1;
           result += '\\'.repeat(literalCount * 2) + '\\"';
@@ -147,18 +147,37 @@ export async function generateContentWithFallback(params: {
     const reqData: any = {
       model: modelToUse,
       messages: messages,
-      temperature: params.config?.temperature ?? 0.7
+      temperature: params.config?.temperature ?? 0.1
     };
 
     if (params.tools) {
       reqData.tools = params.tools;
     }
 
-    if (modelToUse === 'glm-5.1') {
-      reqData.thinking = {
-        type: params.thinkingMode || 'disabled'
-      };
-      reqData.temperature = params.thinkingMode === 'enabled' ? 1.0 : 0.1;
+    // 解除旧版本硬编码锁，全量兼容智谱 GLM、阿里云通义千问 (DashScope)、DeepSeek 等多模态与推理思考模型
+    const lowerModel = modelToUse.toLowerCase();
+    const isThinkingModel = lowerModel.includes('thinking') || lowerModel.includes('r1') || lowerModel.includes('o3') || lowerModel.includes('glm-5') || lowerModel.includes('max') || lowerModel.includes('plus');
+    const shouldEnableThinking = params.thinkingMode === 'enabled' || (params.thinkingMode !== 'disabled' && isThinkingModel);
+
+    if (shouldEnableThinking) {
+      // 1. 兼容智谱 GLM 与 OpenAI 规范
+      reqData.thinking = { type: 'enabled' };
+      // 2. 兼容阿里云通义千问 / DashScope 与 DeepSeek 规范
+      reqData.enable_thinking = true;
+      // 深度思考模型推演建议采用较广阔的采样温度
+      reqData.temperature = 1.0;
+    } else {
+      reqData.thinking = { type: 'disabled' };
+      reqData.enable_thinking = false;
+      // 纯 OCR 提取与转录阶段采用严谨的低采样温度，绝不幻觉
+      reqData.temperature = params.config?.temperature ?? 0.1;
+    }
+
+    // 智能自适应大模型厂商的特殊参数限制 (例如：月之暗面 Kimi 在深度思考模式下强制规定为 1，常规模式下强制规定为 0.6)
+    if (lowerModel.includes('kimi') || lowerModel.includes('moonshot')) {
+      reqData.temperature = shouldEnableThinking ? 1 : 0.6;
+    } else if (lowerModel.includes('o1') || lowerModel.includes('o3-mini')) {
+      delete reqData.temperature;
     }
 
     const reqBody = JSON.stringify(reqData);

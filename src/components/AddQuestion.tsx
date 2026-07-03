@@ -80,83 +80,55 @@ const cropBoxes = (
       try {
         const results: string[] = [];
         boxes.forEach((box) => {
-          // 计算 4 个顶点在原始图片上的实际像素坐标
+          // 获取裁剪区域在原始图像中的实际像素坐标
           const p0 = { x: (box.p0.x / 100) * img.naturalWidth, y: (box.p0.y / 100) * img.naturalHeight };
-          const p1 = { x: (box.p1.x / 100) * img.naturalWidth, y: (box.p1.y / 100) * img.naturalHeight };
           const p2 = { x: (box.p2.x / 100) * img.naturalWidth, y: (box.p2.y / 100) * img.naturalHeight };
-          const p3 = { x: (box.p3.x / 100) * img.naturalWidth, y: (box.p3.y / 100) * img.naturalHeight };
 
-          // 计算裁剪区域四条边的长度，用均值来确定输出图像的宽高
-          const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-          const edgeW1 = dist(p0, p1);
-          const edgeW2 = dist(p3, p2);
-          const edgeH1 = dist(p0, p3);
-          const edgeH2 = dist(p1, p2);
+          const sourceX = Math.min(p0.x, p2.x);
+          const sourceY = Math.min(p0.y, p2.y);
+          let sourceW = Math.abs(p2.x - p0.x);
+          let sourceH = Math.abs(p2.y - p0.y);
 
-          let destW = Math.round((edgeW1 + edgeW2) / 2);
-          let destH = Math.round((edgeH1 + edgeH2) / 2);
+          if (sourceW < 1) sourceW = 1;
+          if (sourceH < 1) sourceH = 1;
 
-          // 限制最大宽高，避免性能和 AI 识别异常
+          let destW = Math.round(sourceW);
+          let destH = Math.round(sourceH);
+
+          // 限制最大规格，防止超大尺寸导致的 AI 异常与卡顿
           const maxDim = 1600;
           if (destW > maxDim || destH > maxDim) {
             const ratio = Math.min(maxDim / destW, maxDim / destH);
             destW = Math.round(destW * ratio);
             destH = Math.round(destH * ratio);
           }
-          if (destW < 10) destW = 10;
-          if (destH < 10) destH = 10;
 
-          // 绘制源图像以获取像素数据
-          const canvasSrc = document.createElement('canvas');
-          canvasSrc.width = img.naturalWidth;
-          canvasSrc.height = img.naturalHeight;
-          const ctxSrc = canvasSrc.getContext('2d');
-          if (!ctxSrc) throw new Error('Canvas 2D context not supported');
-          ctxSrc.drawImage(img, 0, 0);
-
-          const imgDataSrc = ctxSrc.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
-          const srcData = imgDataSrc.data;
-          const srcW = img.naturalWidth;
-          const srcH = img.naturalHeight;
-
-          // 目标画布
+          // 创建目标画布
           const canvasDst = document.createElement('canvas');
           canvasDst.width = destW;
           canvasDst.height = destH;
           const ctxDst = canvasDst.getContext('2d');
           if (!ctxDst) throw new Error('Canvas 2D context not supported');
-          const imgDataDst = ctxDst.createImageData(destW, destH);
-          const dstData = imgDataDst.data;
 
-          // 双线性插值反向采样渲染循环
-          for (let v = 0; v < destH; v++) {
-            const nv = v / (destH - 1 || 1);
-            for (let u = 0; u < destW; u++) {
-              const nu = u / (destW - 1 || 1);
+          // 开启高质量图像平滑（双三次插值抗锯齿）
+          ctxDst.imageSmoothingEnabled = true;
+          ctxDst.imageSmoothingQuality = 'high';
 
-              const w0 = (1 - nu) * (1 - nv);
-              const w1 = nu * (1 - nv);
-              const w2 = nu * nv;
-              const w3 = (1 - nu) * nv;
+          // 直接利用浏览器底层硬加速的高质量 drawImage 裁剪并缩放
+          ctxDst.drawImage(
+            img,
+            sourceX,
+            sourceY,
+            sourceW,
+            sourceH,
+            0,
+            0,
+            destW,
+            destH
+          );
 
-              const sx = Math.round(w0 * p0.x + w1 * p1.x + w2 * p2.x + w3 * p3.x);
-              const sy = Math.round(w0 * p0.y + w1 * p1.y + w2 * p2.y + w3 * p3.y);
-
-              const clampedX = Math.max(0, Math.min(srcW - 1, sx));
-              const clampedY = Math.max(0, Math.min(srcH - 1, sy));
-
-              const srcIdx = (clampedY * srcW + clampedX) * 4;
-              const dstIdx = (v * destW + u) * 4;
-
-              dstData[dstIdx] = srcData[srcIdx];
-              dstData[dstIdx + 1] = srcData[srcIdx + 1];
-              dstData[dstIdx + 2] = srcData[srcIdx + 2];
-              dstData[dstIdx + 3] = srcData[srcIdx + 3];
-            }
-          }
-
-          ctxDst.putImageData(imgDataDst, 0, 0);
-          results.push(canvasDst.toDataURL(mimeType));
+          // 导出为 0.95 高质量的图片（如果 mimeType 不支持质量参数则自动忽略）
+          results.push(canvasDst.toDataURL(mimeType, 0.95));
         });
         resolve(results);
       } catch (err) {
@@ -655,61 +627,6 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
 
 
 
-
-
-  const handleSave = async () => {
-    if (streamTasks.length === 0) return;
-    if (selectedIndexes.size === 0) {
-      alert('请选择至少一道题目进行保存归档！');
-      return;
-    }
-
-    const selectedTasks = streamTasks.filter((t, idx) => {
-      const isChecked = selectedIndexes.has(idx);
-      const reason = errorReasons[idx] || '概念不清';
-      return isChecked && reason !== '不纳入归档' && t.phase === 'done' && t.result;
-    });
-
-    try {
-      if (selectedTasks.length > 0) {
-        for (let i = 0; i < selectedTasks.length; i++) {
-          const t = selectedTasks[i];
-          const itemIdx = streamTasks.indexOf(t);
-          const reason = errorReasons[itemIdx] || '概念不清';
-          const q = t.result;
-
-          const singleQuestion: ErrorQuestion = {
-            id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
-            imageUrl: t.originalImage || undefined,
-            originalText: q.originalText || '原题缺失',
-            subject: q.subject || '数学',
-            knowledgePoints: q.knowledgePoints || [],
-            errorReason: reason,
-            solution: q.solution || '',
-            createdAt: Date.now() + i,
-            studentAnswer: q.studentAnswer || '',
-            errorDiagnosis: q.errorDiagnosis || [],
-            errorAnalysis: q.errorAnalysis || '',
-            notebookId: selectedNotebook || undefined,
-            score: q.score,
-            status: 'pending',
-            masteryStatus: 'not_mastered',
-            standardAnswer: q.standardAnswer || undefined,
-            variants: q.variants || []
-          };
-
-          await db.saveQuestion(singleQuestion);
-        }
-        alert(`已成功归档保存 ${selectedTasks.length} 条错题记录！`);
-      } else {
-        alert('选中的题目均标记为“不纳入归档”或尚未处理完成，未写入错题本。');
-      }
-
-      onNavigate('library', { notebookId: selectedNotebook || 'unclassified' });
-    } catch (err) {
-      setError(err.message || '保存错题失败，请重试');
-    }
-  };
 
 
   return (

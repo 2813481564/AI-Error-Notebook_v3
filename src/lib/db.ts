@@ -33,6 +33,8 @@ export interface ErrorQuestion {
   notebookId?: string;
   notebookName?: string;
   examDirection?: string;
+  userId?: string;
+  variants?: any[];
 }
 
 export interface Stats {

@@ -22,7 +22,7 @@ export async function enhanceImageForOcr(base64Data: string): Promise<string> {
 
     const optimizedBuffer = await sharp(imageBuffer)
       // .grayscale() // 移除灰度化，保留色彩，让多模态大模型能通过颜色（如红色）过滤老师的批改痕迹
-      .normalize() // 1. 增强对比度
+      // .normalize() // 移除直方图拉伸，防止 Linux 生产环境把铅笔辅助线和轻笔画拉伸洗白
       .sharpen({
         sigma: 0.5, // 显著降低锐化半径（原1.5），防止细线笔画（如 '4', '0.6'）断裂或扭曲
         m1: 0.5,    

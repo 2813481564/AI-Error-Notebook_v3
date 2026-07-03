@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { db, ErrorQuestion } from '../lib/db';
 import { Target, BookOpen, BrainCircuit, Sparkles, CheckCircle2, AlertCircle, ArrowRight, ChevronRight, TrendingUp, Database, Camera, Users, Settings, Megaphone, Scissors, Clock, Plus } from 'lucide-react';
 import QuestionDetail from './QuestionDetail';
-import { InlineContent } from './FormattedMath';
+import { InlineContent, cleanTextForSummary } from './FormattedMath';
 
 function truncateMathText(text: string, limit: number): string {
   if (text.length <= limit) return text;
@@ -543,7 +543,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
           {recentQuestions.length > 0 ? (
             <div className="grid grid-cols-1 gap-3">
               {recentQuestions.map((q) => {
-                const cleanedText = q.originalText.replace(/[\#\*\_]/g, '');
+                const cleanedText = cleanTextForSummary(q.originalText);
                 const cleanText = truncateMathText(cleanedText, 100);
 
                 // 获取所属错题本名称

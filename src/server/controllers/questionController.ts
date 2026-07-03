@@ -937,8 +937,6 @@ export const deletePaper = (req: AuthenticatedRequest, res: express.Response) =>
   }
 };
 
-import { saveBase64Image, isBase64Image } from "../services/fileService";
-
 // 20. 上传单张图片（用于裁剪等功能）
 export const uploadImage = (req: AuthenticatedRequest, res: express.Response) => {
   try {

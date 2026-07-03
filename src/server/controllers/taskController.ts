@@ -2,8 +2,8 @@ import express from "express";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
+import { executeDeepDiagnosis } from "../services/diagnosticEngine";
 import { getSetting } from "../services/settingService";
-import crypto from "crypto";
 import { isBase64Image, saveBase64Image, deleteImageFile } from "../services/fileService";
 import { enhanceImageForOcr } from "../utils/imageOptimizer";
 import { stringSimilarity } from "../utils/stringUtils";
@@ -154,9 +154,9 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
 - subject: [学科名称，如数学/物理/化学等]
 - boundingBox: [题目所在区域的矩形框坐标，格式为 {"x": 10, "y": 20, "w": 400, "h": 200}]
 - originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
-- studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
+- studentAnswer: [看清原图！一字不差照抄图片里的所有手写步骤与最终答案（严格按照图片书写，哪怕算错或写错也必须照抄，千万别帮学生自动改对！）]
 - standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
-- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。【几何标注极度警示】：必须极其精准地识别出图上所有距离、长度标注线（如 32cm）的起止点！例如，仔细区分 32cm 是指“两个图形的水平净距离”还是“左侧直角边到右侧直角边的中心距”！一旦看错标注范围，计算会彻底崩溃。如果没有图，返回空字符串。]
 
 【深度校准与格式规约（极度重要）】：
 1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
@@ -220,69 +220,7 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
      });
   }
 
-  // 二阶段逻辑纠错
-  const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
-  if (result.length > 0) {
-    for (let i = 0; i < result.length; i++) {
-      const q = result[i];
-      if (q.studentAnswer || q.originalText) {
-        try {
-          const correctPrompt = `你是一个极其严谨的 OCR 文本校对专家。你的核心任务是：基于上下文，梳理由于字迹潦草导致的混乱数学公式格式，并修复视觉模型（OCR）在提取【原题干】和【手写作答】时产生的极其微小的“视觉漏认”（如偶尔漏掉的小数点）。
-
-【纠错原则（宽容语法，严管逻辑）】：
-1. 很多学生手写的公式非常混乱且不规范，你的任务是识别并梳理这些混乱的数学符号，将其转化为规范的 LaTeX 格式。你可以修复因字迹潦草导致的符号错乱（比如把混淆的 't' 纠正为 '+'，把漏掉的括号补齐）。
-2. 【绝对红线】：在梳理公式时，你【绝对不能】凭空捏造学生没有写出的解题步骤！如果学生写错了数字（例如算错了），你必须保留这个错误的数字！你只能做“格式和视觉漏认”上的修补。
-3. 【禁止篡改核心数字】：如果你发现原题干和手写作答中的数字存在本质差异（例如 40% 和 30%），且你无法 100% 确认这是 OCR 标点漏看，请【原封不动】地保留原文！绝对禁止为了让整个计算式成立而去强行篡改核心数字！宁可保留原始错误，也绝不能瞎编乱造！
-
-【原题干（可能有 OCR 错误）】：${q.originalText}
-【手写作答（可能有真实的计算错，可能有字迹潦草，也可能有 OCR 错误）】：${q.studentAnswer}
-
-请仅修复纯粹的 OCR 字符错漏，并严格返回 JSON 对象格式，不要包含 Markdown 标记：
-{
-  "originalText": "修复 OCR 错误后的题干...",
-  "studentAnswer": "修复 OCR 错误后的手写作答（务必保留学生真实的算错或写错）..."
-}`;
-          const correctionResponse = await generateContentWithFallback({
-            contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
-            config: { temperature: 0.1 },
-            model: textModel,
-            systemPrompt: "你是一个只输出合法 JSON 对象的校对助手。不得包含任何多余解释或 Markdown 标记。"
-          });
-          const correctedText = (correctionResponse.text || '').trim();
-          try {
-            const parsed = JSON.parse(extractJsonString(correctedText));
-            // 验证相似度防篡改 (threshold = 0.85)
-            if (parsed.originalText && q.originalText) {
-               const sim = stringSimilarity(q.originalText, parsed.originalText);
-               if (sim >= 0.85) {
-                 q.originalText = parsed.originalText;
-               } else {
-                 console.warn(`[TaskQueue] 二阶段 originalText 差异过大 (相似度 ${sim.toFixed(2)})，拒绝篡改`);
-               }
-            } else if (parsed.originalText && !q.originalText) {
-               q.originalText = parsed.originalText;
-            }
-
-            if (parsed.studentAnswer && q.studentAnswer) {
-               const sim = stringSimilarity(q.studentAnswer, parsed.studentAnswer);
-               if (sim >= 0.85) {
-                 q.studentAnswer = parsed.studentAnswer;
-               } else {
-                 console.warn(`[TaskQueue] 二阶段 studentAnswer 差异过大 (相似度 ${sim.toFixed(2)})，拒绝篡改`);
-               }
-            } else if (parsed.studentAnswer && !q.studentAnswer) {
-               q.studentAnswer = parsed.studentAnswer;
-            }
-          } catch (parseError) {
-            console.warn("[TaskQueue] 二阶段校对 JSON 解析失败，沿用原文");
-          }
-        } catch (e) {
-          console.warn("[TaskQueue] 二阶段校对失败，跳过", e);
-        }
-      }
-    }
-  }
-
+  // 按照现代 VLM 端到端及 KISS 原则，彻底砍掉“没有眼睛”的第二阶段纯文本校对，防止将算错的数字脑补修改为正确答案。
   return result;
 };
 
@@ -309,113 +247,43 @@ const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookI
       standardAnswerSection = `- 老师提供的参考标准答案: ${item.standardAnswer}\n`;
     }
 
+    let visualContextSection = '';
+    if (item.visualContext) {
+      visualContextSection = `- 题干配图与几何标注说明: ${item.visualContext}\n`;
+    }
+
+    const isMathScience = ['数学', '物理', '化学', '理综', '科学', '算术', '奥数'].some(s => (item.subject || '').includes(s));
+    const finalThinkingMode = isMathScience ? 'enabled' : 'disabled';
+
     const gradeConstraint = grade 
       ? `本道题所属年级为：${grade}。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别（小学/初中/高中）完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`
       : `请智能自动识别这道题目所属的实际年级和学段级别（从小学一年级到高中三年级）。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`;
 
-    const prompt = `
-幕后名师AI诊断任务。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
-
-【错题信息】
-- 学科: ${item.subject || '数学'}
-- 题干: ${item.originalText}
-${standardAnswerSection}
-- 学生作答内容: ${item.studentAnswer || '（无学生作答）'}
-- 难度与年级限制: ${gradeConstraint}
-
-【任务要求】：
-1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点，最多列出 3 个，存入数组。
-2. **考察方向** ("examDirection"): 简明扼要地概括题目的主要测试意图或考法（如"函数最值与导数综合"、"数形结合考法"等）。
-3. **错因标签** ("errorReason"): 必须**严格且只能**输出以下4个选项之一的字面量，绝对不能增加任何额外文字或解释！
-   - 【概念/审题】
-   - 【逻辑/建模】
-   - 【计算/执行】
-   - 【规范/表达】
-   （错误示范：输出 "【规范/表达】结果未化简" 是绝对禁止的！你只能输出 "【规范/表达】"）
-   如果未提供学生作答内容，必须强制输出标签："【知识盲区/无思路】"。
-4. **标准解析** ("solution"): 必须以名师讲课的口吻，【分步骤】详细解答该题。每一步都要有清晰且富有亲和力的中文文字解释（例如：“首先，我们将百分数转换为小数...”），严禁只甩出一堆冷冰冰的数学等式。数学公式用 $ 或 $$ 包围。
-5. **错误原因分析** ("errorAnalysis"):
-   - 如果 "学生作答内容" 完全正确（满分），请输出以下正向激励格式（换行请用 \\n）：
-     【关键错误定位】：完全正确，无错因。
-     \\n你写的是：\\n> [此处原样复现学生最核心/最精彩的一步解答]
-     \\n✅ 答对了！
-     - 你的解题思路非常清晰，推导准确无误。
-     - -> 恭喜你，继续保持！
-  - 如果 "学生作答内容" 不为空且存在错误（算错、想错等），请严格遵循以下四段式结构化 Markdown 文本输出（换行请用 \\n），**【💡 名师避坑指南】作为最后一段绝对不能省略！**
-     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱，符号混用”）。
-     \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
-     \\n❌ 错在哪？
-     - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
-     - [用对话语气指出错误] -> 你误把...当成了...！
-     \\n💡 名师避坑指南：[极度重要！请必须以“💡 名师避坑指南：”作为开头，深度分析产生此错误的根本原因，并给出治本的建议！]
-   - 如果 "学生作答内容" 部分正确但存在漏答/未写完整（例如答对了第一问但漏了第二问），请输出：
-     【关键错误定位】：明确指出答对了什么，遗漏了什么（如“第一问作答正确，但遗漏了第二问的计算过程”）。
-     \\n你写的是：\\n> [此处原样复现学生已写出的作答]
-     \\n⚠️ 还有缺失喔：
-     - [写出缺失部分的正确计算或逻辑] —— **把这部分补上才是满分解答！**
-     - [用鼓励的语气提醒] -> 题目其实还没做完哦，下次一定要记得把所有小问都回答完整！
-   - 如果为空，请结合本题考点分析最容易掉入的【常见错误陷阱】及【根本原因】。
-   - **【阅卷铁律】：遇到数学计算题时，如果学生给出的最终结果分数没有化简为最简分数（例如写了 55/70 而不是 11/14），必须严格判定为错误（属于【规范/表达】错误），绝对不能因为数值等价就判定为完全掌握！**
-6. **学生本题所得评分** ("score"): 评估学生本题得分，0到100之间的整数。
-
-请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记：
-{
-  "knowledgePoints": ["核心考点1", "核心考点2"],
-  "examDirection": "考察方向...",
-  "errorReason": "【计算/执行】计算粗心",
-  "solution": "标准详细解答步骤内容...",
-  "score": 85,
-  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！"
-}
-`;
-
-
-
-
-    const systemPrompt = `你是一个严谨的 AI 智能名师批改助手。你的输出格式有且只有一种：一个合法的 JSON 对象。不得包含任何 Markdown 标记或解释文字。`;
-
-    const response = await generateContentWithFallback({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { temperature: 0.2 },
-      systemPrompt,
-      thinkingMode: 'disabled'
+    const diagResult = await executeDeepDiagnosis({
+      subject: item.subject || '数学',
+      originalText: item.originalText,
+      studentAnswer: item.studentAnswer || '',
+      visualContext: item.visualContext || '',
+      standardAnswer: item.standardAnswer || null,
+      gradeConstraint,
+      imageBase64: imageBase64 || undefined
     });
-
-    const text = response.text || '';
-    let resultObj = {
-      knowledgePoints: ["需手动分析"],
-      examDirection: "未提取",
-      errorReason: "【逻辑/建模】无法建立模型",
-      solution: text || '无解析步骤',
-      score: 0,
-      errorAnalysis: "识别异常，请手动分析",
-      errorDiagnosis: []
-    } as any;
-
-    try {
-      const parsedText = extractJsonString(text);
-      if (parsedText) {
-        resultObj = JSON.parse(sanitizeJsonString(parsedText));
-      }
-    } catch (e) {
-      console.warn(`[TaskQueue] 题目 #${idx + 1} 诊断 JSON 解析失败，降级处理`, e);
-    }
 
     diagnosedResults.push({
       id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
       imageUrl: imageBase64 || undefined,
       originalText: item.originalText,
       subject: item.subject || '数学',
-      knowledgePoints: resultObj.knowledgePoints || [],
-      examDirection: resultObj.examDirection || '未提取',
-      errorReason: resultObj.errorReason || '【概念/审题】概念模糊',
-      solution: resultObj.solution || '',
+      knowledgePoints: diagResult.knowledgePoints || [],
+      examDirection: diagResult.examDirection || '未提取',
+      errorReason: diagResult.errorReason || '【概念/审题】',
+      solution: diagResult.solution || '',
       createdAt: Date.now(),
       studentAnswer: item.studentAnswer || '',
       errorDiagnosis: [],
-      errorAnalysis: resultObj.errorAnalysis || '',
+      errorAnalysis: diagResult.errorAnalysis || '',
       notebookId: notebookId || undefined,
-      score: resultObj.score !== undefined ? resultObj.score : 0,
+      score: diagResult.score !== undefined ? diagResult.score : 0,
       masteryStatus: 'not_mastered',
       standardAnswer: item.standardAnswer || null
     });

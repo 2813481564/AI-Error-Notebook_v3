@@ -68,6 +68,18 @@ db.exec(`
     createdAt INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS question_standard_cache (
+    hashKey TEXT PRIMARY KEY,
+    originalText TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    knowledgePoints TEXT,
+    examDirection TEXT,
+    solution TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cache_subject ON question_standard_cache(subject);
+
   CREATE TABLE IF NOT EXISTS redemption_codes (
     code TEXT PRIMARY KEY,
     role TEXT NOT NULL,

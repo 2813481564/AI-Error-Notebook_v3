@@ -136,7 +136,7 @@ export default function QuestionDetail({
           if (data.length > 0) {
             setSelectedVariationNb(data[0].id);
           } else {
-            setShowCreateVarNb(true);
+            setShowCreateVarNbModal(true);
           }
         }
       })
@@ -803,59 +803,6 @@ export default function QuestionDetail({
         </div>
       )}
 
-      {/* AI变题库保存弹窗 */}
-      {showVariationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-sm w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-extrabold text-slate-900">选择保存的AI变题库</h3>
-              <button onClick={() => setShowVariationModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <select 
-                value={selectedVariationNb} 
-                onChange={(e) => setSelectedVariationNb(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-800"
-              >
-                {variationNotebooks.length === 0 && <option value="">暂无变题本，请创建</option>}
-                {variationNotebooks.map(nb => (
-                  <option key={nb.id} value={nb.id}>{nb.name}</option>
-                ))}
-              </select>
-
-              {!showCreateVarNb ? (
-                <button onClick={() => setShowCreateVarNb(true)} className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer">
-                  <PlusCircle className="w-3.5 h-3.5" /> 新建变题本
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={newVarNbName} 
-                    onChange={e => setNewVarNbName(e.target.value)} 
-                    placeholder="输入变题本名称"
-                    className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs"
-                  />
-                  <button onClick={handleCreateVariationNb} className="px-3 bg-blue-600 text-white rounded-lg text-xs font-bold cursor-pointer">
-                    创建
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleSaveSimilarItem}
-              disabled={!selectedVariationNb}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer"
-            >
-              确认保存
-            </button>
-          </div>
-        </div>
-      )}
       {/* 新建变题本弹窗 */}
       {showCreateVarNbModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

@@ -1,4 +1,7 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import {
@@ -6,8 +9,48 @@ import {
   extractJsonString,
   sanitizeJsonString
 } from "../services/aiService";
+import { executeDeepDiagnosis } from "../services/diagnosticEngine";
 import { getSetting } from "../services/settingService";
 import { stringSimilarity } from "../utils/stringUtils";
+
+// 助手函数：归一化题目文字并生成 SHA256 指纹，用于题库去重与标准解答确定性缓存
+function computeQuestionHash(text: string): string {
+  const normalized = (text || '')
+    .replace(/\s+/g, '')
+    .replace(/[，。；：！？、""''（）《》【】]/g, '')
+    .replace(/[,.;:!?/"'()<>\[\]]/g, '')
+    .toLowerCase();
+  return crypto.createHash("sha256").update(normalized).digest("hex");
+}
+
+// 助手函数：解析本地图片 URL 或 Base64 字符串为纯 Base64 数据
+function resolveImageToBase64(urlOrBase64?: string): string | undefined {
+  if (!urlOrBase64) return undefined;
+  if (urlOrBase64.startsWith('data:image')) {
+    return urlOrBase64.split(',')[1] || urlOrBase64;
+  }
+  if (!urlOrBase64.startsWith('/')) {
+    return urlOrBase64;
+  }
+  try {
+    if (urlOrBase64.startsWith('/notebook/uploads/')) {
+      const fileName = urlOrBase64.replace('/notebook/uploads/', '');
+      const filePath = path.join(process.cwd(), 'uploads', fileName);
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath).toString('base64');
+      }
+    } else if (urlOrBase64.startsWith('/uploads/')) {
+      const fileName = urlOrBase64.replace('/uploads/', '');
+      const filePath = path.join(process.cwd(), 'uploads', fileName);
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath).toString('base64');
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to resolve image to base64:", err);
+  }
+  return undefined;
+}
 
 const GEOMETRY_PROMPT_TEMPLATE = `
 【几何图形数据规范（必须填写 geometry 字段）】
@@ -192,9 +235,9 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
 - subject: [学科名称，如数学/物理/化学等]
 - boundingBox: [题目所在区域的矩形框坐标，格式为 {"x": 10, "y": 20, "w": 400, "h": 200}]
 - originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
-- studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
+- studentAnswer: [看清原图！一字不差照抄图片里的所有手写步骤与最终答案（严格按照图片书写，哪怕算错或写错也必须照抄，千万别帮学生自动改对！）]
 - standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
-- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。【几何标注极度警示】：必须极其精准地识别出图上所有距离、长度标注线（如 32cm）的起止点！例如，仔细区分 32cm 是指“两个图形的水平净距离”还是“左侧直角边到右侧直角边的中心距”！一旦看错标注范围，计算会彻底崩溃。如果没有图，返回空字符串。]
 
 【深度校准与格式规约（极度重要）】：
 1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
@@ -264,38 +307,7 @@ export const extract = async (req: AuthenticatedRequest, res: express.Response) 
        });
     }
 
-    // 二阶段逻辑纠错
-    const textModel = getSetting("AI_MODEL", process.env.AI_MODEL || 'glm-5.1');
-    if (result.length > 0) {
-      for (let i = 0; i < result.length; i++) {
-        const q = result[i];
-        if (q.studentAnswer) {
-          try {
-            const correctPrompt = `作为一名严谨的数学教师校对员。手写作答中可能因笔画粘连导致数字识别错误（例如 0.6 被误认成 0.5、+被误认成4等），或将圆周率“\\pi”误认成汉字“元”、“兀”。请结合上下文，在不改变学生解题本意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
-【原题干】：${q.originalText}
-【手写作答】：${q.studentAnswer}
-【参考答案】：${q.standardAnswer || '无'}
-
-请直接返回校正后的【手写作答】纯文本，不要包含任何前缀或额外解释。如果完全无需修正，请直接原样返回原手写作答文本。`;
-            const correctionResponse = await generateContentWithFallback({
-              contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
-              config: { temperature: 0.1 },
-              model: textModel,
-              systemPrompt: "你是一个纯文本校对助手。只返回校对后的结果文本，不要 Markdown，不要多余废话。"
-            });
-            const correctedText = (correctionResponse.text || '').trim();
-            if (correctedText && !correctedText.startsWith('无') && !correctedText.startsWith('空')) {
-              const similarity = stringSimilarity(q.studentAnswer, correctedText);
-              if (similarity > 0.5) {
-                q.studentAnswer = correctedText;
-              }
-            }
-          } catch (e) {
-            console.warn("AI 二阶段校对失败，跳过", e);
-          }
-        }
-      }
-    }
+    // 遵照现代 VLM 端到端直出及 KISS 原则，彻底废除第二阶段校对，避免把手写算错的步骤自动修改为正确。
 
     res.json(result);
 
@@ -315,7 +327,7 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
       return res.status(403).json({ error: "权限不足，学生角色无法使用 AI 诊断功能" });
     }
 
-    let { subject, originalText, visualContext, studentAnswer, standardAnswer, thinkingMode, grade, notebookId } = req.body;
+    let { subject, originalText, visualContext, studentAnswer, standardAnswer, thinkingMode, grade, notebookId, imageUrl, imageBase64 } = req.body;
     if (!originalText) {
       return res.status(400).json({ error: "Missing originalText" });
     }
@@ -335,124 +347,130 @@ export const diagnose = async (req: AuthenticatedRequest, res: express.Response)
       ? `本道题所属年级为：${grade}。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别（小学/初中/高中）完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`
       : `请智能自动识别这道题目所属的实际年级和学段级别（从小学一年级到高中三年级）。在给出标准解析和分析错误原因时，必须严格保持与这道题目的实际年级和学段级别完全一致，绝对不能使用超纲的知识和方法来解析该题（例如：若本题是小学六年级的题目，则严禁使用初中、高中或大学的代数、微积分、方程等超纲知识，必须控制在小学六年级及以下的解题范围内）。`;
 
+    let finalImageBase64 = imageBase64;
+    if (!finalImageBase64 && imageUrl) {
+      try {
+        const path = require('path');
+        const fs = require('fs');
+        if (imageUrl.startsWith('/notebook/uploads/')) {
+          const fileName = imageUrl.replace('/notebook/uploads/', '');
+          const filePath = path.join(process.cwd(), 'uploads', fileName);
+          if (fs.existsSync(filePath)) {
+            const fileBuffer = fs.readFileSync(filePath);
+            finalImageBase64 = fileBuffer.toString('base64');
+          }
+        }
+      } catch (imgErr) {
+        console.warn("Failed to read local image for diagnosis:", imgErr);
+      }
+    }
+
+    const hashKey = computeQuestionHash(originalText);
+    let cachedSolution: string | null = null;
+    let cachedKnowledgePoints: string[] | null = null;
+    let cachedExamDirection: string | null = null;
+
+    try {
+      // 1. 优先在专属题干解析缓存表中查询
+      const cacheRow = db.prepare("SELECT * FROM question_standard_cache WHERE hashKey = ?").get(hashKey) as any;
+      if (cacheRow && cacheRow.solution) {
+        cachedSolution = cacheRow.solution;
+        if (cacheRow.knowledgePoints) {
+          try { cachedKnowledgePoints = JSON.parse(cacheRow.knowledgePoints); } catch {}
+        }
+        cachedExamDirection = cacheRow.examDirection;
+        console.log(`[Cache Hit] 命中题干标准解析指纹缓存 hashKey=${hashKey}`);
+      } else {
+        // 2. 尝试在公共题库中查询该题的标准解析
+        const pubRow = db.prepare("SELECT * FROM public_questions WHERE originalText = ? OR id = ? LIMIT 1").get(originalText, hashKey) as any;
+        if (pubRow && pubRow.solution) {
+          cachedSolution = pubRow.solution;
+          if (pubRow.knowledgePoints) {
+            try { cachedKnowledgePoints = JSON.parse(pubRow.knowledgePoints); } catch {}
+          }
+          console.log(`[Cache Hit] 命中公共题库标准解析 originalText=${originalText.substring(0, 15)}...`);
+        }
+      }
+    } catch (cacheErr) {
+      console.warn("未能成功检索标准题解缓存，将回退常规解析:", cacheErr);
+    }
+
     let standardAnswerSection = '';
-    if (standardAnswer) {
+    if (cachedSolution) {
+      standardAnswerSection = `- 【权威标准参考解析（高度确凿，请绝对依此标准解答评判，禁止自行更改计算结果）】: \n${cachedSolution}\n`;
+      if (cachedKnowledgePoints && cachedKnowledgePoints.length > 0) {
+        standardAnswerSection += `- 【本题已确定的考点】: ${cachedKnowledgePoints.join(', ')}\n`;
+      }
+      if (cachedExamDirection) {
+        standardAnswerSection += `- 【本题考察方向】: ${cachedExamDirection}\n`;
+      }
+    } else if (standardAnswer) {
       standardAnswerSection = `- 老师提供的参考标准答案: ${standardAnswer}\n`;
     } else {
       try {
         const searchPromise = generateContentWithFallback({
-          contents: [{ role: 'user', parts: [{ text: `请严格检索该题标准解析，纯文本输出。题目：${originalText}` }] }],
-          tools: [{ type: "web_search", web_search: { enable: true } }]
+          contents: [{ role: 'user', parts: [{ text: `请根据严密的数学逻辑与公理推导该题的标准参考解析，纯文本输出。题目：${originalText}。配图信息是：${visualContext || ''}` }] }]
         });
         const timeoutPromise = new Promise((_, r) => setTimeout(() => r('TIMEOUT'), 5000));
         
         const searchRes = await Promise.race([searchPromise, timeoutPromise]) as any;
         if (searchRes !== 'TIMEOUT' && searchRes.text) {
-          standardAnswerSection = `- 通过互联网检索获取的参考解答: ${searchRes.text}\n`;
+          standardAnswerSection = `- 内部纯推理生成的高精度参考解答: ${searchRes.text}\n`;
         }
       } catch (e) {
-        console.log("搜题超时或失败，平滑降级...");
+        console.log("内部参考解答生成超时或失败，平滑降级...");
       }
     }
 
-    const isHighSchoolMathScience = grade?.includes('高中') && ['数学', '物理', '化学', '理综'].includes(subject || '');
-    const finalThinkingMode = isHighSchoolMathScience ? 'enabled' : (thinkingMode || 'disabled');
-
-    let dynamicDraftPrompt = `\n【图形防污染熔断铁律】：本题真实的图形特征为：【${visualContext || '无图'}】。你在参考网上的解答时，必须首先核对该解答是否与当前图形特征矛盾！如冲突必须抛弃参考解答。`;
-    if (!isHighSchoolMathScience) {
-      dynamicDraftPrompt += `\n【批改打草稿铁律】：在指出错因前，必须在 JSON 的 "thinkingProcess" 字段写下草稿（仅列核心骨架算式）。逐行验证学生步骤，只要逻辑自洽即判对！`;
-    } else {
-      dynamicDraftPrompt += `\n【深度批改铁律】：已为你开启原生深度思考模式。请在后台详尽推演复杂公式，并以推演结果为绝对标尺进行评判。`;
-    }
-    const prompt = `
-你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
-
-【题目信息】
-- 学科: ${subject || '未指定'}
-- 题干纯文本: ${originalText}
-- 题干配图/几何拓扑结构描述: ${visualContext || '无图'}
-${standardAnswerSection}
-- 学生作答内容: ${studentAnswer || '（无学生作答）'}
-- 难度与年级限制: ${gradeConstraint}
-${dynamicDraftPrompt}
-
-【任务要求】：
-1. **核心考点** ("knowledgePoints"): 分析该题考查的核心知识点（例如：“平行线的判定”、“二次函数最值”等），最多列出 3 个，存入数组。
-2. **考察方向** ("examDirection"): 简明扼要地概括题目的主要测试意图或考法（如"函数最值与导数综合"、"数形结合考法"等）。
-3. **错因标签** ("errorReason"): 必须**严格且只能**输出以下4个选项之一的字面量，绝对不能增加任何额外文字或解释！
-   - 【概念/审题】
-   - 【逻辑/建模】
-   - 【计算/执行】
-   - 【规范/表达】
-   （错误示范：输出 "【规范/表达】结果未化简" 是绝对禁止的！你只能输出 "【规范/表达】"）
-   【极度重要】：如果“学生作答内容”为空，必须强制输出标签："【知识盲区/无思路】"。
-4. **标准解析** ("solution"): 给出该题的名师标准解题推导步骤。如果涉及数学公式，请用标准的 $ 或 $$ 符号包围以保证 LaTeX 完美渲染。
-5. **错误原因分析** ("errorAnalysis"):
-   - 如果 "学生作答内容" 不为空，请严格遵循以下四段式结构化 Markdown 文本输出（换行请用 \\n），**【💡 名师避坑指南】作为最后一段绝对不能省略！**
-     【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱”）。
-     \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
-     \\n❌ 错在哪？
-     - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
-     - [用对话语气指出错误] -> 你误把...当成了...！
-     \\n💡 名师避坑指南：[极度重要！请必须以“💡 名师避坑指南：”作为开头，深度分析产生此错误的根本原因（如不良计算习惯），并给出治本的建议！]
-   - 如果为空，请判定为【知识盲区/无思路】，跳过所有的指责，直接输出该题的解题破局点（切入点）、思维导图提示和所需的关键公式，用温和鼓励的语气指导学生第一步该如何动笔。
-   - **【阅卷铁律】：遇到数学计算题时，如果学生给出的最终结果分数没有化简为最简分数（例如写了 55/70 而不是 11/14），必须严格判定为错误（属于【规范/表达】错误），绝对不能因为数值等价就判定为完全掌握！**
-6. **学生本题所得评分** ("score"):
-   - 根据学生的解答步骤与提供的参考标准答案的比对程度，评估学生本题的最终得分，0 到 100 之间的整数。
-
-请返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
-{
-${!isHighSchoolMathScience ? '  "thinkingProcess": "步骤1: ...",\n' : ''}  "knowledgePoints": ["核心考点1", "核心考点2"],
-  "examDirection": "考察方向...",
-  "errorReason": "【计算/执行】",
-  "solution": "标准详细解答步骤内容...",
-  "score": 85,
-  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！\\n\\n💡 名师避坑指南：计算时不要粗心..."
-}
-`;
-
-    const systemPrompt = `你是一个严谨的 AI 智能名师批改助手。你的输出格式有且只有一种：一个合法的 JSON 对象（以 { 开头，以 } 结尾）。
-你必须遵守以下铁律：
-1. 你的整个回复内容只能是纯 JSON 文本，不得包含任何 Markdown 标记（如 \`\`\`json\`\`\`）、解释文字或其他非 JSON 内容。
-2. 确保 JSON 的格式、逗号、双引号完全正确，以便程序能直接解析。`;
-
-    const response = await generateContentWithFallback({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt }
-          ]
-        }
-      ],
-      config: {
-        temperature: 0.2
-      },
-      systemPrompt,
-      thinkingMode: finalThinkingMode
+    const diagResult = await executeDeepDiagnosis({
+      subject: subject || '数学',
+      originalText: originalText,
+      studentAnswer: studentAnswer || '',
+      visualContext: visualContext || '',
+      standardAnswer: cachedSolution || standardAnswer || null,
+      gradeConstraint,
+      imageBase64: finalImageBase64 || undefined,
+      thinkingMode
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
-
-    let resultObj = null;
-    try {
-      const parsedText = extractJsonString(text);
-      if (!parsedText) throw new Error("No JSON found in response");
-      resultObj = JSON.parse(sanitizeJsonString(parsedText));
-    } catch (e) {
-      console.warn("Failed to parse AI diagnosis response as JSON. Falling back to default format.", e);
-      resultObj = {
-        knowledgePoints: ["需手动分析"],
-        examDirection: "未提取",
-        errorReason: "【逻辑/建模】无法建立模型",
-        solution: text,
-        score: 0,
-        errorAnalysis: "识别异常，请手动分析",
-        errorDiagnosis: []
-      };
+    // 成功生成诊断且存在标准解析时，异步自动归档至解析指纹缓存表
+    if (diagResult && diagResult.solution && diagResult.solution.length > 10 && diagResult.score !== undefined) {
+      setTimeout(() => {
+        try {
+          db.prepare(`
+            INSERT OR REPLACE INTO question_standard_cache (hashKey, originalText, subject, knowledgePoints, examDirection, solution, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            hashKey,
+            originalText,
+            subject || "数学",
+            JSON.stringify(diagResult.knowledgePoints || []),
+            diagResult.examDirection || "",
+            diagResult.solution,
+            Date.now()
+          );
+          console.log(`[Cache Write] 错题诊断成功，标准解析已自动归档至指纹缓存表 hashKey=${hashKey}`);
+        } catch (writeErr) {
+          console.warn("未能写入题目标准解答缓存:", writeErr);
+        }
+      }, 0);
     }
-    res.json(resultObj);
+
+    res.json({
+      firstErrorStep: diagResult.firstErrorStep,
+      knowledgePoints: diagResult.knowledgePoints,
+      examDirection: diagResult.examDirection,
+      errorReason: diagResult.errorReason,
+      rootCauseChain: diagResult.rootCauseChain,
+      triggerSignals: diagResult.triggerSignals,
+      improvementAction: diagResult.improvementAction,
+      retestPlan: diagResult.retestPlan,
+      solution: diagResult.solution,
+      score: diagResult.score,
+      errorAnalysis: diagResult.errorAnalysis,
+      thinkingProcess: diagResult.thinkingProcess,
+      errorDiagnosis: []
+    });
 
   } catch (error: any) {
     console.error("AI Diagnose Error:", error);
@@ -839,7 +857,7 @@ export const processAllStream = async (req: AuthenticatedRequest, res: express.R
 - originalText: [本题的高精度完整题干印刷体文字，包含题号。绝对不能写“略”]
 - studentAnswer: [本题区域内学生手写作答出的答案或步骤，若无则留空。]
 - standardAnswer: [根据参考资料提取的本题标准答案，若无则留空]
-- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系和标注字母。如果没有图，返回空字符串。]
+- visualContext: [如果你在题目中看到了几何图形、函数图像或实物配图，请在此字段用纯文本极其详细地描述图形的拓扑结构、形状特征、嵌套关系 and 标注字母。【几何标注极度警示】：必须极其精准地识别出图上所有距离、长度标注线（如 32cm）的起止点！例如，仔细区分 32cm 是指“两个图形的水平净距离”还是“左侧直角边到右侧直角边的中心距”！一旦看错标注范围，计算会彻底崩溃。如果没有图，返回空字符串。]
 
 【深度校准与格式规约（极度重要）】：
 1. **语义级防错**：如果在数学题中识别出汉字“元”、“兀”等，且上下文是关于圆、面积、体积等几何计算，必须将其纠正为数学符号“\\pi”。理清易混淆的“t”与“+”。
@@ -895,12 +913,13 @@ export const processAllStream = async (req: AuthenticatedRequest, res: express.R
         const q = extractResult[i];
         if (q.studentAnswer || q.originalText) {
           try {
-            const correctPrompt = `作为一名严谨的数学教师校对员。OCR 识别中可能因笔画粘连导致数字或字母识别错误（例如 0.6 被误认成 0.5、0错认成O、1错认成l、+被误认成4等），或将圆周率“\\pi”误认成汉字“元”、“兀”。请结合上下文，在不改变原意的前提下，校正因视觉粘连导致的明显 OCR 字符错误。
+            const correctPrompt = `作为一名严谨的数学教师校对员。OCR 识别手写数字时极易因笔画粘连导致数字或字母识别错误（例如 0.6 被误认成 0.5、0错认成O、1错认成l、+被误认成4等），或将圆周率“\\pi”误认成汉字“元”、“兀”。
+【数理连贯性自检核心法则】：你必须利用【数学四则运算与上下步等式的连贯推导逻辑】进行代数自检！例如：如果在后续或简便运算步骤中出现了 (0.6 + 0.4) 凑整为整数 1 的推导，或者提取公因数后出现 (0.6 + 0.4)，那么前一步算式中与 0.4 对应的数字必定是 0.6 而绝对不是 0.5！你必须主动根据上下算式的代数等价逻辑，将 OCR 误认的 0.5 自动纠正回 0.6！
 【图形上下文】：${q.visualContext || '无'}
 【需要校对的题干】：${q.originalText || '无'}
 【需要校对的手写作答】：${q.studentAnswer || '无'}
 【参考答案】：${q.standardAnswer || '无'}
-请严格以 JSON 格式返回校正后的结果，包含 "correctedOriginalText" 和 "correctedStudentAnswer" 两个字段，不要包含任何额外废话。如果某项完全无需修正，请直接原样返回。`;
+请结合上述数理计算逻辑进行自检与纠错。请严格以 JSON 格式返回校正后的结果，包含 "correctedOriginalText" 和 "correctedStudentAnswer" 两个字段，不要包含任何额外废话。如果某项完全无需修正，请直接原样返回。`;
             const correctionRes = await generateContentWithFallback({
               contents: [{ role: 'user', parts: [{ text: correctPrompt }] }],
               config: { temperature: 0.1 },
@@ -954,32 +973,30 @@ export const processAllStream = async (req: AuthenticatedRequest, res: express.R
       } else {
         try {
           const searchPromise = generateContentWithFallback({
-            contents: [{ role: 'user', parts: [{ text: `请严格检索该题标准解析，纯文本输出。题目：${q.originalText}` }] }],
-            tools: [{ type: "web_search", web_search: { enable: true } }]
+            contents: [{ role: 'user', parts: [{ text: `请根据严密的数学逻辑与公理推导该题的标准参考解析，纯文本输出。题目：${q.originalText}` }] }]
           });
           const timeoutPromise = new Promise((_, r) => setTimeout(() => r('TIMEOUT'), 5000));
           
           const searchRes = await Promise.race([searchPromise, timeoutPromise]) as any;
           if (searchRes !== 'TIMEOUT' && searchRes.text) {
-            standardAnswerSection = `- 通过互联网检索获取的参考解答: ${searchRes.text}\n`;
+            standardAnswerSection = `- 内部纯推理生成的高精度参考解答: ${searchRes.text}\n`;
           }
         } catch (e) {
-          console.log(`第 ${i+1} 题搜题超时或失败，平滑降级...`);
+          console.log(`第 ${i+1} 题内部参考解答生成超时或失败，平滑降级...`);
         }
       }
 
-      const isHighSchoolMathScience = grade?.includes('高中') && ['数学', '物理', '化学', '理综'].includes(q.subject || '');
-      const finalThinkingMode = isHighSchoolMathScience ? 'enabled' : (thinkingMode || 'disabled');
+      const isMathScience = ['数学', '物理', '化学', '理综', '科学', '算术', '奥数'].some(s => (q.subject || '').includes(s)) || Boolean(q.imageUrl || imageBase64);
+      const finalThinkingMode = isMathScience ? 'enabled' : (thinkingMode || 'disabled');
 
-      let dynamicDraftPrompt = `\n【图形防污染熔断铁律】：本题真实的图形特征为：【${q.visualContext || '无图'}】。你在参考网上的解答时，必须首先核对该解答是否与当前图形特征矛盾！如冲突必须抛弃参考解答。`;
-      if (!isHighSchoolMathScience) {
-        dynamicDraftPrompt += `\n【批改打草稿铁律】：在指出错因前，必须在 JSON 的 "thinkingProcess" 字段写下草稿（仅列核心骨架算式）。逐行验证学生步骤，只要逻辑自洽即判对！`;
-      } else {
-        dynamicDraftPrompt += `\n【深度批改铁律】：已为你开启原生深度思考模式。请在后台详尽推演复杂公式，并以推演结果为绝对标尺进行评判。`;
-      }
-
+let dynamicDraftPrompt = `
+【配图与计算红线铁律】：
+1. **【配图几何尺寸必须纳入计算】**：如果本题有配图/标注说明（当前为：${q.visualContext || '无图'}），请必须将题干描述与配图几何特征说明（如：图形初始距离、位置、直角边长等）及随附的图片数据深度结合！在进行标准解析与错误诊断时，务必将图上标注的几何距离（例如“两三角形水平相距 32cm”等）作为核心已知条件参与公式演算！严禁在演算时直接忽略图上标注的初始间距！
+2. **【图形防污染熔断铁律】**：本题真实的图形特征为：【${q.visualContext || '无图'}】。你在参考网上的解答时，必须首先核对该解答是否与当前图形特征矛盾！如冲突必须抛弃参考解答。
+3. **【批改打草稿铁律】**：为了绝对避免在诊断和解析中计算算错/判错，你必须在返回的 JSON 对象中，最前置地输出 "thinkingProcess" 字段写下你的思维草稿与演算步骤，细致检查数学逻辑。对于理科题，也要在原生深度思考之外写出 JSON 中的思考摘要。`;
+const resolvedImg = resolveImageToBase64(q.imageUrl || imageBase64);
       const diagPrompt = `
-你是一个人工智能名师。请根据已录入和校对好的错题信息，进行深度的解答和批改诊断：
+幕后人工智能名师。请根据已录入和校对好的错题信息及附带的错题图片，进行深度的解答 and 批改诊断：
 【题目信息】
 - 学科: ${q.subject || '未指定'}
 - 题干纯文本: ${q.originalText}
@@ -988,6 +1005,11 @@ ${standardAnswerSection}
 - 学生作答内容: ${q.studentAnswer || '（无学生作答）'}
 - 难度与年级限制: ${gradeConstraint}
 ${dynamicDraftPrompt}
+
+【名师解题与多模态阅卷铁律（绝对红线）】：
+1. **【见图如面与图文双检铁律】**：你必须直接观察随附的错题原始试卷图片！图片中的几何图形、边长数值标注（如8cm、32cm等）、间距、角度、阴影区域以及学生在图上手写作出的辅助线，一律作为最高优先级的解题事实标准！严禁因为纯文本题干转录遗漏数字而擅自捏造数据假设！
+2. **【防幻觉与数学公理熔断铁律】**：解几何与代数题时，必须首先检查图形存在性与数学公理（如三角形两边之和大于第三边）；若发现图文条件仍然严重残缺导致题目真实无解或相互矛盾，必须在解析中明确指出“条件不足/无解”，严禁凭空脑补数字！
+3. **【LaTeX 双写反斜杠转义规范】**：由于你返回的是 JSON 字符串，所有 LaTeX 公式中的反斜杠必须双写转义，如 \\\\pi、\\\\frac{1}{2}、\\\\begin{cases}！绝对不能单写反斜杠导致前端解析报错！
 
 【任务要求】：
 1. **核心考点**: 分析该题考查的核心知识点，最多 3 个，存入数组。
@@ -999,34 +1021,47 @@ ${dynamicDraftPrompt}
    - 【规范/表达】
    （错误示范：输出 "【规范/表达】结果未化简" 是绝对禁止的！你只能输出 "【规范/表达】"）
    【极度重要】：如果“学生作答内容”为空，必须强制输出标签："【知识盲区/无思路】"。
-4. **标准解析**: 给出名师标准解题步骤。公式用 $。
+4. **标准解析**: 结合原图给出名师标准解题步骤。公式用 $。
 5. **错误原因分析**:
    - 如果 "学生作答内容" 不为空，请遵循四段式结构输出，**【💡 名师避坑指南】作为最后一段绝对不能省略！**：
      【关键错误定位】：一句话精炼指出核心错误（如“数值代入混乱”）。
-     \\n你写的是：\\n> [原样复现]
+     \\n你写的是：\\n> [此处原样复现学生写错的那一步解答]
      \\n❌ 错在哪？
-     - 第一步：[正确的逻辑] —— **这才是正确结果！**
-     - -> 你误把...当成了...！
-     \\n💡 名师避坑指南：[极度重要！请必须以“💡 名师避坑指南：”作为开头，深度分析根本原因并给出治本的避坑建议！]
-   - 如果为空，请判定为【知识盲区/无思路】，跳过指责，直接输出解题破局点、思维导图提示和关键公式，温和鼓励学生。
-   - **【阅卷铁律】：如果学生结果为未化简的分数（如 55/70），必须严格判定为错误，绝对不能因为数值等价判定为全对！**
-6. **学生本题所得评分**: 0 到 100 整数。
+     - 第一步：[写出这步正确的计算或逻辑] —— **这才是正确结果！**
+     - [用对话语气指出错误] -> 你误把...当成了...！
+     \\n💡 名师避坑指南：[极度重要！以“💡 名师避坑指南：”作为开头，深度分析产生此错误的根本原因，并给出建议！]
+   - 如果为空，请指导学生第一步如何起笔。
+   - **【阅卷铁律】：遇到数学计算题时，如果学生给出的最终结果分数没有化简为最简分数（例如写了 55/70 而不是 11/14），必须严格判定为错误（属于【规范/表达】错误），绝对不能因为数值等价就判定为完全掌握！**
 
 返回严格的 JSON 对象格式，不要包含 Markdown 的 \`\`\`json\`\`\` 标记，格式如下：
 {
-${!isHighSchoolMathScience ? '  "thinkingProcess": "步骤1: ...",\n' : ''}  "knowledgePoints": ["核心考点1", "核心考点2"],
+  "thinkingProcess": "【思维草稿】在此详尽推演复杂公式与几何逻辑，推演步骤1. 2. 3.，检查计算结果，核对学生答案，给出批改思路...",
+  "knowledgePoints": ["核心考点1", "核心考点2"],
   "examDirection": "考察方向...",
   "errorReason": "【计算/执行】",
   "solution": "标准详细解答步骤内容...",
   "score": 85,
-  "errorAnalysis": "【关键错误定位】：公式错用\\n\\n你写的是：\\n> 1+1=3\\n\\n❌ 错在哪？\\n- 应该计算加法：1+1=2 —— **这才是正确结果！**\\n- -> 你误把加法算成了其他数值！\\n\\n💡 名师避坑指南：计算时不要粗心..."
+  "errorAnalysis": "..."
 }
 `;
       let diagnoseResult = null;
       try {
+        const visionModel = getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo');
+        const diagParts: any[] = [];
+        if (resolvedImg) {
+          diagParts.push({
+            inlineData: {
+              data: resolvedImg.split(',')[1] || resolvedImg,
+              mimeType: 'image/jpeg'
+            }
+          });
+        }
+        diagParts.push({ text: diagPrompt });
+
         const diagRes = await generateContentWithFallback({
-          contents: [{ role: 'user', parts: [{ text: diagPrompt }] }],
+          contents: [{ role: 'user', parts: diagParts }],
           config: { temperature: 0.2 },
+          model: resolvedImg ? visionModel : undefined,
           systemPrompt: "你是一个严谨的 AI 智能名师批改助手。整个回复内容只能是纯 JSON 文本。",
           thinkingMode: finalThinkingMode
         });

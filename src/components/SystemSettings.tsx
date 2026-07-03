@@ -422,16 +422,28 @@ export default function SystemSettings() {
                         </div>
                       </div>
 
-                      {/* Gemini Model */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500">Gemini 运行大模型</label>
-                        <input
-                          type="text"
-                          value={settings.GEMINI_MODEL}
-                          onChange={(e) => handleInputChange('GEMINI_MODEL', e.target.value)}
-                          placeholder="默认为 gemma-4-31b-it"
-                          className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
-                        />
+                      {/* Gemini Models */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500">常规文本/出题大模型 (Gemini)</label>
+                          <input
+                            type="text"
+                            value={settings.GEMINI_MODEL}
+                            onChange={(e) => handleInputChange('GEMINI_MODEL', e.target.value)}
+                            placeholder="例如 gemini-3-flash-preview"
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500">图片识图/OCR 视觉大模型 (AI Vision)</label>
+                          <input
+                            type="text"
+                            value={settings.AI_VISION_MODEL}
+                            onChange={(e) => handleInputChange('AI_VISION_MODEL', e.target.value)}
+                            placeholder="例如 gemini-3-flash-preview"
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 transition-colors"
+                          />
+                        </div>
                       </div>
                     </>
                   )}
