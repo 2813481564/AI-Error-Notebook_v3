@@ -1,4 +1,5 @@
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "./aiService";
+import { getSetting } from "./settingService";
 
 export interface DiagnosticInput {
   subject?: string;
@@ -119,6 +120,7 @@ export const executeDeepDiagnosis = async (input: DiagnosticInput): Promise<Diag
     const response = await generateContentWithFallback({
       contents: [{ role: 'user', parts }],
       config: { temperature: 0.15 },
+      model: getSetting("AI_VISION_MODEL", process.env.AI_VISION_MODEL || 'glm-5v-turbo'),
       systemPrompt,
       thinkingMode: finalThinkingMode
     });

@@ -25,13 +25,9 @@ router.put("/user/profile", requireAuth, userCtrl.updateProfile);
 router.put("/user/password", requireAuth, userCtrl.changePassword);
 
 // ================= AI 路由 =================
-router.post("/analyze", requireAuth, checkAiLimit, aiCtrl.analyze);
-router.post("/extract", requireAuth, checkAiLimit, aiCtrl.extract);
-router.post("/diagnose", requireAuth, checkAiLimit, aiCtrl.diagnose);
 router.post("/similar", requireAuth, checkAiLimit, aiCtrl.similar);
 router.post("/paper/variants", requireAuth, checkAiLimit, aiCtrl.paperVariants);
 router.post("/paper/variant/regenerate", requireAuth, checkAiLimit, aiCtrl.paperVariantRegenerate);
-router.post("/process-all", requireAuth, checkAiLimit, aiCtrl.processAllStream);
 
 // ================= 错题 / 公共题库 / 学生路由 =================
 router.get("/questions", requireAuth, qCtrl.getQuestions);

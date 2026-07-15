@@ -13,7 +13,7 @@ import {
   FolderSymlink,
   Folder
 } from 'lucide-react';
-import FormattedMath from './FormattedMath';
+import FormattedMath, { unwrapJsonText } from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import ReadOnlyDetail, { BrainCircuitIcon } from './ReadOnlyDetail';
 
@@ -129,18 +129,18 @@ export default function QuestionDetail({
       fetch('/api/notebooks?type=variation', {
         headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setVariationNotebooks(data);
-          if (data.length > 0) {
-            setSelectedVariationNb(data[0].id);
-          } else {
-            setShowCreateVarNbModal(true);
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setVariationNotebooks(data);
+            if (data.length > 0) {
+              setSelectedVariationNb(data[0].id);
+            } else {
+              setShowCreateVarNbModal(true);
+            }
           }
-        }
-      })
-      .catch(err => console.error('加载AI变题库失败', err));
+        })
+        .catch(err => console.error('加载AI变题库失败', err));
     }
   }, []);
 
@@ -157,8 +157,8 @@ export default function QuestionDetail({
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ 
-          name: nbForm.name.trim(), 
+        body: JSON.stringify({
+          name: nbForm.name.trim(),
           type: 'variation',
           grade: nbForm.grade,
           subject: nbForm.subject,
@@ -196,7 +196,7 @@ export default function QuestionDetail({
     try {
       const newId = "q_similar_" + Math.random().toString(36).substring(2, 9);
       const selectedNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
-      
+
       const kps = question.knowledgePoints.filter((k: string) => k !== "AI变式题");
       kps.push("AI变式题");
 
@@ -205,8 +205,8 @@ export default function QuestionDetail({
         originalText: item.questionText,
         subject: question.subject,
         knowledgePoints: kps,
-        errorReason: "AI变式题", 
-        examDirection: "【变式强化题】 " + (question.examDirection || ""), 
+        errorReason: "AI变式题",
+        examDirection: "【变式强化题】 " + (question.examDirection || ""),
         solution: item.solution,
         createdAt: Date.now(),
         notebookId: selectedVariationNb,
@@ -230,13 +230,13 @@ export default function QuestionDetail({
   const isStudent = !isAdmin;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editedText, setEditedText] = useState(question.originalText);
+  const [editedText, setEditedText] = useState(unwrapJsonText(question.originalText));
   const [editedSubject, setEditedSubject] = useState(question.subject);
   const [editedSolution, setEditedSolution] = useState(question.solution);
   const [editedErrorReason, setEditedErrorReason] = useState(question.errorReason);
   const [editedKp, setEditedKp] = useState(question.knowledgePoints.join(', '));
   const [selectedNotebook, setSelectedNotebook] = useState(question.notebookId || '');
-  const [editedStudentAnswer, setEditedStudentAnswer] = useState(question.studentAnswer || '');
+  const [editedStudentAnswer, setEditedStudentAnswer] = useState(unwrapJsonText(question.studentAnswer || '', 'studentAnswer'));
   const [editedErrorAnalysis, setEditedErrorAnalysis] = useState(question.errorAnalysis || '');
   const [editedErrorDiagnosis, setEditedErrorDiagnosis] = useState<DiagnosisStep[]>(question.errorDiagnosis || []);
   const [editedExamDirection, setEditedExamDirection] = useState(question.examDirection || '');
@@ -244,13 +244,13 @@ export default function QuestionDetail({
 
 
   useEffect(() => {
-    setEditedText(question.originalText);
+    setEditedText(unwrapJsonText(question.originalText));
     setEditedSubject(question.subject);
     setEditedSolution(question.solution);
     setEditedErrorReason(question.errorReason);
     setEditedKp(question.knowledgePoints.join(', '));
     setSelectedNotebook(question.notebookId || '');
-    setEditedStudentAnswer(question.studentAnswer || '');
+    setEditedStudentAnswer(unwrapJsonText(question.studentAnswer || '', 'studentAnswer'));
     setEditedErrorAnalysis(question.errorAnalysis || '');
     setEditedErrorDiagnosis(question.errorDiagnosis || []);
     setEditedExamDirection(question.examDirection || '');
@@ -268,7 +268,7 @@ export default function QuestionDetail({
 
     try {
       window.alert("正在拼命生成中，请耐心等待...");
-      
+
       const token = localStorage.getItem('errorbook_token');
       const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
       const originalGrade = selectedNbObj?.grade;
@@ -297,8 +297,23 @@ export default function QuestionDetail({
         throw new Error('登录已过期，请重新登录');
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+          if (res.status === 504 || res.status === 502 || res.status === 500) {
+            throw new Error(`AI 变式题计算与组图较复杂，线上网关处理超时 (${res.status})，请稍后重试或将生成数量改为 1 道。`);
+          }
+          throw new Error(`服务器网络响应异常 (${res.status})，请稍后重试。`);
+        }
+      }
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error(`服务器回传数据格式异常，可能是推理时间过长导致连接中断，请稍后重新生成。`);
+      }
+      if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
 
       const dataArray = Array.isArray(data) ? data : [data];
 
@@ -377,155 +392,155 @@ export default function QuestionDetail({
         </div>
       </div>
 
-      {!( (!isEditing) && (question.errorReason === 'AI变式题' || question.knowledgePoints?.includes('AI变式题') || question.examDirection?.includes('变式')) && !!question.similarQuestion ) && (
+      {!((!isEditing) && (question.errorReason === 'AI变式题' || question.knowledgePoints?.includes('AI变式题') || question.examDirection?.includes('变式')) && !!question.similarQuestion) && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-        {question.imageUrl && question.errorReason !== 'AI变式题' && !question.knowledgePoints?.includes('AI变式题') && !question.examDirection?.includes('变式') && (
-          <div className="w-full bg-slate-50/50 border-b border-slate-100 flex justify-center py-5 px-4">
-            <img
-              src={question.imageUrl}
-              alt="错题原图"
-              className="max-h-[380px] w-auto object-contain rounded-xl shadow-sm border border-slate-200/50 animate-in fade-in zoom-in-95 duration-300"
-            />
-          </div>
-        )}
-
-        <div className="p-6 md:p-8 space-y-6">
-          {isEditing ? (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学科分类</label>
-                  <input
-                    type="text"
-                    value={editedSubject}
-                    onChange={e => setEditedSubject(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
-                  <input
-                    type="text"
-                    value={editedErrorReason}
-                    onChange={e => setEditedErrorReason(e.target.value)}
-                    placeholder="如：【概念/审题】读题粗心"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考察方向 (选填)</label>
-                <input
-                  type="text"
-                  value={editedExamDirection}
-                  onChange={e => setEditedExamDirection(e.target.value)}
-                  placeholder="如：函数最值与导数综合"
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-semibold text-slate-800"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">题目完整文本 (LaTeX 数学公式请保持格式)</label>
-                <textarea
-                  value={editedText}
-                  onChange={e => setEditedText(e.target.value)}
-                  rows={6}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考查核心知识点 (用英文逗号分隔)</label>
-                <input
-                  type="text"
-                  value={editedKp}
-                  onChange={e => setEditedKp(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                  placeholder="如：二次函数, 极值点"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">名师精解与步骤引导 (LaTeX 数学公式请保持格式)</label>
-                <textarea
-                  value={editedSolution}
-                  onChange={e => setEditedSolution(e.target.value)}
-                  rows={8}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生完整手写作答文本（OCR提取结果）</label>
-                <textarea
-                  value={editedStudentAnswer}
-                  onChange={e => setEditedStudentAnswer(e.target.value)}
-                  rows={4}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
-                  placeholder="学生的完整手写作答过程文本"
-                />
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label>
-                <textarea
-                  value={editedErrorAnalysis}
-                  onChange={e => setEditedErrorAnalysis(e.target.value)}
-                  rows={5}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4"
-                  placeholder="请输入本题错因深度剖析..."
-                />
-              </div>
-
-              {/* 修改所属错题本分类 */}
-              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                <div>
-                  <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>📓</span> 调整归属错题本
-                  </h4>
-                  <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
-                </div>
-                <select
-                  value={selectedNotebook}
-                  onChange={e => setSelectedNotebook(e.target.value)}
-                  className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
-                >
-                  <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
-                  {notebooks.map(nb => (
-                    <option key={nb.id} value={nb.id}>{nb.name}</option>
-                  ))}
-                </select>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    onClick={() => handleSaveAndPush('audited')}
-                    disabled={saving}
-                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
-                  >
-                    {saving ? '正在保存...' : '审核通过并推送'}
-                  </button>
-                  <button
-                    onClick={() => handleSaveAndPush('pending')}
-                    disabled={saving}
-                    className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
-                  >
-                    仅保存修改
-                  </button>
-                </div>
-              </div>
+          {question.imageUrl && question.errorReason !== 'AI变式题' && !question.knowledgePoints?.includes('AI变式题') && !question.examDirection?.includes('变式') && (
+            <div className="w-full bg-slate-50/50 border-b border-slate-100 flex justify-center py-5 px-4">
+              <img
+                src={question.imageUrl}
+                alt="错题原图"
+                className="max-h-[380px] w-auto object-contain rounded-xl shadow-sm border border-slate-200/50 animate-in fade-in zoom-in-95 duration-300"
+              />
             </div>
-          ) : (
-            <ReadOnlyDetail
-              question={question}
-              isStudent={isStudent}
-              notebooks={notebooks}
-              onUpdate={onUpdate}
-            />
           )}
+
+          <div className="p-6 md:p-8 space-y-6">
+            {isEditing ? (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学科分类</label>
+                    <input
+                      type="text"
+                      value={editedSubject}
+                      onChange={e => setEditedSubject(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">错误原因</label>
+                    <input
+                      type="text"
+                      value={editedErrorReason}
+                      onChange={e => setEditedErrorReason(e.target.value)}
+                      placeholder="如：【概念/审题】读题粗心"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考察方向 (选填)</label>
+                  <input
+                    type="text"
+                    value={editedExamDirection}
+                    onChange={e => setEditedExamDirection(e.target.value)}
+                    placeholder="如：函数最值与导数综合"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-semibold text-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">题目完整文本 (LaTeX 数学公式请保持格式)</label>
+                  <textarea
+                    value={editedText}
+                    onChange={e => setEditedText(e.target.value)}
+                    rows={6}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">考查核心知识点 (用英文逗号分隔)</label>
+                  <input
+                    type="text"
+                    value={editedKp}
+                    onChange={e => setEditedKp(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                    placeholder="如：二次函数, 极值点"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">名师精解与步骤引导 (LaTeX 数学公式请保持格式)</label>
+                  <textarea
+                    value={editedSolution}
+                    onChange={e => setEditedSolution(e.target.value)}
+                    rows={8}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">学生完整手写作答文本（OCR提取结果）</label>
+                  <textarea
+                    value={editedStudentAnswer}
+                    onChange={e => setEditedStudentAnswer(e.target.value)}
+                    rows={4}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
+                    placeholder="学生的完整手写作答过程文本"
+                  />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">AI 错因深度剖析 (包含常见错误与根本原因，数学公式请保持格式)</label>
+                  <textarea
+                    value={editedErrorAnalysis}
+                    onChange={e => setEditedErrorAnalysis(e.target.value)}
+                    rows={5}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800 mb-4"
+                    placeholder="请输入本题错因深度剖析..."
+                  />
+                </div>
+
+                {/* 修改所属错题本分类 */}
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>📓</span> 调整归属错题本
+                    </h4>
+                    <p className="text-[10px] text-blue-600/80 mt-0.5 font-medium">选择此题目归属的错题本，以便在错题库中进行分类归纳管理。</p>
+                  </div>
+                  <select
+                    value={selectedNotebook}
+                    onChange={e => setSelectedNotebook(e.target.value)}
+                    className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-850"
+                  >
+                    <option value="">-- 请选择所属错题本 (选填，留空归为未分类) --</option>
+                    {notebooks.map(nb => (
+                      <option key={nb.id} value={nb.id}>{nb.name}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
+                      onClick={() => handleSaveAndPush('audited')}
+                      disabled={saving}
+                      className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-500/10 transition cursor-pointer"
+                    >
+                      {saving ? '正在保存...' : '审核通过并推送'}
+                    </button>
+                    <button
+                      onClick={() => handleSaveAndPush('pending')}
+                      disabled={saving}
+                      className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/10 transition"
+                    >
+                      仅保存修改
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ReadOnlyDetail
+                question={question}
+                isStudent={isStudent}
+                notebooks={notebooks}
+                onUpdate={onUpdate}
+              />
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* 错题举一反三 */}
@@ -712,11 +727,10 @@ export default function QuestionDetail({
                   type="button"
                   onClick={generateSimilar}
                   disabled={generating || !selectedVariationNb}
-                  className={`w-full py-3.5 rounded-xl text-xs font-black transition cursor-pointer flex justify-center items-center gap-2 ${
-                    generating || !selectedVariationNb 
-                      ? 'bg-blue-400 text-white cursor-not-allowed' 
+                  className={`w-full py-3.5 rounded-xl text-xs font-black transition cursor-pointer flex justify-center items-center gap-2 ${generating || !selectedVariationNb
+                      ? 'bg-blue-400 text-white cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10'
-                  }`}
+                    }`}
                 >
                   {generating ? (
                     <>
@@ -741,8 +755,8 @@ export default function QuestionDetail({
           <button
             onClick={handleToggleMasteryStatus}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 border ${question.masteryStatus === 'mastered'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
               }`}
           >
             <CheckCircle2 className={`w-4 h-4 ${question.masteryStatus === 'mastered' ? 'text-emerald-600 fill-emerald-50' : 'text-slate-500'}`} />

@@ -194,15 +194,25 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
   const result = [];
   try {
     const extracted = extractJsonString(text);
-    const parsedData = JSON.parse(sanitizeJsonString(extracted));
+    const sanitized = sanitizeJsonString(extracted);
+    let parsedData: any = null;
+    try {
+      parsedData = JSON.parse(sanitized);
+    } catch (parseErr) {
+      try {
+        parsedData = new Function("return " + sanitized)();
+      } catch (fnErr) {
+        throw parseErr;
+      }
+    }
     const items = Array.isArray(parsedData) ? parsedData : [parsedData];
     
     for (const item of items) {
        if (!item.originalText && !item.studentAnswer) continue;
        result.push({
          subject: item.subject || "数学",
-         originalText: item.originalText || "",
-         studentAnswer: item.studentAnswer || "",
+         originalText: unwrapJsonString(item.originalText || "", 'originalText'),
+         studentAnswer: unwrapJsonString(item.studentAnswer || "", 'studentAnswer'),
          standardAnswer: item.standardAnswer || "",
          visualContext: item.visualContext || "",
          boundingBox: item.boundingBox || { x: 0, y: 0, w: 0, h: 0 }
@@ -212,8 +222,8 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
      console.error("Failed to parse extract JSON", e, text);
      result.push({
        subject: "数学",
-       originalText: text,
-       studentAnswer: "",
+       originalText: unwrapJsonString(text, 'originalText'),
+       studentAnswer: unwrapJsonString(text, 'studentAnswer'),
        standardAnswer: "",
        visualContext: "",
        boundingBox: { x: 0, y: 0, w: 0, h: 0 }
@@ -223,6 +233,38 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
   // 按照现代 VLM 端到端及 KISS 原则，彻底砍掉“没有眼睛”的第二阶段纯文本校对，防止将算错的数字脑补修改为正确答案。
   return result;
 };
+
+// 自动解包被错误存储为 JSON 字符串或非严格 JS 对象的文本字段
+function unwrapJsonString(str: any, fieldHint?: 'originalText' | 'studentAnswer' | 'solution' | 'errorAnalysis'): string {
+  if (!str) return '';
+  const strVal = typeof str === 'string' ? str : String(str);
+  let trimmed = strVal.trim();
+  const mdMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (mdMatch && mdMatch[1]) {
+    trimmed = mdMatch[1].trim();
+  }
+  if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (e) {
+      try {
+        parsed = new Function("return " + trimmed)();
+      } catch (e2) {}
+    }
+    if (parsed) {
+      const item = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (item && typeof item === 'object') {
+        if (fieldHint && item[fieldHint] !== undefined) return String(item[fieldHint]);
+        if (item.originalText !== undefined) return String(item.originalText);
+        if (item.studentAnswer !== undefined) return String(item.studentAnswer);
+        if (item.questionText !== undefined) return String(item.questionText);
+        if (item.text !== undefined) return String(item.text);
+      }
+    }
+  }
+  return strVal;
+}
 
 const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookId: string | null) => {
   const diagnosedResults: any[] = [];
@@ -269,22 +311,27 @@ const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookI
       imageBase64: imageBase64 || undefined
     });
 
+    const scoreVal = diagResult.score !== undefined ? Number(diagResult.score) : 0;
+    const isPerfect = scoreVal >= 100 || (diagResult.errorReason && (diagResult.errorReason.includes('完全掌握') || diagResult.errorReason.includes('无错') || diagResult.errorReason.includes('正确')));
+    const finalErrorReason = isPerfect ? '【完全掌握/无误】完美作答' : (diagResult.errorReason || '【概念/审题】');
+    const finalMasteryStatus = isPerfect ? 'mastered' : 'not_mastered';
+
     diagnosedResults.push({
       id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
       imageUrl: imageBase64 || undefined,
-      originalText: item.originalText,
+      originalText: unwrapJsonString(item.originalText, 'originalText'),
       subject: item.subject || '数学',
       knowledgePoints: diagResult.knowledgePoints || [],
       examDirection: diagResult.examDirection || '未提取',
-      errorReason: diagResult.errorReason || '【概念/审题】',
+      errorReason: finalErrorReason,
       solution: diagResult.solution || '',
       createdAt: Date.now(),
-      studentAnswer: item.studentAnswer || '',
+      studentAnswer: unwrapJsonString(item.studentAnswer || '', 'studentAnswer'),
       errorDiagnosis: [],
       errorAnalysis: diagResult.errorAnalysis || '',
       notebookId: notebookId || undefined,
-      score: diagResult.score !== undefined ? diagResult.score : 0,
-      masteryStatus: 'not_mastered',
+      score: scoreVal,
+      masteryStatus: finalMasteryStatus,
       standardAnswer: item.standardAnswer || null
     });
   }
@@ -315,7 +362,7 @@ const saveFinalQuestionsToLibrary = async (
   const stmt = db.prepare(`
     INSERT INTO questions (
       id, userId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer, examDirection
-    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_mastered', ?, ?)
+    ) VALUES (?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (let i = 0; i < activeQuestions.length; i++) {
@@ -326,17 +373,18 @@ const saveFinalQuestionsToLibrary = async (
       id,
       userId,
       finalImageUrl,
-      q.originalText,
+      unwrapJsonString(q.originalText, 'originalText'),
       q.subject || '数学',
       JSON.stringify(q.knowledgePoints || []),
       q.errorReason || '概念不清',
       q.solution || '',
       Date.now() + i, // 稍微错开时间戳以保证排序相对顺序
-      q.studentAnswer || '',
+      unwrapJsonString(q.studentAnswer || '', 'studentAnswer'),
       JSON.stringify(q.errorDiagnosis || []),
       q.errorAnalysis || '',
       notebookId || null,
       q.score !== undefined ? q.score : null,
+      q.masteryStatus || 'not_mastered',
       q.standardAnswer || null,
       q.examDirection || null
     );

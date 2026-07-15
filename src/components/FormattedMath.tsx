@@ -55,11 +55,48 @@ function parseMarkdownTables(text: string): string {
   return newLines.join('\n');
 }
 
+// 自动识别并拆包如果数据被存成 JSON 数组/对象字符串形式（兼容并修复老脏数据以及非严格的 JS 对象语法如 h: 998）
+export function unwrapJsonText(text: string, fieldHint?: 'originalText' | 'studentAnswer' | 'solution' | 'errorAnalysis'): string {
+  if (!text || typeof text !== 'string') return '';
+  let trimmed = text.trim();
+  const mdMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (mdMatch && mdMatch[1]) {
+    trimmed = mdMatch[1].trim();
+  }
+  if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (e) {
+      try {
+        // 当标准 JSON.parse 失败时（如 AI 返回了 h: 998 等非引号 Key 或尾随逗号），使用 JS 兼容语法进行尝试解析
+        parsed = new Function("return " + trimmed)();
+      } catch (e2) {
+        // 忽略完全解析失败的普通文本
+      }
+    }
+    if (parsed) {
+      const item = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (item && typeof item === 'object') {
+        if (fieldHint && item[fieldHint] !== undefined) {
+          return String(item[fieldHint]);
+        }
+        if (item.originalText !== undefined) return String(item.originalText);
+        if (item.questionText !== undefined) return String(item.questionText);
+        if (item.text !== undefined) return String(item.text);
+      }
+    }
+  }
+  return text;
+}
+
 // 自动把未被 $...$ 包裹的 \frac{}{}、\sqrt{}、\times 等裸露数学 LaTeX 符号套上 $...$，确保 KaTeX 完美渲染
 function autoWrapBareLatex(text: string): string {
   if (!text) return '';
-  const cleaned = text.replace(/(?:\\\\)(frac|sqrt|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, '\\$1');
-  return cleaned.split(/(\$\$.*?\$\$|\$.*?\$)/g).map((seg, idx) => {
+  text = unwrapJsonText(text);
+  text = repairBrokenLatexCommands(text);
+  const cleaned = text.replace(/(?:\\{1,2})(frac|sqrt|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, '\\$1');
+  return cleaned.split(/(\$\$[\s\S]*?\$\$|\\{1,2}\[[\s\S]*?\\{1,2}\]|\\{1,2}\([\s\S]*?\\{1,2}\)|\\{1,2}begin\{.*?\}[\s\S]*?\\{1,2}end\{.*?\}|\$[^\$\n]*?\$)/g).map((seg, idx) => {
     if (idx % 2 === 1) return seg;
     return seg.replace(/(?:\\+)(frac\{[^{}]*\}\{[^{}]*\}|sqrt(?:\[[^[\]]*\])?\{[^{}]*\}|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, (m, p1) => '$\\' + p1 + '$');
   }).join('');
@@ -67,6 +104,7 @@ function autoWrapBareLatex(text: string): string {
 
 export default function FormattedMath({ text = '', className = '' }: FormattedMathProps) {
   if (!text) return null;
+  text = unwrapJsonText(text);
 
   // 自动修复并包裹“裸露”的分数、根号等公式命令
   const wrappedText = autoWrapBareLatex(text);
@@ -74,8 +112,8 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
   // Pre-process markdown tables into HTML tables so they can be rendered properly
   const processedText = parseMarkdownTables(wrappedText);
 
-  // Split text by block math blocks ($$.*?$$) and HTML tables
-  const segments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|<table[\s\S]*?<\/table>)/gi);
+  // Split text by block math blocks ($$.*?$$, \[...\] and \begin{...}...\end{...}) and HTML tables
+  const segments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|\\{1,2}\[\s*[\s\S]*?\s*\\{1,2}\]|\\{1,2}begin\{.*?\}\s*[\s\S]*?\s*\\{1,2}end\{.*?\}|<table[\s\S]*?<\/table>)/gi);
 
   return (
     <div className={`space-y-4 font-medium text-slate-700 leading-relaxed text-sm xl:text-base ${className}`}>
@@ -91,8 +129,18 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
 
         // Checking if it's block math
         const trimmedSegment = segment.trim();
-        if (trimmedSegment.startsWith('$$') && trimmedSegment.endsWith('$$')) {
-          const rawMath = trimmedSegment.slice(2, -2).trim();
+        const isBlockMath = 
+          (trimmedSegment.startsWith('$$') && trimmedSegment.endsWith('$$')) ||
+          (/^\\{1,2}\[/.test(trimmedSegment) && /\\{1,2}\]$/.test(trimmedSegment)) ||
+          (/^\\{1,2}begin\{.*?\}/i.test(trimmedSegment) && /\\{1,2}end\{.*?\}$/i.test(trimmedSegment));
+
+        if (isBlockMath) {
+          let rawMath = trimmedSegment;
+          if (rawMath.startsWith('$$') && rawMath.endsWith('$$')) {
+            rawMath = rawMath.slice(2, -2).trim();
+          } else if (/^\\{1,2}\[/.test(rawMath) && /\\{1,2}\]$/.test(rawMath)) {
+            rawMath = rawMath.replace(/^\\{1,2}\[\s*/, '').replace(/\s*\\{1,2}\]$/, '').trim();
+          }
           try {
             const sanitizedMath = fixLatexCommands(rawMath);
 
@@ -108,10 +156,11 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
                 id={`math-block-${index}`}
               />
             );
-          } catch (e) {
+          } catch (e: any) {
             return (
-              <pre key={index} className="text-rose-500 bg-rose-50/50 p-3 rounded-2xl text-xs select-all overflow-x-auto border border-rose-100">
-                {rawMath}
+              <pre key={index} className="text-rose-500 bg-rose-50/50 p-3 rounded-2xl text-xs select-all overflow-x-auto border border-rose-100 flex flex-col gap-2">
+                <span className="font-bold text-rose-700 break-words border-b border-rose-200 pb-2">[渲染崩溃原因: {e?.message || String(e)}]</span>
+                <span className="whitespace-pre-wrap">{rawMath}</span>
               </pre>
             );
           }
@@ -238,18 +287,42 @@ function fixLatexCommands(math: string): string {
   return math
     .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
     .replace(/\f(?=rac)/g, '\\f')
-    .replace(/\b(?=eta|egin|ar)/g, '\\b')
+    .replace(/[\b](?=eta|egin|ar)/g, '\\b')
     .replace(/\r(?=ightarrow|ight)/g, '\\r')
-    .replace(/\\\\/g, '\\')
+    .replace(/\\\\\\\\/g, '\\\\')
+    .replace(/\\\\(?=[a-zA-Z])/g, '\\')
+    .replace(/\\\\%/g, '\\%')
+    .replace(/(?<!\\)%/g, '\\%')
     .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
+}
+
+// 修复因 \n 被误转义或解析为换行，导致 \neq、\not、\nu 等 LaTeX 命令被拆成 "换行 + eq" 造成公式断裂的问题
+function repairBrokenLatexCommands(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/(?:\r?\n|\r|\\n|\\\\n)(eq\b|e\b|ot\b|u\b|abla\b|eg\b|atural\b|ewline\b|otin\b|mid\b|exists\b|subseteq\b|supseteq\b|leftarrow\b|rightarrow\b|Leftrightarrow\b|Rightarrow\b|Leftarrow\b|sim\b|cong\b|parallel\b|le\b|ge\b|prec\b|succ\b)/g, '\\n$1')
+    .replace(/\\neqeq\b/g, '\\neq');
+}
+
+// 安全替换文本中的 \n 与 \\n 转义为换行或空格，同时严格保护 $...$ 公式内部不被替换
+function safeReplaceNewlines(text: string, replacement: string): string {
+  if (!text) return '';
+  const segments = text.split(/(\$\$[\s\S]*?\$\$|\$[^\$\n]*?\$)/g);
+  return segments.map((seg, idx) => {
+    if (idx % 2 === 1) return seg; // 数学公式内部原样保留，绝对不把 \n 变成换行
+    return seg
+      .replace(/\\\\n(?!(eq\b|e\b|ot\b|u\b|abla\b|eg\b|atural\b|ewline\b|otin\b|mid\b|exists\b|subseteq\b|supseteq\b|leftarrow\b|rightarrow\b|Leftrightarrow\b|Rightarrow\b|Leftarrow\b|sim\b|cong\b|parallel\b|le\b|ge\b|prec\b|succ\b))/g, replacement)
+      .replace(/\\n(?!(eq\b|e\b|ot\b|u\b|abla\b|eg\b|atural\b|ewline\b|otin\b|mid\b|exists\b|subseteq\b|supseteq\b|leftarrow\b|rightarrow\b|Leftrightarrow\b|Rightarrow\b|Leftarrow\b|sim\b|cong\b|parallel\b|le\b|ge\b|prec\b|succ\b))/g, replacement);
+  }).join('');
 }
 
 // 极简卡片摘要清洗：只处理 \n、\\n、\t、\\t 等转义与空白，不破坏 Markdown 与公式
 export function cleanTextForSummary(text: string): string {
   if (!text) return '';
-  const cleaned = text
-    .replace(/\\\\n/g, ' ')
-    .replace(/\\n/g, ' ')
+  text = unwrapJsonText(text);
+  text = repairBrokenLatexCommands(text);
+  let cleaned = safeReplaceNewlines(text, ' ');
+  cleaned = cleaned
     .replace(/\r?\n+/g, ' ')
     .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
     .replace(/\\t(?!(imes|ext|au|heta|riangle|o\b|op|an))/g, ' ')
@@ -261,10 +334,11 @@ export function cleanTextForSummary(text: string): string {
 
 export function InlineContent({ text }: { text: string }) {
   if (!text) return null;
-  // 处理 \n、\\n、\t 等转义，同时保护 \times、\text 等 LaTeX 公式命令不被误伤，并包裹裸露公式
-  const unescapedText = autoWrapBareLatex(text)
-    .replace(/\\\\n/g, '\n')
-    .replace(/\\n/g, '\n')
+  text = unwrapJsonText(text);
+  text = repairBrokenLatexCommands(text);
+  // 处理 \n、\\n、\t 等转义，同时保护 \times、\text、\neq 等 LaTeX 公式命令不被误伤，并包裹裸露公式
+  let unescapedText = safeReplaceNewlines(text, '\n');
+  unescapedText = autoWrapBareLatex(unescapedText)
     .replace(/\x09(?=imes|ext|au|heta|riangle|o\b|op|an)/g, '\\t')
     .replace(/\\t(?!(imes|ext|au|heta|riangle|o\b|op|an))/g, ' ')
     .replace(/\x09/g, ' ');
@@ -300,76 +374,96 @@ export function InlineContent({ text }: { text: string }) {
     );
   }
 
-  // Parse inline math $...$ (Standard non-HTML text path)
-  const inlineMathSegments = processedTextMarkdown.split(/(\$.*?\$)/g);
-
-  return (
-    <>
-      {inlineMathSegments.map((seg, sIdx) => {
-        if (seg.startsWith('$') && seg.endsWith('$')) {
-          const rawMath = seg.slice(1, -1).trim();
-          try {
-            const sanitizedMath = fixLatexCommands(rawMath);
-
-            const html = katex.renderToString(sanitizedMath, {
-              displayMode: false,
-              throwOnError: false,
-            });
-            return (
-              <span 
-                key={sIdx} 
-                className="inline-block mx-1 font-mono text-slate-950 bg-slate-50/50 hover:bg-slate-50 border border-slate-200/50 rounded-xl px-2 py-0.5 text-xs font-semibold select-all shadow-sm transition-all"
-                dangerouslySetInnerHTML={{ __html: html }}
-                id={`math-inline-${sIdx}`}
-              />
-            );
-          } catch (e) {
-            return (
-              <span key={sIdx} className="text-rose-500 bg-rose-50/50 px-1.5 py-0.5 border border-rose-100 rounded-lg text-xs font-bold">
-                {rawMath}
-              </span>
-            );
-          }
-        }
-
-        // Render regular text segment with safe bold patterns (**text**)
-        return <BoldTextRenderer key={sIdx} text={seg} />;
-      })}
-    </>
-  );
+  // 标准非表格文本路径：使用单趟统一递归词法扫描引擎 (Recursive AST Tokenizer)
+  return <>{renderInlineTokens(processedTextMarkdown)}</>;
 }
 
-function BoldTextRenderer({ text }: { text: string; key?: any }) {
-  // Safe split by <br/> or \n to natively render line breaks without dangerous HTML
-  const brSegments = text.split(/(?:<br\s*\/?>|\r?\n)/gi);
+// 单趟递归行内词法分析引擎，彻底终结正则表达式线性切片 (split) 造成的标签割裂与嵌套冲突
+function renderInlineTokens(text: string, keyPrefix = 'tok'): React.ReactNode[] {
+  if (!text) return [];
 
-  return (
-    <>
-      {brSegments.map((brSeg, brIdx) => (
-        <React.Fragment key={brIdx}>
-          {brIdx > 0 && <br />}
-          {(() => {
-            const parts = brSeg.split(/(\*\*.*?\*\*)/g);
-            return parts.map((part, pIdx) => {
-              if (part.startsWith('**') && part.endsWith('**')) {
-                const cleanPart = part.slice(2, -2);
-                return (
-                  <strong key={pIdx} className="font-extrabold text-slate-950 tracking-tight" id={`bold-text-${pIdx}`}>
-                    {cleanPart}
-                  </strong>
-                );
-              }
-              
-              // Fallback to dangerouslySetInnerHTML for safe inline tags (b, i, u, strong, em)
-              if (/<(b|i|u|strong|em)(\/?>|\s[^>]*>)/i.test(part)) {
-                 return <span key={pIdx} dangerouslySetInnerHTML={{ __html: part }} />;
-              }
-              
-              return <React.Fragment key={pIdx}>{part}</React.Fragment>;
-            });
-          })()}
-        </React.Fragment>
-      ))}
-    </>
-  );
+  const nodes: React.ReactNode[] = [];
+  let remaining = text;
+  let counter = 0;
+
+  // 匹配优先度：公式($...$) | Markdown加粗(**或__) | Markdown斜体(*或_) | 换行(<br/>或\n) | 安全HTML格式标签
+  const TOKEN_REGEX = /(\$([^\$\n]+?)\$|\*\*(.*?)\*\*|__(.*?)__|\*(.*?)\*|<br\s*\/?>|\r?\n|<(b|i|u|strong|em)(?:\s+[^>]*)?>(.*?)<\/\6>)/i;
+
+  while (remaining.length > 0) {
+    const match = TOKEN_REGEX.exec(remaining);
+    if (!match) {
+      nodes.push(<React.Fragment key={`${keyPrefix}-${counter++}`}>{remaining}</React.Fragment>);
+      break;
+    }
+
+    if (match.index > 0) {
+      const beforeText = remaining.slice(0, match.index);
+      nodes.push(<React.Fragment key={`${keyPrefix}-${counter++}`}>{beforeText}</React.Fragment>);
+    }
+
+    const fullMatch = match[0];
+    const mathContent = match[2];         // $...$
+    const boldStar = match[3];            // **...**
+    const boldUnderline = match[4];       // __...__
+    const italicStar = match[5];          // *...*
+    const htmlTag = match[6];             // b|i|u|strong|em
+    const htmlContent = match[7];         // <tag>...</tag>
+
+    if (mathContent !== undefined) {
+      const rawMath = mathContent.trim();
+      try {
+        const sanitizedMath = fixLatexCommands(rawMath);
+        const html = katex.renderToString(sanitizedMath, {
+          displayMode: false,
+          throwOnError: false,
+        });
+        nodes.push(
+          <span 
+            key={`${keyPrefix}-${counter++}`} 
+            className="inline-block mx-1 font-mono text-slate-950 bg-slate-50/50 hover:bg-slate-50 border border-slate-200/50 rounded-xl px-2 py-0.5 text-xs font-semibold select-all shadow-sm transition-all"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      } catch (e) {
+        nodes.push(
+          <span key={`${keyPrefix}-${counter++}`} className="text-rose-500 bg-rose-50/50 px-1.5 py-0.5 border border-rose-100 rounded-lg text-xs font-bold">
+            {rawMath}
+          </span>
+        );
+      }
+    } else if (boldStar !== undefined || boldUnderline !== undefined) {
+      const innerBold = boldStar !== undefined ? boldStar : boldUnderline;
+      nodes.push(
+        <strong key={`${keyPrefix}-${counter++}`} className="font-extrabold text-slate-950 tracking-tight">
+          {renderInlineTokens(innerBold, `${keyPrefix}-${counter}-b`)}
+        </strong>
+      );
+    } else if (italicStar !== undefined) {
+      nodes.push(
+        <em key={`${keyPrefix}-${counter++}`} className="italic text-slate-800">
+          {renderInlineTokens(italicStar, `${keyPrefix}-${counter}-i`)}
+        </em>
+      );
+    } else if (fullMatch.toLowerCase().startsWith('<br') || fullMatch === '\n' || fullMatch === '\r\n') {
+      nodes.push(<br key={`${keyPrefix}-${counter++}`} />);
+    } else if (htmlTag !== undefined && htmlContent !== undefined) {
+      const tagLower = htmlTag.toLowerCase();
+      const innerRendered = renderInlineTokens(htmlContent, `${keyPrefix}-${counter}-h`);
+      if (tagLower === 'strong' || tagLower === 'b') {
+        nodes.push(<strong key={`${keyPrefix}-${counter++}`} className="font-extrabold text-slate-950 tracking-tight">{innerRendered}</strong>);
+      } else if (tagLower === 'em' || tagLower === 'i') {
+        nodes.push(<em key={`${keyPrefix}-${counter++}`} className="italic text-slate-800">{innerRendered}</em>);
+      } else if (tagLower === 'u') {
+        nodes.push(<u key={`${keyPrefix}-${counter++}`} className="underline underline-offset-4">{innerRendered}</u>);
+      } else {
+        nodes.push(<span key={`${keyPrefix}-${counter++}`}>{innerRendered}</span>);
+      }
+    } else {
+      nodes.push(<React.Fragment key={`${keyPrefix}-${counter++}`}>{fullMatch}</React.Fragment>);
+    }
+
+    remaining = remaining.slice(match.index + fullMatch.length);
+  }
+
+  return nodes;
 }
