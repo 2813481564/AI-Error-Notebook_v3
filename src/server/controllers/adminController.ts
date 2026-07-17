@@ -281,3 +281,77 @@ export const restoreAiSettingHistory = (req: express.Request, res: express.Respo
   }
 };
 
+// 12. 测试 AI 大模型连接
+export const testAiConnection = async (req: express.Request, res: express.Response) => {
+  try {
+    const { provider, apiBaseUrl, apiKey, geminiApiKey, model, geminiModel } = req.body;
+    
+    if (provider === 'openai') {
+      if (!apiKey || !apiBaseUrl || !model) {
+        return res.status(400).json({ error: "OpenAI 兼容模式下，API Key、Base URL 和模型名称不能为空" });
+      }
+      
+      const urlObj = new URL(`${apiBaseUrl}/chat/completions`);
+      const reqData = JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: "Say OK" }],
+        max_tokens: 10
+      });
+      
+      const responseText = await new Promise<string>(async (resolve, reject) => {
+        const https = await import('https');
+        const reqOptions = {
+          hostname: urlObj.hostname,
+          port: Number(urlObj.port) || 443,
+          path: urlObj.pathname + urlObj.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Length': Buffer.byteLength(reqData)
+          },
+          timeout: 15000 // 15秒超时
+        };
+        const request = https.request(reqOptions, (response: any) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        });
+        request.on('error', reject);
+        request.on('timeout', () => { request.destroy(); reject(new Error('请求超时')); });
+        request.write(reqData);
+        request.end();
+      });
+      
+      const json = JSON.parse(responseText);
+      if (!json.choices && json.error) {
+        throw new Error(json.error.message || "测试失败，返回了错误信息");
+      }
+      if (!json.choices || json.choices.length === 0) {
+        throw new Error("测试失败，大模型未返回有效的回复内容");
+      }
+      
+      return res.json({ success: true, message: "连接成功，API 响应正常！" });
+    } else {
+      // Gemini
+      if (!geminiApiKey) {
+        return res.status(400).json({ error: "Gemini 模式下，API Key 不能为空" });
+      }
+      const modelToUse = geminiModel || "gemini-1.5-flash";
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const response = await ai.models.generateContent({
+        model: modelToUse,
+        contents: [{ role: "user", parts: [{ text: "Say OK" }] }],
+        config: { maxOutputTokens: 10 }
+      });
+      if (!response.text) {
+        throw new Error("测试失败，大模型未返回有效的回复内容");
+      }
+      return res.json({ success: true, message: "连接成功，Gemini API 响应正常！" });
+    }
+  } catch (error: any) {
+    console.error("Test AI Connection Error:", error);
+    res.status(500).json({ error: error.message || "连接测试失败，请检查配置网络" });
+  }
+};

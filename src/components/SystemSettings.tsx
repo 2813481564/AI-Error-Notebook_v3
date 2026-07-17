@@ -62,6 +62,7 @@ export default function SystemSettings() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'ai' | 'mail' | 'limits'>('ai');
+  const [testingAi, setTestingAi] = useState(false);
 
   // 控制密码/Key字段的可见性
   const [showOpenAiKey, setShowOpenAiKey] = useState(false);
@@ -74,6 +75,39 @@ export default function SystemSettings() {
   const [remark, setRemark] = useState('');
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleTestAi = async () => {
+    setTestingAi(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const token = localStorage.getItem('errorbook_token');
+      const res = await fetch('/api/admin/settings/test-ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          provider: settings.AI_PROVIDER,
+          apiBaseUrl: settings.AI_API_BASE_URL,
+          apiKey: settings.AI_API_KEY,
+          geminiApiKey: settings.GEMINI_API_KEY,
+          model: settings.AI_MODEL,
+          geminiModel: settings.GEMINI_MODEL
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '连通性测试失败');
+      }
+      setSuccessMsg(data.message || '连通性测试成功！');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setTestingAi(false);
+    }
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -319,9 +353,29 @@ export default function SystemSettings() {
             {/* AI 模型服务配置面 */}
             {activeTab === 'ai' && (
               <div className="space-y-6">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-800">AI 大模型通道设置</h3>
-                  <p className="text-xs text-slate-400">选择您要接入的模型提供商以及接口凭证</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-800">AI 大模型通道设置</h3>
+                    <p className="text-xs text-slate-400">选择您要接入的模型提供商以及接口凭证</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTestAi}
+                    disabled={testingAi}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    {testingAi ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span>测试连通性...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="w-3.5 h-3.5" />
+                        <span>测试当前连接</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">

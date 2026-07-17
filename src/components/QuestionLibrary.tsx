@@ -90,17 +90,17 @@ export default function QuestionLibrary({
   initialMasteryStatus?: 'all' | 'not_mastered' | 'mastered' | null;
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState(initialSearchKey || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearchKey || '');
   const [filterSubject, setFilterSubject] = useState<string>('all');
-  const [filterNotebook, setFilterNotebook] = useState<string>('all');
-  const [filterMastery, setFilterMastery] = useState<'all' | 'not_mastered' | 'mastered'>('all');
+  const [filterNotebook, setFilterNotebook] = useState<string>(initialNotebookId || 'all');
+  const [filterMastery, setFilterMastery] = useState<'all' | 'not_mastered' | 'mastered'>(initialMasteryStatus || 'all');
   const [notebooks, setNotebooks] = useState<any[]>([]);
   const [showNotebookModal, setShowNotebookModal] = useState<boolean>(false);
   const [notebookPanel, setNotebookPanel] = useState<'list' | 'create' | 'edit'>('list');
   const [editingNotebook, setEditingNotebook] = useState<any | null>(null);
   const [nbForm, setNbForm] = useState({ name: '', grade: '', subject: '', description: '' });
-  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
+  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(initialNotebookId || null);
   const [stats, setStats] = useState({ total: 0, mastered: 0, unmastered: 0 });
   const [activeDimension, setActiveDimension] = useState<'timeline' | 'knowledge' | 'error_count'>('timeline');
 
@@ -1009,7 +1009,7 @@ export default function QuestionLibrary({
                         <div className="flex justify-between items-start gap-4 mb-2">
                           <div
                             onClick={() => !isPending && setSelectedQuestion(q)}
-                            className={`font-bold text-sm md:text-base leading-relaxed line-clamp-2 flex-1 ${isPending ? 'text-amber-700 cursor-default animate-pulse' : 'text-slate-800 cursor-pointer'}`}
+                            className={`font-bold text-xs md:text-sm leading-relaxed line-clamp-1 flex-1 ${isPending ? 'text-amber-700 cursor-default animate-pulse' : 'text-slate-800 cursor-pointer'}`}
                           >
                             <span className="mr-1.5">{index + 1 + (currentPage - 1) * pageSize}.</span>
                             {isPending ? (
@@ -1026,53 +1026,12 @@ export default function QuestionLibrary({
                           </div>
                         </div>
 
-                        {/* 第二行：错因分析 */}
-                        {q.errorAnalysis && (() => {
-                          const cleanText = cleanTextForSummary(q.errorAnalysis);
-                          return (
-                            <div
-                              onClick={() => setSelectedQuestion(q)}
-                              className="text-xs text-slate-500 font-medium leading-relaxed mb-3.5 cursor-pointer bg-slate-50/50 p-2 rounded-xl border border-slate-100/40"
-                            >
-                              <div
-                                className="line-clamp-2 overflow-hidden"
-                                style={{
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical',
-                                  overflow: 'hidden'
-                                }}
-                              >
-                                <span className="font-bold text-slate-700 mr-1.5">错因分析:</span>
-                                <InlineContent text={cleanText} />
-                              </div>
-                            </div>
-                          );
-                        })()}
+
 
                         {/* 第三行：标签和操作区域 */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 mt-auto">
-                          {/* 左侧：标签列表与转移下拉菜单 */}
+                          {/* 左侧：标签列表 */}
                           <div className="flex flex-wrap items-center gap-2">
-                            {/* 考察方向标签 */}
-                            {q.examDirection && (
-                              <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200/60 px-2.5 py-1 rounded-xl font-bold transition-all">
-                                🎯 {q.examDirection}
-                              </span>
-                            )}
-                            {/* 错因标签 */}
-                            {q.errorReason && q.errorReason !== 'AI变式题' && (
-                              <span className={`text-xs px-2.5 py-1 rounded-xl border font-bold ${
-                                q.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                q.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                q.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
-                                q.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                                q.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
-                                'bg-rose-50 text-rose-600 border-rose-100'
-                              }`}>
-                                {q.errorReason.includes('完全掌握') ? '✅' : '⚠️'} {q.errorReason}
-                              </span>
-                            )}
                             {/* 知识点标签 */}
                             {q.knowledgePoints.map((p: string) => (
                               <span
@@ -1082,41 +1041,6 @@ export default function QuestionLibrary({
                                 📖 {p}
                               </span>
                             ))}
-
-                            {/* 转移错题本胶囊下拉菜单 */}
-                            <div className="relative flex items-center text-xs font-extrabold px-3 py-1 rounded-xl bg-blue-50/60 text-blue-600 border border-blue-150 hover:bg-blue-100/80 transition cursor-pointer">
-                              <span>📂 转移:</span>
-                              <select
-                                value={q.notebookId || ''}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={async (e) => {
-                                  e.stopPropagation();
-                                  const targetNbId = e.target.value;
-                                  const targetNb = notebooks.find(n => n.id === targetNbId);
-                                  const updated = {
-                                    ...q,
-                                    notebookId: targetNbId || undefined,
-                                    notebookName: targetNb ? targetNb.name : undefined
-                                  };
-                                  try {
-                                    await db.saveQuestion(updated);
-                                    loadQuestions(currentPage);
-                                    loadNotebooks();
-                                    loadUnclassifiedCount();
-                                    updateNotebookStats();
-                                  } catch (err: any) {
-                                    window.alert(err.message || '转移失败');
-                                  }
-                                }}
-                                className="ml-1 bg-transparent text-blue-600 border-none outline-none cursor-pointer pr-1 font-bold text-xs"
-                                title="快速转移所属错题本"
-                              >
-                                <option value="">未分类</option>
-                                {notebooks.map(nb => (
-                                  <option key={nb.id} value={nb.id}>{nb.name}</option>
-                                ))}
-                              </select>
-                            </div>
                           </div>
 
                           {/* 右侧：已/未掌握状态胶囊 & 删除按钮 */}

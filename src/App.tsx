@@ -346,7 +346,7 @@ export default function App() {
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f4f6f9] font-sans text-slate-700 p-4 md:p-6 overflow-y-auto">
 
         {/* Main Card Container */}
-        <div className="w-full max-w-[960px] min-h-[560px] bg-white rounded-[24px] shadow-xl shadow-slate-200/50 flex overflow-hidden border border-slate-100/80">
+        <div className="w-full max-w-[1200px] min-h-[560px] bg-white rounded-[24px] shadow-xl shadow-slate-200/50 flex overflow-hidden border border-slate-100/80">
 
           {/* Left Intro Pane (Hidden on Mobile) */}
           <div
@@ -424,7 +424,7 @@ export default function App() {
 
           {/* Right Form Pane */}
           <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-white">
-            <div className="w-full max-w-[360px] mx-auto space-y-6">
+            <div className="w-full max-w-[450px] mx-auto space-y-6">
 
               {/* Form Header */}
               <div>
@@ -459,15 +459,15 @@ export default function App() {
                     <label className="text-xs font-bold text-slate-500 pl-1 block">
                       QQ 邮箱
                     </label>
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                    <div className="flex gap-3">
+                      <div className="flex-1 relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4 py-3 transition-all min-w-0">
                         <Mail className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
                         <input
                           type="email"
-                          placeholder="请输入您的 QQ 邮箱地址"
+                          placeholder="请输入 QQ 邮箱"
                           value={regEmail}
                           onChange={e => setRegEmail(e.target.value)}
-                          className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium"
+                          className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium min-w-0"
                           required
                         />
                       </div>
@@ -475,7 +475,7 @@ export default function App() {
                         type="button"
                         onClick={handleSendCode}
                         disabled={sendCodeLoading || countdown > 0}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs px-5 py-3 rounded-full transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-sm shadow-blue-500/10"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-3 rounded-full transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-sm shadow-blue-500/10 whitespace-nowrap"
                       >
                         {countdown > 0 ? `${countdown}s` : '获取验证码'}
                       </button>
@@ -799,7 +799,7 @@ export default function App() {
           <div className="p-3">
             <button
               onClick={() => setCurrentView('add')}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/10 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/15 active:scale-[0.98]"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/15 active:scale-[0.98]"
             >
               <Camera className="w-4 h-4" />
               <span>上传错题</span>

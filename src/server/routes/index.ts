@@ -69,6 +69,7 @@ router.get("/admin/redeem-codes", requireAdmin, adminCtrl.getRedemptionCodes);
 
 router.get("/admin/settings", requireAdmin, adminCtrl.getSystemSettings);
 router.post("/admin/settings", requireAdmin, adminCtrl.saveSystemSettings);
+router.post("/admin/settings/test-ai", requireAdmin, adminCtrl.testAiConnection);
 router.get("/admin/settings/ai-history", requireAdmin, adminCtrl.getAiSettingHistory);
 router.delete("/admin/settings/ai-history/:id", requireAdmin, adminCtrl.deleteAiSettingHistory);
 router.post("/admin/settings/ai-history/restore", requireAdmin, adminCtrl.restoreAiSettingHistory);

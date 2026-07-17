@@ -40,6 +40,16 @@ export default function ReadOnlyDetail({
   notebooks?: any[];
   onUpdate?: (updated: any) => void;
 }) {
+  React.useEffect(() => {
+    // 尝试寻找主滚动容器 (App.tsx 中的 main 标签)
+    const scrollContainer = document.querySelector('main');
+    if (scrollContainer) {
+      scrollContainer.scrollTop = 0;
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [question?.id]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -54,14 +64,13 @@ export default function ReadOnlyDetail({
             <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-lg border border-blue-200/60 font-bold">🎯 {question.examDirection}</span>
           )}
           {question.errorReason && question.errorReason !== 'AI变式题' && (
-            <span className={`text-xs px-3 py-1 rounded-lg border font-bold ${
-              question.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-              question.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
-              question.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
-              question.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-              question.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
-              'bg-rose-50 text-rose-600 border-rose-100'
-            }`}>
+            <span className={`text-xs px-3 py-1 rounded-lg border font-bold ${question.errorReason.includes('完全掌握') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                question.errorReason.includes('概念/审题') ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                  question.errorReason.includes('逻辑/建模') ? 'bg-pink-100 text-pink-700 border-pink-200' :
+                    question.errorReason.includes('计算/执行') ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      question.errorReason.includes('规范/表达') ? 'bg-teal-100 text-teal-700 border-teal-200' :
+                        'bg-rose-50 text-rose-600 border-rose-100'
+              }`}>
               {question.errorReason.includes('完全掌握') ? '✅' : '⚠️'} {question.errorReason}
             </span>
           )}
@@ -70,40 +79,42 @@ export default function ReadOnlyDetail({
           ))}
         </div>
       </div>
-      
-      {/* 学生手写提取作答文本（如果有） */}
+
+      {/* 学生手写提取作答文本（如果有） - 用户要求隐藏但不删除 */}
       {question.studentAnswer && (
-        <div className="border-t border-slate-100 pt-6 space-y-4">
-          <div className="flex items-center gap-2 font-extrabold text-sm text-blue-600">
-            <span className="font-bold">📝</span>
-            <h4 className="text-slate-900 font-black text-sm">您的作答内容</h4>
+        <div className="hidden border-t border-slate-100 pt-6 space-y-4">
+          <div className="flex items-center gap-2 text-xs text-blue-600">
+            <span>📝</span>
+            <h4 className="text-slate-700 font-normal text-xs">您的作答内容</h4>
           </div>
-          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
-            <FormattedMath text={question.studentAnswer} />
+          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl leading-relaxed whitespace-pre-wrap [&_*]:!font-normal">
+            <FormattedMath text={question.studentAnswer} className="text-slate-700 !text-xs !font-normal" smallHeadings={true} />
           </div>
         </div>
       )}
 
       {question.errorAnalysis && (
         <div className="border-t border-slate-100 pt-6 space-y-4">
-          <div className={`flex items-center gap-2 font-extrabold text-sm ${question.errorReason?.includes('完全掌握') ? 'text-emerald-600' : 'text-rose-600'}`}>
-            <span className="font-bold">{question.errorReason?.includes('完全掌握') ? '✅' : '❌'}</span>
-            <h4 className="text-slate-900 font-black text-sm">{question.errorReason?.includes('完全掌握') ? '诊断分析' : '错因分析'}</h4>
+          <div className={`flex items-center gap-2 text-base ${question.errorReason?.includes('完全掌握') ? 'text-emerald-600' : 'text-rose-600'}`}>
+            <span>{question.errorReason?.includes('完全掌握') ? '✅' : '❌'}</span>
+            <h4 className="text-slate-800 font-bold text-base">{question.errorReason?.includes('完全掌握') ? '诊断分析' : '错因分析'}</h4>
           </div>
 
-          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs sm:text-sm leading-relaxed text-slate-700 font-medium whitespace-pre-wrap">
-            <FormattedMath text={question.errorAnalysis} />
+          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl leading-relaxed whitespace-pre-wrap">
+            <FormattedMath text={question.errorAnalysis} className="text-slate-700 !text-xs !font-normal" smallHeadings={true} />
           </div>
         </div>
       )}
 
       <div className="border-t border-slate-100 pt-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h4 className="flex items-center gap-2 text-blue-600 font-extrabold text-sm">
-            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
+          <h4 className="flex items-center gap-2 text-blue-600 font-bold text-base">
+            <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" /> AI 智能辅导名师精解步骤
           </h4>
         </div>
-        <FormattedMath text={question.solution} className="text-slate-805" />
+        <div className="p-4 bg-white border border-slate-200/80 rounded-2xl leading-relaxed whitespace-pre-wrap">
+          <FormattedMath text={question.solution} className="text-slate-800 !text-xs !font-normal" smallHeadings={true} />
+        </div>
       </div>
     </div>
   );

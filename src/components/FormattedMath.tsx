@@ -4,6 +4,7 @@ import katex from 'katex';
 interface FormattedMathProps {
   text?: string;
   className?: string;
+  smallHeadings?: boolean;
 }
 
 function parseMarkdownTables(text: string): string {
@@ -102,7 +103,7 @@ function autoWrapBareLatex(text: string): string {
   }).join('');
 }
 
-export default function FormattedMath({ text = '', className = '' }: FormattedMathProps) {
+export default function FormattedMath({ text = '', className = '', smallHeadings = false }: FormattedMathProps) {
   if (!text) return null;
   text = unwrapJsonText(text);
 
@@ -113,68 +114,104 @@ export default function FormattedMath({ text = '', className = '' }: FormattedMa
   const processedText = parseMarkdownTables(wrappedText);
 
   // Split text by block math blocks ($$.*?$$, \[...\] and \begin{...}...\end{...}) and HTML tables
-  const segments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|\\{1,2}\[\s*[\s\S]*?\s*\\{1,2}\]|\\{1,2}begin\{.*?\}\s*[\s\S]*?\s*\\{1,2}end\{.*?\}|<table[\s\S]*?<\/table>)/gi);
+  const rawSegments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|\\{1,2}\[\s*[\s\S]*?\s*\\{1,2}\]|\\{1,2}begin\{.*?\}\s*[\s\S]*?\s*\\{1,2}end\{.*?\}|<table[\s\S]*?<\/table>)/gi);
+
+  // Group consecutive math blocks into a single capsule, swallowing intermediate whitespace
+  const groupedSegments: any[] = [];
+  for (let i = 0; i < rawSegments.length; i++) {
+    const segment = rawSegments[i];
+    
+    if (i % 2 === 0) {
+      // It's a text segment
+      groupedSegments.push({ type: 'text', content: segment });
+    } else {
+      // It's a delimiter segment (math or table)
+      const trimmed = segment.trim();
+      if (/^\s*<table/i.test(trimmed)) {
+        groupedSegments.push({ type: 'table', content: segment });
+      } else {
+        // It's block math. Try to merge with previous math group if separated only by whitespace
+        let merged = false;
+        if (groupedSegments.length >= 2) {
+          const lastItem = groupedSegments[groupedSegments.length - 1];
+          const secondLastItem = groupedSegments[groupedSegments.length - 2];
+          
+          if (lastItem.type === 'text' && lastItem.content.trim() === '' && secondLastItem.type === 'math') {
+            // Text is just whitespace. Merge into previous math group.
+            secondLastItem.items.push(trimmed);
+            // Remove the empty text segment
+            groupedSegments.pop();
+            merged = true;
+          }
+        }
+        
+        if (!merged) {
+          groupedSegments.push({ type: 'math', items: [trimmed] });
+        }
+      }
+    }
+  }
 
   return (
     <div className={`space-y-4 font-medium text-slate-700 leading-relaxed text-sm xl:text-base ${className}`}>
-      {segments.map((segment, index) => {
-        // Checking if it's an HTML table
-        if (/^\s*<table/i.test(segment)) {
+      {groupedSegments.map((group, index) => {
+        if (group.type === 'table') {
           return (
             <div key={index} className="overflow-x-auto my-4 w-full">
-              <InlineContent text={segment} />
+              <InlineContent text={group.content} />
             </div>
           );
         }
 
-        // Checking if it's block math
-        const trimmedSegment = segment.trim();
-        const isBlockMath = 
-          (trimmedSegment.startsWith('$$') && trimmedSegment.endsWith('$$')) ||
-          (/^\\{1,2}\[/.test(trimmedSegment) && /\\{1,2}\]$/.test(trimmedSegment)) ||
-          (/^\\{1,2}begin\{.*?\}/i.test(trimmedSegment) && /\\{1,2}end\{.*?\}$/i.test(trimmedSegment));
-
-        if (isBlockMath) {
-          let rawMath = trimmedSegment;
-          if (rawMath.startsWith('$$') && rawMath.endsWith('$$')) {
-            rawMath = rawMath.slice(2, -2).trim();
-          } else if (/^\\{1,2}\[/.test(rawMath) && /\\{1,2}\]$/.test(rawMath)) {
-            rawMath = rawMath.replace(/^\\{1,2}\[\s*/, '').replace(/\s*\\{1,2}\]$/, '').trim();
-          }
-          try {
-            const sanitizedMath = fixLatexCommands(rawMath);
-
-            const html = katex.renderToString(sanitizedMath, {
-              displayMode: true,
-              throwOnError: false,
-            });
-            return (
-              <div
-                key={index}
-                className="overflow-x-auto py-4 my-3 bg-slate-50 border border-slate-150/80 rounded-2xl px-5 text-slate-950 flex justify-center scrollbar-thin font-semibold shadow-inner"
-                dangerouslySetInnerHTML={{ __html: html }}
-                id={`math-block-${index}`}
-              />
-            );
-          } catch (e: any) {
-            return (
-              <pre key={index} className="text-rose-500 bg-rose-50/50 p-3 rounded-2xl text-xs select-all overflow-x-auto border border-rose-100 flex flex-col gap-2">
-                <span className="font-bold text-rose-700 break-words border-b border-rose-200 pb-2">[渲染崩溃原因: {e?.message || String(e)}]</span>
-                <span className="whitespace-pre-wrap">{rawMath}</span>
-              </pre>
-            );
-          }
+        if (group.type === 'math') {
+          return (
+            <div
+              key={index}
+              className="overflow-x-auto py-4 my-3 bg-slate-50 border border-slate-150/80 rounded-2xl px-5 text-slate-950 flex flex-col items-center justify-center scrollbar-thin font-semibold shadow-inner [&_.katex-display]:!my-1.5"
+            >
+              {group.items.map((mathItem: string, mIdx: number) => {
+                let rawMath = mathItem;
+                if (rawMath.startsWith('$$') && rawMath.endsWith('$$')) {
+                  rawMath = rawMath.slice(2, -2).trim();
+                } else if (/^\\{1,2}\[/.test(rawMath) && /\\{1,2}\]$/.test(rawMath)) {
+                  rawMath = rawMath.replace(/^\\{1,2}\[\s*/, '').replace(/\s*\\{1,2}\]$/, '').trim();
+                }
+                
+                try {
+                  const sanitizedMath = fixLatexCommands(rawMath);
+                  const html = katex.renderToString(sanitizedMath, {
+                    displayMode: true,
+                    throwOnError: false,
+                  });
+                  return (
+                    <div 
+                      key={mIdx} 
+                      dangerouslySetInnerHTML={{ __html: html }} 
+                      className="w-full flex justify-center"
+                    />
+                  );
+                } catch (e: any) {
+                  return (
+                    <pre key={mIdx} className="text-rose-500 bg-rose-50/50 p-3 my-1 rounded-2xl text-xs select-all overflow-x-auto border border-rose-100 flex flex-col gap-2 w-full max-w-full">
+                      <span className="font-bold text-rose-700 break-words border-b border-rose-200 pb-2">[渲染崩溃原因: {e?.message || String(e)}]</span>
+                      <span className="whitespace-pre-wrap">{rawMath}</span>
+                    </pre>
+                  );
+                }
+              })}
+            </div>
+          );
         }
 
-        // It's a text segment (may contain headings, nested lists, bold tags, and inline math)
-        return <NormalSegment key={index} text={segment} />;
+        // It's a text segment
+        return <NormalSegment key={index} text={group.content} smallHeadings={smallHeadings} />;
       })}
     </div>
   );
 }
 
 
-function NormalSegment({ text }: { text: string; key?: any }) {
+function NormalSegment({ text, smallHeadings }: { text: string; key?: any; smallHeadings?: boolean }) {
   // Split this text segment into separate lines
   const paragraphs = text.split(/\r?\n/);
 
@@ -215,7 +252,7 @@ function NormalSegment({ text }: { text: string; key?: any }) {
               <h1 
                 key={pIndex} 
                 id={`heading-1-${pIndex}`} 
-                className="text-xl font-extrabold text-slate-950 mt-5 mb-2.5 tracking-tight border-b border-slate-100 pb-2 flex items-center"
+                className={`${smallHeadings ? 'text-sm font-bold mt-3' : 'text-xl font-extrabold mt-5'} text-slate-950 mb-2.5 tracking-tight border-b border-slate-100 pb-2 flex items-center`}
               >
                 {renderContent()}
               </h1>
@@ -226,7 +263,7 @@ function NormalSegment({ text }: { text: string; key?: any }) {
               <h2 
                 key={pIndex} 
                 id={`heading-2-${pIndex}`} 
-                className="text-base font-extrabold text-slate-900 mt-4 mb-2 tracking-tight flex items-center pb-1"
+                className={`${smallHeadings ? 'text-xs font-bold mt-2' : 'text-base font-extrabold mt-4'} text-slate-900 mb-2 tracking-tight flex items-center pb-1`}
               >
                 {renderContent()}
               </h2>
@@ -236,7 +273,7 @@ function NormalSegment({ text }: { text: string; key?: any }) {
             <h3 
               key={pIndex} 
               id={`heading-3-${pIndex}`} 
-              className="text-sm font-extrabold text-slate-800 mt-3 mb-1 tracking-wider uppercase flex items-center"
+              className={`${smallHeadings ? 'text-xs font-bold mt-2' : 'text-sm font-extrabold mt-3'} text-slate-800 mb-1 tracking-wider uppercase flex items-center`}
             >
               {renderContent()}
             </h3>
@@ -290,9 +327,15 @@ function fixLatexCommands(math: string): string {
     .replace(/[\b](?=eta|egin|ar)/g, '\\b')
     .replace(/\r(?=ightarrow|ight)/g, '\\r')
     .replace(/\\\\\\\\/g, '\\\\')
-    .replace(/\\\\(?=[a-zA-Z])/g, '\\')
+    // 专门修复 AI 把 LaTeX 控制空格 `\ ` 误写成 `\\ `（导致 KaTeX 误认为是换行）并紧跟 (单位) 的情况
+    // 兼容 \text{(cm}^2\text{)}、(\text{cm}^2)、\text{cm} 等各种奇葩错位语法，且严格限定在行尾（支持被 \end{align*} 等环境包裹）
+    .replace(/\\\\(?=(?:[ \t(\[]|\\{1,2}(?:text|mathrm)\s*\{)*[\u4e00-\u9fa5a-zA-Z]{1,6}(?:[)\]}\s\^{23²³]|\\{1,2}(?:text|mathrm)\s*\{)*(?:\\{1,2}end\s*\{[a-zA-Z*]+\}\s*)*$)/g, '\\')
+    // 修复 AI 双重转义 LaTeX 标点命令（如 \\, 薄空格, \\; 厚空格, \\_ 下划线），防止 \text 被还原时漏掉它们导致误当做换行
+    .replace(/\\\\(?=[a-zA-Z,;:!_])/g, '\\')
     .replace(/\\\\%/g, '\\%')
     .replace(/(?<!\\)%/g, '\\%')
+    // 去除 AI 生成的 \boxed 黑框，但必须支持至少一层嵌套括号以防 \dfrac{1}{7} 的括号被误伤吃掉
+    .replace(/\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}/g, '$1')
     .replace(/\\text\{\s*(.*?)\s*\}/g, '\\text{$1}');
 }
 
@@ -386,8 +429,8 @@ function renderInlineTokens(text: string, keyPrefix = 'tok'): React.ReactNode[] 
   let remaining = text;
   let counter = 0;
 
-  // 匹配优先度：公式($...$) | Markdown加粗(**或__) | Markdown斜体(*或_) | 换行(<br/>或\n) | 安全HTML格式标签
-  const TOKEN_REGEX = /(\$([^\$\n]+?)\$|\*\*(.*?)\*\*|__(.*?)__|\*(.*?)\*|<br\s*\/?>|\r?\n|<(b|i|u|strong|em)(?:\s+[^>]*)?>(.*?)<\/\6>)/i;
+  // 匹配优先度：公式($...$ 或 \(...\)) | Markdown加粗(**或__) | Markdown斜体(*或_) | 换行(<br/>或\n) | 安全HTML格式标签
+  const TOKEN_REGEX = /(\$([^\$\n]+?)\$|\\{1,2}\(([\s\S]*?)\\{1,2}\)|\*\*(.*?)\*\*|__(.*?)__|\*(.*?)\*|<br\s*\/?>|\r?\n|<(b|i|u|strong|em)(?:\s+[^>]*)?>(.*?)<\/\7>)/i;
 
   while (remaining.length > 0) {
     const match = TOKEN_REGEX.exec(remaining);
@@ -402,12 +445,15 @@ function renderInlineTokens(text: string, keyPrefix = 'tok'): React.ReactNode[] 
     }
 
     const fullMatch = match[0];
-    const mathContent = match[2];         // $...$
-    const boldStar = match[3];            // **...**
-    const boldUnderline = match[4];       // __...__
-    const italicStar = match[5];          // *...*
-    const htmlTag = match[6];             // b|i|u|strong|em
-    const htmlContent = match[7];         // <tag>...</tag>
+    const mathContent1 = match[2];        // $...$
+    const mathContent2 = match[3];        // \(...\)
+    const boldStar = match[4];            // **...**
+    const boldUnderline = match[5];       // __...__
+    const italicStar = match[6];          // *...*
+    const htmlTag = match[7];             // b|i|u|strong|em
+    const htmlContent = match[8];         // <tag>...</tag>
+
+    const mathContent = mathContent1 !== undefined ? mathContent1 : mathContent2;
 
     if (mathContent !== undefined) {
       const rawMath = mathContent.trim();
