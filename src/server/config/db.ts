@@ -170,6 +170,18 @@ db.exec(`
   
   CREATE INDEX IF NOT EXISTS idx_background_tasks_userId ON background_tasks(userId);
   CREATE INDEX IF NOT EXISTS idx_background_tasks_user_created ON background_tasks(userId, createdAt DESC);
+
+  CREATE TABLE IF NOT EXISTS feynman_chat_logs (
+    id TEXT PRIMARY KEY,
+    questionId TEXT NOT NULL,
+    userId TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_feynman_chat_logs_questionId ON feynman_chat_logs(questionId);
+  CREATE INDEX IF NOT EXISTS idx_feynman_chat_logs_userId ON feynman_chat_logs(userId);
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -245,6 +257,12 @@ try {
   if (!hasMasteryStatus) {
     console.log("正在升级 questions 表以支持 masteryStatus 字段...");
     db.exec("ALTER TABLE questions ADD COLUMN masteryStatus TEXT DEFAULT 'not_mastered'");
+  }
+
+  const hasFeynmanEvaluation = tableInfo.some(col => col.name === 'feynmanEvaluation');
+  if (!hasFeynmanEvaluation) {
+    console.log("正在升级 questions 表以支持 feynmanEvaluation 字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN feynmanEvaluation TEXT");
   }
 
   const hasExamDirection = tableInfo.some(col => col.name === 'examDirection');

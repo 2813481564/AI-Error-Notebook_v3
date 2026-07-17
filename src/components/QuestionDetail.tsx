@@ -16,6 +16,8 @@ import {
 import FormattedMath, { unwrapJsonText } from './FormattedMath';
 import GeometryRenderer from './GeometryRenderer';
 import ReadOnlyDetail, { BrainCircuitIcon } from './ReadOnlyDetail';
+import FeynmanChat from './FeynmanChat';
+import ErrorBoundary from './ErrorBoundary';
 
 
 const GRADE_OPTIONS = [
@@ -113,6 +115,8 @@ export default function QuestionDetail({
   const [similarCount, setSimilarCount] = useState<number>(1);
   const [variantMode, setVariantMode] = useState<'同考点换壳' | '条件升级' | '逆向陷阱'>('同考点换壳');
   const [savedStatus, setSavedStatus] = useState<Record<number, boolean>>({});
+  const [showFeynman, setShowFeynman] = React.useState(false);
+  const isSVIP = localStorage.getItem('errorbook_role') === 'svip';
 
   // 举一反三保存逻辑状态
   const [showVariationModal, setShowVariationModal] = useState(false);
@@ -751,6 +755,18 @@ export default function QuestionDetail({
       {/* 底部快捷操作按钮 */}
       {!isEditing && (
         <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-100 relative z-20">
+          
+          {/* 进入费曼学习按钮 */}
+          {isSVIP && (
+            <button
+              onClick={() => setShowFeynman(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-500/20 cursor-pointer active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>费曼学习</span>
+            </button>
+          )}
+
           {/* 标记已掌握按钮 */}
           <button
             onClick={handleToggleMasteryStatus}
@@ -911,6 +927,21 @@ export default function QuestionDetail({
             </div>
           </div>
         </div>
+      )}
+
+      {showFeynman && (
+        <ErrorBoundary>
+          <FeynmanChat
+            questionId={question.id}
+            originalText={question.originalText}
+            imageUrl={question.imageUrl}
+            standardAnswer={question.solution}
+            onClose={() => setShowFeynman(false)}
+            onMasteryUpdate={() => {
+              if (onUpdate) onUpdate(question);
+            }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

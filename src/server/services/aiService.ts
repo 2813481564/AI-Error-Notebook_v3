@@ -131,8 +131,12 @@ export async function generateContentWithFallback(params: {
           }
         }
       }
+      let mappedRole = c.role || 'user';
+      if (mappedRole === 'model') {
+        mappedRole = 'assistant';
+      }
       return {
-        role: c.role || 'user',
+        role: mappedRole,
         content: openAiContent.length === 1 && openAiContent[0].type === 'text'
           ? openAiContent[0].text
           : openAiContent

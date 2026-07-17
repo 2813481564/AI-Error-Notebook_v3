@@ -7,6 +7,7 @@ import * as qCtrl from "../controllers/questionController";
 import * as adminCtrl from "../controllers/adminController";
 import * as userCtrl from "../controllers/userController";
 import * as taskCtrl from "../controllers/taskController";
+import feynmanRoutes from "./feynmanRoutes";
 
 const router = express.Router();
 
@@ -90,5 +91,8 @@ router.get("/tasks/:id", requireAuth, taskCtrl.getTaskById);
 router.post("/tasks/:id/review", requireAuth, checkAiLimit, taskCtrl.submitReview);
 router.delete("/tasks/:id", requireAuth, taskCtrl.deleteTask);
 router.post("/tasks/:id/notified", requireAuth, taskCtrl.updateTaskNotified);
+
+// ================= 费曼学习 路由 =================
+router.use("/feynman", feynmanRoutes);
 
 export default router;
