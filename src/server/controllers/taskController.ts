@@ -1,8 +1,10 @@
 import express from "express";
+import crypto from "crypto";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
 import { executeDeepDiagnosis } from "../services/diagnosticEngine";
+import { GEOMETRY_PROMPT_TEMPLATE } from "./aiController";
 import { getSetting } from "../services/settingService";
 import { isBase64Image, saveBase64Image, deleteImageFile } from "../services/fileService";
 import { enhanceImageForOcr } from "../utils/imageOptimizer";
@@ -29,14 +31,14 @@ export const initTaskQueue = () => {
   try {
     const pendingTasks = db.prepare(`
       SELECT id FROM background_tasks 
-      WHERE status IN ('queued', 'extracting', 'diagnosing')
+      WHERE status IN ('queued', 'extracting', 'diagnosing', 'generating_variation')
     `).all() as { id: string }[];
     
     // 重置异常断电时的处理中状态为 queued
     db.prepare(`
       UPDATE background_tasks 
       SET status = 'queued', progress = 0 
-      WHERE status IN ('extracting', 'diagnosing')
+      WHERE status IN ('extracting', 'diagnosing', 'generating_variation')
     `).run();
 
     for (const task of pendingTasks) {
@@ -71,6 +73,19 @@ const processTask = async (id: string) => {
 
   try {
     let payload = JSON.parse(task.payload);
+
+    // 第一阶段：针对 AI 变式题异步排队生成任务
+    if (task.uploadMode === 'variation' && task.status === 'queued') {
+      db.prepare("UPDATE background_tasks SET status = 'generating_variation', progress = 30, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+      console.log(`[TaskQueue] [${id}] 进入 AI变式题深度推理阶段`);
+
+      const variations = await runAiVariation(payload, task.userId);
+      await saveVariationQuestionsToLibrary(task.userId, variations, task.notebookId, payload);
+      
+      db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+      console.log(`[TaskQueue] [${id}] AI变式题成功深度推理并自动落盘归档完毕！`);
+      return;
+    }
 
     // 第一阶段：如果是在 queued 状态，进行 OCR 识别文本提取
     if (task.status === 'queued') {
@@ -391,6 +406,130 @@ const saveFinalQuestionsToLibrary = async (
   }
 };
 
+const runAiVariation = async (payload: any, userId: string) => {
+  const { originalText, subject, knowledgePoints, count, grade, variantMode, examDirection, kps } = payload;
+  const numQuestions = Math.min(3, Math.max(1, count || 1));
+
+  const modeInstruction = variantMode === '条件升级'
+    ? "【条件升级模式】：在原考点基础上增加隐蔽条件，或者将直接已知条件转为需要通过多一步计算先求出的间接条件，整体难度提升一星。绝对不允许超纲！绝对不允许引入更高年级的知识点（例如小学题绝对禁止考查初中几何定理）！"
+    : variantMode === '逆向陷阱'
+      ? "【逆向陷阱模式】：强制要求采用逆向思维出题（例如给出原题的结果，要求反推原题的某个初始条件）；或者在题目中设置该知识点常见的易错陷阱（如定义域陷阱、单位陷阱、隐含的分类讨论），重点考察学生是否真正理解，而非死记硬背套公式。"
+      : "【同考点换壳模式】：保持原始难度和解题路径，仅修改具体的数值、已知条件的描述方式或情境背景，使题目成为一道全新的换壳题。";
+
+  const prompt = `
+你是一位经验丰富的高中数学/物理/化学名师。请根据以下原题信息，出 ${numQuestions} 道【相似度约80%】的同类练习题。
+
+【原题信息】
+- 学科: ${subject || '数学'}
+- 题目内容: ${originalText || ''}
+- 核心知识点: ${knowledgePoints?.join(', ') || ''}
+
+【命题要求】
+1. 核心知识点与原题完全相同。
+2. 题型、核心公式类型尽量与原题保持一致（除非变式模式要求提升难度或逆向推理）。
+3. ${modeInstruction}
+4. 【极度重要 - 逆向推导命题法】：为了保证计算结果是干净的有限小数或整数，涉及圆柱、圆锥体积计算时，你必须先在后台预设好合理的半径 r 和高 h，且**强制规定高 h 必须是 3 的倍数**（如 3, 6, 9），以消除圆锥公式中 1/3 导致的无限循环小数。算好题干需要的表面积等数值后，再输出题目。
+5. 【极度重要 - 场景迁移与常识编排】：必须改变原题的**生活应用场景（换一个故事外壳）**。例如更换物品材质（从橡皮泥换成木材、金属、食物等），并根据新材质的物理特性使用合理的动词（如金属对应熔铸，木材对应切削/损耗，橡皮泥对应重塑/体积不变）。同时根据场景自然改变最终的提问方式（如求原体积、损耗体积、剩余体积等），使其读起来像一个全新的故事，绝对不能只改数字！
+6. 知识点/图形/公式均不超出原题所述学段水平。
+7. 数学公式必须用标准 $ 或 $$ 包围。**注意：JSON 字符串中的所有 LaTeX 反斜杠必须双写转义（例如 \\\\pi, \\\\frac, \\\\text），否则会导致 JSON 解析失败！**
+8. 【极度重要】：保持与原题完全一致的年级和学段级别（例如原题如果是小学六年级，生成的同类题也必须是小学六年级水平；原题如果是高一，生成的题也必须是高一水平。若指定了年级为：${grade || '自动识别原题年级'}，请严格按照该年级设计，绝对不能超纲或降纲）。
+9. 【数量要求】：你必须生成且只能生成正好 ${numQuestions} 道题目。
+
+${GEOMETRY_PROMPT_TEMPLATE}
+
+${numQuestions === 1 ? `
+请严格按以下单个 JSON 对象格式返回，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
+{
+  "thinkingProcess": "【极为重要】在写题目和解析前，必须在此处打草稿！预先设定好干净的整数/有限小数值（如 r=2, h=3），计算出需要的表面积/体积数值，然后再生成题目！",
+  "questionText": "新题目的完整文字（纯文字+LaTeX公式，不包含任何SVG代码）",
+  "solution": "详细解题步骤（含LaTeX公式，每步用1. 2. 3.标注）",
+  "geometry": {
+    "type": "coordinate",
+    "xRange": [-6, 2],
+    "yRange": [-4, 2],
+    "shapes": [
+      {"type":"polygon","points":[[-4,-1],[-3,-3],[-1,-2]],"fill":"#eff6ff","stroke":"#374151"},
+      {"type":"point","x":-4,"y":-1,"r":3,"fill":"#374151"},
+      {"type":"label","text":"A","x":-4.4,"y":-0.7,"color":"#1e293b","anchor":"middle"}
+    ],
+    "solids": []
+  }
+}
+` : `
+请严格按以下 JSON 数组格式返回，包含 ${numQuestions} 个元素对象，不要包含 Markdown 代码块标记，不要包含其他任何解释性文字：
+[
+  {
+    "thinkingProcess": "预先设定变量和数值推演草稿...",
+    "questionText": "第1道新题目的完整文字...",
+    "solution": "第1道新题的详细解题步骤...",
+    "geometry": { ... }
+  },
+  ...
+]
+`}
+`;
+
+  const response = await generateContentWithFallback({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: prompt }
+        ]
+      }
+    ],
+    config: {
+      temperature: 0.7
+    }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("Empty response from AI variation");
+
+  let data: any;
+  try {
+    const extracted = extractJsonString(text);
+    data = JSON.parse(sanitizeJsonString(extracted));
+  } catch {
+    let fallback = text.trim();
+    if (fallback.startsWith('```')) {
+      fallback = fallback.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/, '').trim();
+    }
+    data = JSON.parse(fallback);
+  }
+  const dataArray = Array.isArray(data) ? data : [data];
+  return dataArray;
+};
+
+const saveVariationQuestionsToLibrary = async (userId: string, variations: any[], notebookId: string | null, payload: any) => {
+  if (!variations || variations.length === 0) return;
+
+  const stmt = db.prepare(`
+    INSERT INTO questions (
+      id, userId, status, originalText, subject, knowledgePoints, errorReason, solution, createdAt, similarQuestion, notebookId, masteryStatus, examDirection, studentId
+    ) VALUES (?, ?, 'audited', ?, ?, ?, 'AI变式题', ?, ?, ?, ?, 'not_mastered', ?, ?)
+  `);
+
+  for (let i = 0; i < variations.length; i++) {
+    const item = variations[i];
+    if (!item) continue;
+    const id = crypto.randomUUID ? crypto.randomUUID() : "q_var_" + Math.random().toString(36).substring(2, 9);
+    stmt.run(
+      id,
+      userId,
+      item.questionText || item.originalText || "",
+      item.subject || payload.subject || "数学",
+      JSON.stringify(payload.kps || payload.knowledgePoints || []),
+      item.solution || "",
+      Date.now() + i,
+      JSON.stringify(item),
+      notebookId || null,
+      payload.examDirection || null,
+      payload.studentId || null
+    );
+  }
+};
+
 
 // ================= Express API 路由处理方法 =================
 
@@ -398,8 +537,8 @@ const saveFinalQuestionsToLibrary = async (
 export const createTask = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const { taskName, autoRun, uploadMode, notebookId, payload } = req.body;
-    if (!payload || !payload.imageBase64) {
-      return res.status(400).json({ error: "参数不完整，缺少图片" });
+    if (!payload || (!payload.imageBase64 && uploadMode !== 'variation')) {
+      return res.status(400).json({ error: "参数不完整，缺少必要的任务数据" });
     }
 
     // 提前将 Base64 图片落盘为物理文件，savedImageUrl 仅用于数据库存储
@@ -456,7 +595,7 @@ export const getTasks = async (req: AuthenticatedRequest, res: express.Response)
       const stmt = db.prepare(`
         SELECT id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt, errorMsg, isNotified 
         FROM background_tasks 
-        WHERE userId = ? AND status IN ('queued', 'extracting', 'diagnosing', 'pending_extract_review', 'pending_diagnose_review')
+        WHERE userId = ? AND status IN ('queued', 'extracting', 'diagnosing', 'pending_extract_review', 'pending_diagnose_review', 'generating_variation')
         ORDER BY createdAt DESC
       `);
       const rows = stmt.all(req.userId) as any[];
@@ -492,7 +631,7 @@ export const getTasks = async (req: AuthenticatedRequest, res: express.Response)
 
       const statsStmt = db.prepare(`
         SELECT 
-          COUNT(CASE WHEN status IN ('queued', 'extracting', 'diagnosing') THEN 1 END) as runningCount,
+          COUNT(CASE WHEN status IN ('queued', 'extracting', 'diagnosing', 'generating_variation') THEN 1 END) as runningCount,
           COUNT(CASE WHEN status = 'pending_extract_review' THEN 1 END) as pendingOcrCount,
           COUNT(CASE WHEN status = 'pending_diagnose_review' THEN 1 END) as pendingDiagCount,
           COUNT(CASE WHEN status = 'completed' THEN 1 END) as completedCount

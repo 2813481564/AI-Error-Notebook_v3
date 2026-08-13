@@ -1,5 +1,5 @@
 import React from 'react';
-import type { GeometryData, Solid3DShape, CylinderSolid, ConeSolid, SphereSolid, CuboidSolid } from '../types/geometry';
+import { cleanSvgLabelText, type GeometryData, type Solid3DShape, type CylinderSolid, type ConeSolid, type SphereSolid, type CuboidSolid } from '../types/geometry';
 const SW = 800; // SVG 宽
 const SH = 320; // SVG 高
 
@@ -253,7 +253,7 @@ const Solid3DShapeComponent: React.FC<{ shape: Solid3DShape }> = ({ shape }) => 
         fontFamily="serif"
         fontWeight="bold"
       >
-        {shape.text}
+        {cleanSvgLabelText(shape.text)}
       </text>
     );
   }
@@ -275,7 +275,12 @@ const Solid3DShapeComponent: React.FC<{ shape: Solid3DShape }> = ({ shape }) => 
 
 // ======================== 主组件 ========================
 export default function Solid3DRenderer({ geometry }: { geometry: GeometryData }) {
-  const solids = geometry.solids ?? [];
+  const solids = [
+    ...(geometry.solids ?? []),
+    ...(geometry.shapes ?? []).filter((s: any) =>
+      ['cylinder', 'cone', 'sphere', 'cuboid', 'label_3d', 'dashed_line_3d'].includes(s.type)
+    )
+  ] as Solid3DShape[];
 
   if (solids.length === 0) return null;
 

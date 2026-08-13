@@ -33,6 +33,12 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
     loadData();
   }, []);
 
+  // 当归属错题本改变时，清空已选知识点和搜索词
+  useEffect(() => {
+    setSelectedKps(new Set());
+    setKpSearch('');
+  }, [smartNotebook]);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -58,9 +64,20 @@ export default function CreatePaperExercise({ onNavigate, onGeneratePaper }: Cre
     }
   };
 
-  // 提取所有不同的学科和知识点
+  // 提取所有不同的学科
   const subjects = Array.from(new Set(questions.map(q => q.subject))).filter(Boolean);
-  const allKps = Array.from(new Set(questions.flatMap(q => q.knowledgePoints || []))).filter(Boolean) as string[];
+
+  // 根据当前选中的错题本筛选题目，以此提取可用的知识点
+  const kpsPoolQuestions = questions.filter(q => {
+    if (smartNotebook === 'unclassified') {
+      if (q.notebookId) return false;
+    } else if (smartNotebook !== 'all' && q.notebookId !== smartNotebook) {
+      return false;
+    }
+    return true;
+  });
+
+  const allKps = Array.from(new Set(kpsPoolQuestions.flatMap(q => q.knowledgePoints || []))).filter(Boolean) as string[];
 
   // 知识点过滤（支持搜索）
   const filteredKps = allKps.filter(kp =>

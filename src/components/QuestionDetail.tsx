@@ -79,6 +79,7 @@ export default function QuestionDetail({
 
   const handleToggleMasteryStatus = async () => {
     const nextStatus = question.masteryStatus === 'mastered' ? 'not_mastered' : 'mastered';
+    let placeholderIds: string[] = [];
     try {
       await db.updateQuestionMastery(question.id, nextStatus);
       const updatedQuestion: ErrorQuestion = {
@@ -215,7 +216,7 @@ export default function QuestionDetail({
         createdAt: Date.now(),
         notebookId: selectedVariationNb,
         notebookName: selectedNbObj ? selectedNbObj.name : undefined,
-        masteryStatus: "not_mastered",
+        masteryStatus: "not_mastered" as "not_mastered",
         status: "audited",
         similarQuestion: item,
         imageUrl: "",
@@ -271,26 +272,40 @@ export default function QuestionDetail({
     setGenerating(true);
 
     try {
-      window.alert("正在拼命生成中，请耐心等待...");
-
       const token = localStorage.getItem('errorbook_token');
       const selectedNbObj = notebooks.find(n => n.id === question.notebookId);
       const originalGrade = selectedNbObj?.grade;
+      const targetNbObj = variationNotebooks.find(n => n.id === selectedVariationNb);
 
-      const res = await fetch('/api/similar', {
+      const kps = question.knowledgePoints.filter((k: string) => k !== "AI变式题");
+      kps.push("AI变式题");
+
+      // 提交后台任务进行异步推理，不再长耗时阻塞或硬插占位符
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          originalText: question.originalText,
-          subject: question.subject,
-          knowledgePoints: question.knowledgePoints,
-          count: similarCount,
-          grade: originalGrade,
-          variantMode,
-          visualContext: (question as any).visualContext || ''
+          taskName: `变式题生成 - ${question.subject} (${similarCount}道)`,
+          autoRun: 1,
+          uploadMode: 'variation',
+          notebookId: selectedVariationNb || question.notebookId,
+          payload: {
+            questionId: question.id,
+            originalText: question.originalText,
+            subject: question.subject,
+            knowledgePoints: question.knowledgePoints,
+            count: similarCount,
+            grade: originalGrade,
+            variantMode,
+            visualContext: (question as any).visualContext || '',
+            studentId: question.studentId,
+            examDirection: "【变式强化题】 " + (question.examDirection || ""),
+            kps: kps,
+            notebookName: targetNbObj ? targetNbObj.name : undefined
+          }
         })
       });
 
@@ -301,33 +316,19 @@ export default function QuestionDetail({
         throw new Error('登录已过期，请重新登录');
       }
 
+      const data = await res.json();
       if (!res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) {
-          if (res.status === 504 || res.status === 502 || res.status === 500) {
-            throw new Error(`AI 变式题计算与组图较复杂，线上网关处理超时 (${res.status})，请稍后重试或将生成数量改为 1 道。`);
-          }
-          throw new Error(`服务器网络响应异常 (${res.status})，请稍后重试。`);
-        }
+        throw new Error(data.error || `提交任务失败 (${res.status})`);
       }
 
-      let data: any;
-      try {
-        data = await res.json();
-      } catch (e) {
-        throw new Error(`服务器回传数据格式异常，可能是推理时间过长导致连接中断，请稍后重新生成。`);
-      }
-      if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+      // 秒回成功，给用户清晰友好的反馈
+      window.alert(`✓ 已成功加入后台 AI 变式演算队列！系统正在后台为您深度演算并生成 ${similarCount} 道变式题。\n您现在可以自由关闭弹窗或切换至变动库，完成后会自动呈现！`);
+      if (onBack) onBack();
 
-      const dataArray = Array.isArray(data) ? data : [data];
-
-      if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
-        setSimilarData(dataArray);
-      }
     } catch (err: any) {
       console.error(err);
       if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
-        window.alert(err.message || '生成同类题失败，请重试');
+        window.alert(err.message || '提交变式题生成任务失败，请重试');
       }
     } finally {
       if (isMountedRef.current && currentQuestionIdRef.current === question.id) {
@@ -580,27 +581,10 @@ export default function QuestionDetail({
                         <span className="text-xs font-black text-slate-800 bg-slate-200 px-3 py-1 rounded-lg">
                           变式题 {idx + 1}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDirectSaveVariation(item, idx)}
-                          disabled={isSaved}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSaved
-                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-default'
-                            : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-                            }`}
-                        >
-                          {isSaved ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>已存入错题库</span>
-                            </>
-                          ) : (
-                            <>
-                              <PlusCircle className="w-3.5 h-3.5 text-white" />
-                              <span>保存至错题库</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-700 shadow-sm">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>已自动保存至变题库</span>
+                        </div>
                       </div>
 
                       {item.geometry && item.geometry.type !== 'none' && (
@@ -732,8 +716,8 @@ export default function QuestionDetail({
                   onClick={generateSimilar}
                   disabled={generating || !selectedVariationNb}
                   className={`w-full py-3.5 rounded-xl text-xs font-black transition cursor-pointer flex justify-center items-center gap-2 ${generating || !selectedVariationNb
-                      ? 'bg-blue-400 text-white cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10'
+                    ? 'bg-blue-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10'
                     }`}
                 >
                   {generating ? (
@@ -755,7 +739,7 @@ export default function QuestionDetail({
       {/* 底部快捷操作按钮 */}
       {!isEditing && (
         <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-100 relative z-20">
-          
+
           {/* 进入费曼学习按钮 */}
           {isSVIP && (
             <button

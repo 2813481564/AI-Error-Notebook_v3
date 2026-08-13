@@ -165,3 +165,18 @@ export interface GeometryData {
   /** 3D 立体图形元素列表（solid_3d 类型使用） */
   solids?: Solid3DShape[];
 }
+
+/** SVG 文本净化器：将 AI 输出的各类 LaTeX 转义数学符号和冗余标识转换清洗为极简标准的 SVG 可读文本 */
+export function cleanSvgLabelText(rawText?: string): string {
+  if (!rawText) return '';
+  return rawText
+    .replace(/\^?\\+circ/g, '°')           // 统一把 ^\circ, \circ, \\circ 洗为 °
+    .replace(/\^°/g, '°')                  // 清理任何中途留存的 ^°
+    .replace(/\^/g, '')                    // 剔除文字标签中残留的 LaTeX 幂/上角标控制符 ^
+    .replace(/\\+angle/g, '∠')             // 把 \angle 洗为 ∠
+    .replace(/\\+triangle/g, '△')          // 把 \triangle 洗为 △
+    .replace(/\\+text\{([^}]*)\}/g, '$1')  // 把 \text{...} 洗为纯文本
+    .replace(/\$/g, '')                    // 脱去包裹的 $ 符号
+    .trim();
+}
+

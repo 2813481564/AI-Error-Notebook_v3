@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { GeometryData, ShapeType } from '../types/geometry';
+import { cleanSvgLabelText, type GeometryData, type ShapeType } from '../types/geometry';
 import Solid3DRenderer from './Solid3DRenderer';
 
 const W = 300;
@@ -7,6 +7,47 @@ const H = 240;
 const PAD = 30;
 
 type TFn = (lx: number, ly: number) => [number, number];
+
+/** 提取 plane 类型下所有形状的逻辑坐标包围盒，自适应处理 AI 生成超出 0~100 范围的坐标 */
+function getPlaneBounds(geo: GeometryData) {
+  let minX = 0;
+  let maxX = 100;
+  let minY = 0;
+  let maxY = 100;
+
+  const shapes = geo.shapes || [];
+  const xs: number[] = [];
+  const ys: number[] = [];
+
+  for (const s of shapes) {
+    if (s.type === 'polygon' && s.points) {
+      s.points.forEach(p => { xs.push(p[0]); ys.push(p[1]); });
+    } else if (s.type === 'line') {
+      xs.push(s.from[0], s.to[0]);
+      ys.push(s.from[1], s.to[1]);
+    } else if (s.type === 'circle' || s.type === 'arc') {
+      xs.push(s.cx - s.r, s.cx + s.r);
+      ys.push(s.cy - s.r, s.cy + s.r);
+    } else if (s.type === 'point' || s.type === 'label') {
+      xs.push(s.x);
+      ys.push(s.y);
+    }
+  }
+
+  if (xs.length > 0) {
+    const actMinX = Math.min(...xs);
+    const actMaxX = Math.max(...xs);
+    const actMinY = Math.min(...ys);
+    const actMaxY = Math.max(...ys);
+
+    if (actMinX < minX) minX = actMinX;
+    if (actMaxX > maxX) maxX = actMaxX;
+    if (actMinY < minY) minY = actMinY;
+    if (actMaxY > maxY) maxY = actMaxY;
+  }
+
+  return { minX, maxX, minY, maxY };
+}
 
 /** 根据几何类型创建坐标变换函数（逻辑坐标 → SVG像素坐标） */
 function makeTransform(geo: GeometryData): TFn {
@@ -24,10 +65,13 @@ function makeTransform(geo: GeometryData): TFn {
     const sy = (H - PAD * 2) / (yMax - yMin);
     return (lx, ly) => [PAD + (lx - xMin) * sx, H - PAD - (ly - yMin) * sy];
   }
-  // plane: 逻辑坐标 0-100，(0,0) 在左下角
-  const sw = (W - PAD * 2) / 100;
-  const sh = (H - PAD * 2) / 100;
-  return (lx, ly) => [PAD + lx * sw, H - PAD - ly * sh];
+  // plane: 动态包围盒自适应，包容超出 0~100 范围的点和标签
+  const { minX, maxX, minY, maxY } = getPlaneBounds(geo);
+  const rangeX = Math.max(1, maxX - minX);
+  const rangeY = Math.max(1, maxY - minY);
+  const sw = (W - PAD * 2) / rangeX;
+  const sh = (H - PAD * 2) / rangeY;
+  return (lx, ly) => [PAD + (lx - minX) * sw, H - PAD - (ly - minY) * sh];
 }
 
 /** 逆变换函数（SVG像素坐标 → 逻辑坐标） */
@@ -45,9 +89,12 @@ function makeInverseTransform(geo: GeometryData): TFn {
     const sy = (H - PAD * 2) / (yMax - yMin);
     return (px, py) => [(px - PAD) / sx + xMin, yMax - (py - PAD) / sy];
   }
-  const sw = (W - PAD * 2) / 100;
-  const sh = (H - PAD * 2) / 100;
-  return (px, py) => [(px - PAD) / sw, (H - PAD - py) / sh];
+  const { minX, maxX, minY, maxY } = getPlaneBounds(geo);
+  const rangeX = Math.max(1, maxX - minX);
+  const rangeY = Math.max(1, maxY - minY);
+  const sw = (W - PAD * 2) / rangeX;
+  const sh = (H - PAD * 2) / rangeY;
+  return (px, py) => [(px - PAD) / sw + minX, (H - PAD - py) / sh + minY];
 }
 
 /** 渲染格点网格背景 */
@@ -173,7 +220,7 @@ const SingleGeometryShape: React.FC<{ shape: ShapeType; t: TFn }> = ({ shape, t 
         fontFamily="serif"
         fontWeight="bold"
       >
-        {shape.text}
+        {cleanSvgLabelText(shape.text)}
       </text>
     );
   }
@@ -249,8 +296,12 @@ export default function GeometryRenderer({ geometry }: { geometry: GeometryData 
 
   if (!localGeo || localGeo.type === 'none') return null;
 
-  // 三维立体几何：转发给专用渲染器
-  if (localGeo.type === 'solid_3d') {
+  // 三维立体几何或当包含3D图元时：智能转发给专用渲染器
+  const has3DSolids = (localGeo.solids && localGeo.solids.length > 0) ||
+    (localGeo.shapes && localGeo.shapes.some((s: any) =>
+      ['cylinder', 'cone', 'sphere', 'cuboid', 'label_3d', 'dashed_line_3d'].includes(s.type)
+    ));
+  if (localGeo.type === 'solid_3d' || has3DSolids) {
     return <Solid3DRenderer geometry={localGeo} />;
   }
 

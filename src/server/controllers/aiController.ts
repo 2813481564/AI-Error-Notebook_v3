@@ -8,7 +8,7 @@ import {
 } from "../services/aiService";
 import { getSetting } from "../services/settingService";
 
-const GEOMETRY_PROMPT_TEMPLATE = `
+export const GEOMETRY_PROMPT_TEMPLATE = `
 【几何图形数据规范（必须填写 geometry 字段）】
 根据题目类型填写 geometry.type：
 
@@ -64,7 +64,10 @@ export const similar = async (req: AuthenticatedRequest, res: express.Response) 
       return res.status(403).json({ error: "权限不足，学生角色无法生成同类题" });
     }
 
-    const { originalText, subject, knowledgePoints, count, grade, variantMode } = req.body;
+    const { 
+      originalText, subject, knowledgePoints, count, grade, variantMode,
+      placeholderId, notebookId, notebookName, studentId, examDirection, kps 
+    } = req.body;
     const numQuestions = Math.min(3, Math.max(1, count || 1));
 
     const modeInstruction = variantMode === '条件升级'
@@ -194,6 +197,43 @@ ${numQuestions === 1 ? `
       }
       data = JSON.parse(fallback);
     }
+
+    // ---> 后台直接回填落库逻辑 <---
+    try {
+      if (placeholderId && data) {
+        const dataArray = Array.isArray(data) ? data : [data];
+        const item = dataArray[0];
+        
+        if (item) {
+          const stmt = db.prepare(`
+            UPDATE questions 
+            SET originalText = ?, solution = ?, similarQuestion = ?, status = 'audited', 
+                subject = ?, knowledgePoints = ?, errorReason = 'AI变式题', 
+                examDirection = ?, notebookId = ?, notebookName = ?, 
+                studentId = ?, masteryStatus = 'not_mastered'
+            WHERE id = ? AND userId = ?
+          `);
+          
+          stmt.run(
+            item.questionText, 
+            item.solution || "", 
+            JSON.stringify(item), 
+            subject || "其他", 
+            JSON.stringify(kps || []), 
+            examDirection || null, 
+            notebookId || null, 
+            notebookName || null, 
+            studentId || null, 
+            placeholderId,
+            req.userId
+          );
+          console.log(`[AI Controller] 成功为占位符 ${placeholderId} 写入后台生成数据`);
+        }
+      }
+    } catch (dbErr) {
+      console.error("[AI Controller] 后台回填数据库失败:", dbErr);
+    }
+    
     res.json(data);
 
   } catch (error: any) {

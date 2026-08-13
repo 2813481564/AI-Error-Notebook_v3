@@ -856,6 +856,7 @@ export default function QuestionLibrary({
             <div className="space-y-6">
               <div className="flex flex-col gap-4">
                 {currentPage === 1 && currentNotebookTasks.map((task) => {
+                  const isVariation = task.uploadMode === 'variation';
                   const taskImg = task.payload?.imageBase64;
                   const formattedDate = format(new Date(task.createdAt), 'MM/dd');
                   return (
@@ -863,12 +864,12 @@ export default function QuestionLibrary({
                       key={task.id}
                       className="relative group bg-slate-50/50 rounded-3xl border border-dashed border-slate-250 transition-all flex flex-col md:flex-row p-5 gap-5 items-center opacity-85 hover:border-blue-400 hover:opacity-100"
                     >
-                      {/* 左侧缩略图 */}
+                      {/* 左侧缩略图或变式图标 */}
                       <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                         {taskImg ? (
                           <img src={taskImg} alt="录入缩略图" className="w-full h-full object-cover rounded-2xl filter brightness-95 grayscale-[20%]" />
                         ) : (
-                          <div className="text-2xl text-slate-300">📝</div>
+                          <div className="text-3xl font-black">{isVariation ? '💡' : '📝'}</div>
                         )}
                       </div>
 
@@ -877,13 +878,13 @@ export default function QuestionLibrary({
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-2 text-slate-700 font-extrabold text-sm md:text-base">
                             <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                            <span>错题AI正在分析中...</span>
+                            <span>{isVariation ? (task.taskName || '举一反三 AI 变式题深度推理中...') : '错题AI正在分析中...'}</span>
                             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-black border border-blue-100 uppercase tracking-wider scale-95 origin-left">
-                              {task.status === 'queued' ? '排队中' : task.status === 'extracting' ? '文本提取' : '智能批改'}
+                              {task.status === 'queued' ? '排队中' : task.status === 'generating_variation' ? 'AI演算中' : task.status === 'extracting' ? '文本提取' : '智能批改'}
                             </span>
                           </div>
                           <p className="text-xs text-slate-400 font-semibold">
-                            图片已保存，分析完成后自动更新
+                            {isVariation ? '已在后台安全排队并进行深度演算，支持随意离开当页自由切换，完成即自动呈现！' : '图片已保存，分析完成后自动更新'}
                           </p>
                         </div>
                         <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
@@ -942,7 +943,7 @@ export default function QuestionLibrary({
                         <div key={q.id} className="relative group bg-white rounded-3xl border border-blue-200 ring-2 ring-blue-500/10 p-5 gap-5 flex flex-col md:flex-row items-stretch shadow-md overflow-hidden">
                           {/* 光效扫描线动画 */}
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-50/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
-                          
+
                           {/* 左侧封面 */}
                           <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shrink-0 relative z-10">
                             <Sparkles className="w-8 h-8 text-blue-500 animate-pulse mb-2" />
@@ -957,7 +958,7 @@ export default function QuestionLibrary({
                               </span>
                               <div className="h-4 bg-slate-100 rounded-md w-1/3 animate-pulse"></div>
                             </div>
-                            
+
                             <div className="space-y-2.5">
                               <div className="h-3 bg-slate-50 rounded w-full animate-pulse"></div>
                               <div className="h-3 bg-slate-50 rounded w-5/6 animate-pulse"></div>
@@ -978,10 +979,9 @@ export default function QuestionLibrary({
                   return (
                     <div
                       key={q.id}
-                      className={`relative group bg-white rounded-3xl border transition-all flex flex-col md:flex-row p-5 gap-5 items-stretch ${
-                        isPending ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30 shadow-md' :
-                        isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:shadow-md hover:border-blue-400'
-                      }`}
+                      className={`relative group bg-white rounded-3xl border transition-all flex flex-col md:flex-row p-5 gap-5 items-stretch ${isPending ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30 shadow-md' :
+                          isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200 hover:shadow-md hover:border-blue-400'
+                        }`}
                     >
                       {/* 卡片左侧：缩略图/原图 */}
                       <div
@@ -1048,11 +1048,10 @@ export default function QuestionLibrary({
                             <button
                               onClick={(e) => !isPending && handleToggleMastery(q.id, q.masteryStatus, e)}
                               disabled={isPending}
-                              className={`text-xs font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1 border ${
-                                isPending ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-50' :
-                                q.masteryStatus === 'mastered'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
-                                : 'bg-rose-50/70 text-rose-600 border-rose-200/60 hover:bg-rose-100/80 cursor-pointer'
+                              className={`text-xs font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1 border ${isPending ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-50' :
+                                  q.masteryStatus === 'mastered'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
+                                    : 'bg-rose-50/70 text-rose-600 border-rose-200/60 hover:bg-rose-100/80 cursor-pointer'
                                 }`}
                               title={isPending ? "生成中，暂不可操作" : "点击一键切换掌握状态"}
                             >
