@@ -29,8 +29,6 @@
     "vite.config.ts"
   ],
   "exclude": [
-    "node_modules",
-    "test_gemma_real.cjs",
-    "test_sdk.cjs"
+    "node_modules"
   ]
 }

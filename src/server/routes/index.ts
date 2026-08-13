@@ -13,9 +13,11 @@ const router = express.Router();
 
 // ================= Auth 路由 =================
 router.post("/auth/send-code", authCtrl.sendCode);
+router.post("/auth/send-reset-code", authCtrl.sendResetCode);
 router.post("/auth/register", authCtrl.register);
 router.post("/auth/login", authCtrl.login);
 router.post("/auth/logout", authCtrl.logout);
+router.post("/auth/reset-password", authCtrl.resetPassword);
 
 // ================= User 会员/支付 路由 =================
 router.get("/user/info", requireAuth, userCtrl.getUserInfo);

@@ -214,3 +214,125 @@ export const logout = (req: express.Request, res: express.Response) => {
     res.status(500).json({ error: error.message || "注销失败" });
   }
 };
+
+// 5. 发送找回密码验证码 (重置密码专用)
+export const sendResetCode = async (req: express.Request, res: express.Response) => {
+  try {
+    const { email } = req.body;
+    if (!email || email.trim() === "") {
+      return res.status(400).json({ error: "邮箱不能为空" });
+    }
+    const cleanEmail = email.trim();
+
+    // 校验是否为合法 QQ 邮箱
+    const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
+    if (!qqEmailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "账号必须为合法的 QQ 邮箱格式" });
+    }
+
+    // 检查邮箱是否已在系统中注册
+    const userExist = db.prepare("SELECT username FROM users WHERE username = ?").get(cleanEmail);
+    if (!userExist) {
+      return res.status(404).json({ error: "该邮箱尚未注册账户，请检查是否输入正确" });
+    }
+
+    // 生成 6 位随机验证码
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const createdAt = Date.now();
+
+    // 插入或更新验证码记录
+    db.prepare(`
+      INSERT OR REPLACE INTO verification_codes (email, code, createdAt)
+      VALUES (?, ?, ?)
+    `).run(cleanEmail, code, createdAt);
+
+    // 检查环境变量及系统设置是否配置了邮箱服务
+    const smtpUser = getSetting("SMTP_USER", process.env.SMTP_USER || "");
+    const smtpPass = getSetting("SMTP_PASS", process.env.SMTP_PASS || "");
+
+    if (!smtpUser || !smtpPass || smtpPass === "your-smtp-auth-code") {
+      console.log(`[开发测试模式] 重置密码验证码发送至: ${cleanEmail}，验证码为: ${code}`);
+      return res.json({
+        success: true,
+        message: "验证码已生成（开发测试模式，验证码已打印在控制台）",
+        devCode: code
+      });
+    }
+
+    // 邮件内容
+    const mailOptions = {
+      from: `"智能错题识别系统" <${smtpUser}>`,
+      to: cleanEmail,
+      subject: "【智能错题识别】找回密码验证码",
+      html: `
+        <div style="padding: 24px; font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 12px;">
+          <h2 style="color: #2563eb; font-size: 20px; font-weight: bold; margin-bottom: 16px;">智能错题识别系统</h2>
+          <p style="font-size: 14px; line-height: 1.6; color: #555;">您好，您正在对智能错题识别账号进行<b>重置登录密码</b>操作。</p>
+          <p style="font-size: 14px; line-height: 1.6; color: #555;">您的找回验证码为：</p>
+          <div style="background-color: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 24px; font-weight: 800; color: #1e293b; letter-spacing: 4px;">${code}</span>
+          </div>
+          <p style="font-size: 12px; color: #9ca3af; margin-top: 24px; border-top: 1px solid #f3f4f6; padding-top: 16px;">
+            提示：此验证码有效时间为 10 分钟。如果不是您本人的操作，请立即检查账户安全或忽略此邮件。
+          </p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "重置密码验证码已发送至您的 QQ 邮箱" });
+  } catch (error: any) {
+    console.error("Send Reset Code Error:", error);
+    res.status(500).json({ error: error.message || "验证码发送失败，请稍后重试" });
+  }
+};
+
+// 6. 验证码找回并重置新密码
+export const resetPassword = (req: express.Request, res: express.Response) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword || email.trim() === "" || code.trim() === "" || newPassword.trim() === "") {
+      return res.status(400).json({ error: "邮箱、验证码与新密码均不能为空" });
+    }
+    const cleanEmail = email.trim();
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "新密码长度不能少于 6 位" });
+    }
+
+    const qqEmailRegex = /^[a-zA-Z0-9_-]+@qq\.com$/i;
+    if (!qqEmailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "无效的 QQ 邮箱格式" });
+    }
+
+    // 校验验证码
+    const codeRecord = db.prepare("SELECT code, createdAt FROM verification_codes WHERE email = ?").get(cleanEmail) as { code: string, createdAt: number } | undefined;
+    if (!codeRecord) {
+      return res.status(400).json({ error: "尚未获取验证码或验证码已失效" });
+    }
+
+    if (codeRecord.code !== code.trim()) {
+      return res.status(400).json({ error: "验证码错误，请重新输入" });
+    }
+
+    if (Date.now() - codeRecord.createdAt > 10 * 60 * 1000) {
+      return res.status(400).json({ error: "验证码已过期，请重新获取" });
+    }
+
+    // 验证成功，删除验证码记录
+    db.prepare("DELETE FROM verification_codes WHERE email = ?").run(cleanEmail);
+
+    const userExist = db.prepare("SELECT username FROM users WHERE username = ?").get(cleanEmail);
+    if (!userExist) {
+      return res.status(404).json({ error: "目标账号不存在" });
+    }
+
+    const hashedPassword = hashPassword(newPassword);
+    db.prepare("UPDATE users SET password = ? WHERE username = ?").run(hashedPassword, cleanEmail);
+
+    res.json({ success: true, message: "密码重置成功，请使用新密码登录" });
+  } catch (error: any) {
+    console.error("Reset Password Error:", error);
+    res.status(500).json({ error: error.message || "重置密码失败" });
+  }
+};
+

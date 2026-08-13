@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Brain, BookOpen, Award, Sparkles, Smile, Flame, GraduationCap, Bot, Camera, Save, CheckCircle2, Crown, Loader2, ArrowRight, Check, HelpCircle } from 'lucide-react';
+import { User, Brain, BookOpen, Award, Sparkles, Smile, Flame, GraduationCap, Bot, Camera, Save, CheckCircle2, Crown, Loader2, ArrowRight, Check, HelpCircle, Lock, Key, Shield } from 'lucide-react';
 
 export const PRESET_AVATARS = [
   { id: 'preset_1', bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', iconName: 'user', label: '默认用户' },
@@ -102,6 +102,59 @@ export default function UserProfile({ token, userInfo, onRefreshUserInfo, onNavi
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // 修改登录密码状态
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setPwdError('请完整填写当前旧密码、新密码及确认密码');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdError('两次填写的密码不一致，请检查后重新输入');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPwdError('新密码长度不少于 6 位');
+      return;
+    }
+    setPwdSaving(true);
+    setPwdError(null);
+    setPwdSuccess(null);
+    try {
+      const res = await fetch('/api/user/password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          oldPassword,
+          newPassword
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '密码修改失败');
+      }
+      setPwdSuccess('登录密码修改成功！下次登录时生效。');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPwdSuccess(null), 4000);
+    } catch (err: any) {
+      setPwdError(err.message);
+    } finally {
+      setPwdSaving(false);
+    }
+  };
 
   // 当外部 userInfo 载入后同步到本地 state
   useEffect(() => {
@@ -237,88 +290,184 @@ export default function UserProfile({ token, userInfo, onRefreshUserInfo, onNavi
       {/* 两大板块容器 */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         
-        {/* 左侧：账号设置面板 */}
-        <div className="bg-white border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-sm md:col-span-7 space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-base font-extrabold text-slate-800">账号基础资料</h2>
-            <p className="text-xs text-slate-400 mt-0.5">更改您的昵称和头像，让它们更加个性化</p>
-          </div>
-
-          <form onSubmit={handleSave} className="space-y-6">
-            
-            {/* 头像区域 */}
-            <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-50/50 p-4 border border-slate-100 rounded-2xl">
-              <div className="relative group">
-                <UserAvatar 
-                  avatar={customUrl.trim() !== '' ? customUrl.trim() : avatar} 
-                  username={userInfo.username} 
-                  className="w-20 h-20 text-3xl"
-                  onClick={() => setShowAvatarModal(true)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAvatarModal(true)}
-                  className="absolute bottom-0 right-0 w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-md border border-white transition-all scale-100 active:scale-90"
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="text-center sm:text-left space-y-1">
-                <h3 className="text-xs font-bold text-slate-600">展示头像</h3>
-                <p className="text-[11px] text-slate-400">点击头像或右下角相机按钮更换预设卡通头像</p>
-                <button
-                  type="button"
-                  onClick={() => setShowAvatarModal(true)}
-                  className="mt-1.5 px-3 py-1 bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:border-slate-350 rounded-lg text-[10px] font-bold shadow-sm transition-all"
-                >
-                  更换展示头像
-                </button>
-              </div>
+        {/* 左侧：账号基础设置与密码修改面板 */}
+        <div className="md:col-span-7 space-y-6">
+          {/* 卡片 1：账号基础资料 */}
+          <div className="bg-white border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-base font-extrabold text-slate-800">账号基础资料</h2>
+              <p className="text-xs text-slate-400 mt-0.5">更改您的昵称和头像，让它们更加个性化</p>
             </div>
 
-            {/* 用户名/昵称输入区 */}
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500 pl-0.5 block">账户账号 (不可更改)</label>
-                <div className="bg-slate-50 border border-slate-100 text-slate-400 px-4 py-2.5 rounded-xl text-sm font-semibold select-none">
-                  {userInfo.username}
+            <form onSubmit={handleSave} className="space-y-6">
+              
+              {/* 头像区域 */}
+              <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-50/50 p-4 border border-slate-100 rounded-2xl">
+                <div className="relative group">
+                  <UserAvatar 
+                    avatar={customUrl.trim() !== '' ? customUrl.trim() : avatar} 
+                    username={userInfo.username} 
+                    className="w-20 h-20 text-3xl"
+                    onClick={() => setShowAvatarModal(true)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarModal(true)}
+                    className="absolute bottom-0 right-0 w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-md border border-white transition-all scale-100 active:scale-90"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="text-center sm:text-left space-y-1">
+                  <h3 className="text-xs font-bold text-slate-600">展示头像</h3>
+                  <p className="text-[11px] text-slate-400">点击头像或右下角相机按钮更换预设卡通头像</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarModal(true)}
+                    className="mt-1.5 px-3 py-1 bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:border-slate-350 rounded-lg text-[10px] font-bold shadow-sm transition-all"
+                  >
+                    更换展示头像
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500 pl-0.5 block">个性昵称</label>
-                <input
-                  type="text"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="设置一个昵称"
-                  maxLength={20}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 bg-white transition-colors"
-                />
+              {/* 用户名/昵称输入区 */}
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 pl-0.5 block">账户账号 (不可更改)</label>
+                  <div className="bg-slate-50 border border-slate-100 text-slate-400 px-4 py-2.5 rounded-xl text-sm font-semibold select-none">
+                    {userInfo.username}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 pl-0.5 block">个性昵称</label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="设置一个昵称"
+                    maxLength={20}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 bg-white transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* 保存按钮 */}
+              <div className="pt-2 border-t border-slate-100 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/10 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>正在保存...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>保存资料</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* 卡片 2：安全与密码设置 */}
+          <div className="bg-white border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-blue-600" />
+                  <span>安全与密码设置</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">定期更新您的登录密码，确保账号隐私与信息安全</p>
               </div>
             </div>
 
-            {/* 保存按钮 */}
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/10 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>正在保存...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>保存资料</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+            {pwdError && (
+              <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-semibold flex items-center gap-2 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+                <span>{pwdError}</span>
+              </div>
+            )}
+            {pwdSuccess && (
+              <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 text-xs font-semibold flex items-center gap-2 shadow-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{pwdSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 pl-0.5 block flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>当前旧登录密码</span>
+                </label>
+                <input
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  placeholder="请输入当前正在使用的旧密码"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 bg-white transition-colors"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 pl-0.5 block flex items-center gap-1">
+                  <Key className="w-3.5 h-3.5 text-slate-400" />
+                  <span>设置新登录密码</span>
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="请输入新密码（不少于 6 位）"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 bg-white transition-colors"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 pl-0.5 block flex items-center gap-1">
+                  <Key className="w-3.5 h-3.5 text-slate-400" />
+                  <span>确认新登录密码</span>
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="请再次输入新密码"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 bg-white transition-colors"
+                  required
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={pwdSaving}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black shadow-md shadow-slate-800/10 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {pwdSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>正在修改...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>更新登录密码</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         {/* 右侧：会员中心与额度信息卡片 */}

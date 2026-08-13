@@ -70,6 +70,15 @@ export default function App() {
   const [countdown, setCountdown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
 
+  // 找回密码/重置密码状态
+  const [isForgotMode, setIsForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotCode, setForgotCode] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+  const [sendForgotCodeLoading, setSendForgotCodeLoading] = useState(false);
+  const [forgotCountdown, setForgotCountdown] = useState(0);
+
   // 会员信息状态
   const [userInfo, setUserInfo] = useState<{
     role: string;
@@ -81,13 +90,20 @@ export default function App() {
     questionCount?: number;
   } | null>(null);
 
-  // 定时器用于验证码倒计时
+  // 定时器用于验证码与重置码倒计时
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     }
   }, [countdown]);
+
+  useEffect(() => {
+    if (forgotCountdown > 0) {
+      const timer = setTimeout(() => setForgotCountdown(forgotCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [forgotCountdown]);
 
   // 拉取个人会员及额度信息
   const fetchUserInfo = async () => {
@@ -341,6 +357,73 @@ export default function App() {
     }
   };
 
+  // 发送找回密码验证码
+  const handleSendForgotCode = async () => {
+    if (!forgotEmail.trim()) {
+      setAuthError('请先输入QQ邮箱');
+      return;
+    }
+    setSendForgotCodeLoading(true);
+    setAuthError(null);
+    setForgotSuccess(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/auth/send-reset-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '重置码发送失败');
+      }
+      setForgotSuccess('重置验证码发送成功！若未收到请检查垃圾箱或控制台日志。');
+      setForgotCountdown(60);
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setSendForgotCodeLoading(false);
+    }
+  };
+
+  // 重置密码提交
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim() || !forgotCode.trim() || !forgotNewPassword.trim()) {
+      setAuthError('请完整填写所有重置字段');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    setForgotSuccess(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          code: forgotCode.trim(),
+          newPassword: forgotNewPassword.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '重置密码失败');
+      }
+      setForgotSuccess(data.message || '密码重置成功，请使用新密码登录');
+      setTimeout(() => {
+        setIsForgotMode(false);
+        setForgotEmail('');
+        setForgotCode('');
+        setForgotNewPassword('');
+        setForgotSuccess(null);
+      }, 2000);
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   if (!token) {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f4f6f9] font-sans text-slate-700 p-4 md:p-6 overflow-y-auto">
@@ -429,10 +512,10 @@ export default function App() {
               {/* Form Header */}
               <div>
                 <h2 className="text-[26px] font-black text-slate-800 tracking-tight">
-                  {isRegisterMode ? '加入我们' : '欢迎登录'}
+                  {isForgotMode ? '找回密码' : isRegisterMode ? '加入我们' : '欢迎登录'}
                 </h2>
                 <p className="text-xs text-slate-400 mt-1.5 font-bold tracking-wide">
-                  {isRegisterMode ? '欢迎注册使用AI错题识别' : '继续您的智能学习之旅。'}
+                  {isForgotMode ? '通过已注册邮箱验证码安全重置您的登录密码。' : isRegisterMode ? '欢迎注册使用AI错题识别' : '继续您的智能学习之旅。'}
                 </p>
               </div>
 
@@ -443,15 +526,98 @@ export default function App() {
                   {authError}
                 </div>
               )}
-              {regSuccess && (
+              {regSuccess && !isForgotMode && (
                 <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span className="leading-snug">{regSuccess}</span>
                 </div>
               )}
+              {forgotSuccess && isForgotMode && (
+                <div className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="leading-snug">{forgotSuccess}</span>
+                </div>
+              )}
 
               {/* Form Box */}
-              {isRegisterMode ? (
+              {isForgotMode ? (
+                // ================= 找回/重置密码表单 =================
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      已注册的 QQ 邮箱
+                    </label>
+                    <div className="flex gap-3">
+                      <div className="flex-1 relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4 py-3 transition-all min-w-0">
+                        <Mail className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                        <input
+                          type="email"
+                          placeholder="请输入 QQ 邮箱"
+                          value={forgotEmail}
+                          onChange={e => setForgotEmail(e.target.value)}
+                          className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium min-w-0"
+                          required
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendForgotCode}
+                        disabled={sendForgotCodeLoading || forgotCountdown > 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-3 rounded-full transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-sm shadow-blue-500/10 whitespace-nowrap"
+                      >
+                        {forgotCountdown > 0 ? `${forgotCountdown}s` : '获取重置码'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">重置验证码</label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <Sparkles className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="请输入 6 位验证码"
+                        value={forgotCode}
+                        onChange={e => setForgotCode(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 pl-1 block">
+                      设定新密码
+                    </label>
+                    <div className="relative flex items-center bg-slate-50 border border-transparent focus-within:border-blue-500 focus-within:bg-white rounded-full px-4.5 py-3 transition-all">
+                      <Lock className="w-4.5 h-4.5 text-slate-400 mr-2.5 shrink-0" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="设置新登录密码（至少 6 位）"
+                        value={forgotNewPassword}
+                        onChange={e => setForgotNewPassword(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400/80 font-medium pr-8"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4.5 text-slate-400 hover:text-slate-600 outline-none cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-full font-extrabold transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 text-sm mt-6 cursor-pointer"
+                  >
+                    {authLoading ? '正在重置...' : '立即重置密码'}
+                  </button>
+                </form>
+              ) : isRegisterMode ? (
                 // ================= 注册表单 =================
                 <form onSubmit={handleRegister} className="space-y-4">
 
@@ -578,7 +744,11 @@ export default function App() {
                     <span />
                     <button
                       type="button"
-                      onClick={() => alert("密码重置功能升级中，请联系平台管理员 admin 协助重置密码！")}
+                      onClick={() => {
+                        setIsForgotMode(true);
+                        setAuthError(null);
+                        setForgotSuccess(null);
+                      }}
                       className="text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
                     >
                       忘记密码？
@@ -604,20 +774,42 @@ export default function App() {
 
               {/* Bottom Switch Link */}
               <div className="text-center text-xs font-semibold select-none pt-2">
-                <span className="text-slate-400">
-                  {isRegisterMode ? '已有账号？' : '还没有账号？'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRegisterMode(!isRegisterMode);
-                    setAuthError(null);
-                    setRegSuccess(null);
-                  }}
-                  className="text-blue-600 hover:text-blue-700 font-extrabold ml-1 cursor-pointer transition-colors"
-                >
-                  {isRegisterMode ? '立即登录' : '立即免费注册'}
-                </button>
+                {isForgotMode ? (
+                  <>
+                    <span className="text-slate-400">想起密码了？</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotMode(false);
+                        setIsRegisterMode(false);
+                        setAuthError(null);
+                        setForgotSuccess(null);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-extrabold ml-1 cursor-pointer transition-colors"
+                    >
+                      立即登录
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-slate-400">
+                      {isRegisterMode ? '已有账号？' : '还没有账号？'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRegisterMode(!isRegisterMode);
+                        setIsForgotMode(false);
+                        setAuthError(null);
+                        setRegSuccess(null);
+                        setForgotSuccess(null);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-extrabold ml-1 cursor-pointer transition-colors"
+                    >
+                      {isRegisterMode ? '立即登录' : '立即免费注册'}
+                    </button>
+                  </>
+                )}
               </div>
 
             </div>
