@@ -596,7 +596,7 @@ export default function QuestionLibrary({
               <div className="flex items-center gap-2 shrink-0">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
                 <span>当前身份：</span>
-                <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 font-black text-[10px]">
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 font-black text-[14px]">
                   {userInfo.role === 'admin' ? '管理员' : userInfo.role === 'svip' ? 'SVIP会员' : userInfo.role === 'vip' ? 'VIP会员' : userInfo.role === 'teacher' ? '教师版' : '普通用户'}
                 </span>
               </div>

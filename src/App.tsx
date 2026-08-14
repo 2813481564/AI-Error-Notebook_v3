@@ -14,6 +14,7 @@ import TaskCenter from './components/TaskCenter';
 import UserProfile, { UserAvatar } from './components/UserProfile';
 import AIVariationLibrary from './components/AIVariationLibrary';
 import { db } from './lib/db';
+import logo from '../logo.png';
 
 type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation';
 
@@ -441,34 +442,7 @@ export default function App() {
           >
             {/* Top Logo */}
             <div className="flex items-center gap-3.5 z-10">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md shadow-blue-100/80">
-                {/* Custom SVG Tech Book Logo */}
-                <svg viewBox="0 0 100 100" className="w-9 h-9">
-                  <defs>
-                    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#1d4ed8" />
-                    </linearGradient>
-                    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="100%" stopColor="#93c5fd" />
-                    </linearGradient>
-                  </defs>
-                  {/* 书脊 */}
-                  <path d="M22,25 C22,21.5 25,19 29,19 L32,19 L32,81 L29,81 C25,81 22,78.5 22,75 Z" fill="#1e40af" />
-                  {/* 书页立体厚度 */}
-                  <path d="M32,19 L72,19 C76,19 78,21.5 78,25 L78,75 C78,78.5 76,81 72,81 L32,81 Z" fill="url(#bookGrad)" />
-                  {/* 右上角折角，增加立体感 */}
-                  <path d="M72,19 L78,25 L72,25 Z" fill="#1e3a8a" opacity="0.4" />
-                  {/* 四角星 AI 智能星光 */}
-                  <path d="M52,33 Q52,45 40,45 Q52,45 52,57 Q52,45 64,45 Q52,45 52,33 Z" fill="url(#sparkGrad)" />
-                  {/* 小闪光 */}
-                  <path d="M68,26 Q68,31 63,31 Q68,31 68,36 Q68,31 73,31 Q68,31 68,26 Z" fill="#60a5fa" />
-                  {/* 数据分析底线与圆点 */}
-                  <line x1="40" y1="67" x2="62" y2="67" stroke="#93c5fd" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="1 4" />
-                  <circle cx="67" cy="67" r="2" fill="#ffffff" />
-                </svg>
-              </div>
+              <img src={logo} alt="数学满分" className="w-9 h-9 object-contain" />
             </div>
 
             {/* Title & Slogan */}
@@ -480,7 +454,7 @@ export default function App() {
                 提升学习效率。
               </h1>
               <p className="text-slate-400 text-xs font-semibold leading-relaxed mt-4">
-                加入猫头鹰 AI错题本，<br />体验全新的错题整理模式。
+                欢迎使用数学满分平台，<br />体验全新的错题整理模式。
               </p>
             </div>
 

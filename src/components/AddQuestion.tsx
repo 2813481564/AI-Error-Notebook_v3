@@ -1170,6 +1170,99 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
         </>
       )}
 
+      {/* 新建错题本弹窗 */}
+      {showNotebookModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200">
+            {/* 头部导航/标题 */}
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                <span>📓</span> 新建错题本
+              </h3>
+              <button
+                onClick={() => setShowNotebookModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 表单 */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">名称</label>
+                <input
+                  type="text"
+                  value={nbForm.name}
+                  onChange={e => setNbForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="例如：初二数学错题"
+                  className="w-full px-4 py-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">年级</label>
+                  <select
+                    value={nbForm.grade}
+                    onChange={e => {
+                      const selectedGrade = e.target.value;
+                      setNbForm(prev => {
+                        const available = getAvailableSubjects(selectedGrade);
+                        const newSubject = available.includes(prev.subject) ? prev.subject : (available[0] || '');
+                        return { ...prev, grade: selectedGrade, subject: newSubject };
+                      });
+                    }}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择年级</option>
+                    {GRADE_OPTIONS.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">学科</label>
+                  <select
+                    value={nbForm.subject}
+                    onChange={e => setNbForm(prev => ({ ...prev, subject: e.target.value }))}
+                    className="w-full px-3 h-[42px] bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-700 cursor-pointer"
+                  >
+                    <option value="">选择学科</option>
+                    {getAvailableSubjects(nbForm.grade).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 mb-1 block">描述（可选）</label>
+                <textarea
+                  rows={3}
+                  value={nbForm.description}
+                  onChange={e => setNbForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="例如：方程、函数、几何证明等重点易错题集合"
+                  className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none text-slate-800"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowNotebookModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveNotebookSubmit}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md shadow-blue-500/10 text-center"
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
