@@ -182,6 +182,17 @@ db.exec(`
   
   CREATE INDEX IF NOT EXISTS idx_feynman_chat_logs_questionId ON feynman_chat_logs(questionId);
   CREATE INDEX IF NOT EXISTS idx_feynman_chat_logs_userId ON feynman_chat_logs(userId);
+
+  CREATE TABLE IF NOT EXISTS study_reports (
+    token TEXT PRIMARY KEY,
+    ownerUsername TEXT,
+    reportType TEXT,
+    filters TEXT,
+    dataJson TEXT,
+    expiresAt INTEGER NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_study_reports_owner ON study_reports(ownerUsername);
 `);
 
 // 数据库迁移逻辑：检测 questions 表是否缺少 userId 字段
@@ -332,6 +343,39 @@ try {
   if (!hasAvatar) {
     console.log("正在升级 users 表以支持 avatar 字段...");
     db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+  }
+
+  // ============ 第二阶段：教务/教学/学生 角色体系字段迁移 ============
+  const phase2Columns: { col: string; sql: string }[] = [
+    { col: 'accountType', sql: "ALTER TABLE users ADD COLUMN accountType TEXT" },
+    { col: 'realName', sql: "ALTER TABLE users ADD COLUMN realName TEXT" },
+    { col: 'gender', sql: "ALTER TABLE users ADD COLUMN gender TEXT" },
+    { col: 'grade', sql: "ALTER TABLE users ADD COLUMN grade TEXT" },
+    { col: 'city', sql: "ALTER TABLE users ADD COLUMN city TEXT" },
+    { col: 'subjects', sql: "ALTER TABLE users ADD COLUMN subjects TEXT" },
+    { col: 'payType', sql: "ALTER TABLE users ADD COLUMN payType TEXT" },
+    { col: 'accompanyStart', sql: "ALTER TABLE users ADD COLUMN accompanyStart TEXT" },
+    { col: 'accompanyEnd', sql: "ALTER TABLE users ADD COLUMN accompanyEnd TEXT" },
+    { col: 'teacherUsername', sql: "ALTER TABLE users ADD COLUMN teacherUsername TEXT" },
+    { col: 'contactPhone', sql: "ALTER TABLE users ADD COLUMN contactPhone TEXT" },
+  ];
+  for (const c of phase2Columns) {
+    try {
+      const cols = db.pragma("table_info(users)") as any[];
+      const exists = cols.some(x => x.name === c.col);
+      if (!exists) {
+        db.exec(c.sql);
+        console.log(`正在升级 users 表以支持 ${c.col} 字段...`);
+      }
+    } catch (e) {
+      console.error(`users 表迁移 ${c.col} 失败:`, e);
+    }
+  }
+  // 将旧 teacher 角色账号标识为 accountType='jiaoxue'（不影响旧 role 值，仅新增分流标识）
+  try {
+    db.exec("UPDATE users SET accountType = 'jiaoxue' WHERE role = 'teacher' AND (accountType IS NULL OR accountType = '')");
+  } catch (e) {
+    console.error("迁移 teacher -> jiaoxue accountType 失败:", e);
   }
 
   console.log("users 表升级检查完成！");
@@ -553,6 +597,13 @@ try {
   stmt.run("PRICE_VIP_YEAR", "199.00");
   stmt.run("PRICE_SVIP_MONTH", "29.90");
   stmt.run("PRICE_SVIP_YEAR", "299.00");
+
+  // 第二阶段：报表周期口径配置
+  stmt.run("REPORT_DAILY_MODE", "yesterday");        // yesterday / today
+  stmt.run("REPORT_WEEKLY_MODE", "calendar");        // calendar(自然周) / rolling(滚动7天)
+  stmt.run("REPORT_MONTHLY_MODE", "calendar");       // calendar(自然月) / rolling(滚动30天)
+  stmt.run("REPORT_LINK_EXPIRY_DAYS", "7");
+
   console.log("system_settings 数据库表初始化完成！");
 } catch (err) {
   console.error("初始化 system_settings 失败:", err);

@@ -15,16 +15,29 @@ export const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, n
   }
 
   try {
-    const user = db.prepare("SELECT role, lastAiResetDate, aiUsedToday, vipExpireAt, customAiLimit FROM users WHERE username = ?").get(username) as {
+    const user = db.prepare("SELECT role, accountType, lastAiResetDate, aiUsedToday, vipExpireAt, accompanyEnd, customAiLimit FROM users WHERE username = ?").get(username) as {
       role: string;
+      accountType: string | null;
       lastAiResetDate: string | null;
       aiUsedToday: number;
       vipExpireAt: string | null;
+      accompanyEnd: string | null;
       customAiLimit: number | null;
     } | undefined;
 
     if (!user) {
       return res.status(404).json({ error: "用户不存在" });
+    }
+
+    // 第二阶段：教务/教学老师 AI 额度无限
+    if (user.accountType === 'jiaowu' || user.accountType === 'jiaoxue') {
+      return next();
+    }
+    // 第二阶段：学生账号未过期则额度无限（默认 VIP）
+    if (user.accountType === 'student') {
+      const today = new Date().toISOString().split('T')[0];
+      const end = user.accompanyEnd || user.vipExpireAt;
+      if (end && today <= end) return next();
     }
 
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD

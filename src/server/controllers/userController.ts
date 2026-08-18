@@ -189,17 +189,36 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
       return res.status(401).json({ error: "未登录，请先登录" });
     }
 
-    const user = db.prepare("SELECT role, lastAiResetDate, aiUsedToday, vipExpireAt, nickname, avatar FROM users WHERE username = ?").get(username) as {
+    const user = db.prepare("SELECT role, accountType, lastAiResetDate, aiUsedToday, vipExpireAt, accompanyEnd, realName, grade, nickname, avatar FROM users WHERE username = ?").get(username) as {
       role: string;
+      accountType: string | null;
       lastAiResetDate: string | null;
       aiUsedToday: number;
       vipExpireAt: string | null;
+      accompanyEnd: string | null;
+      realName: string | null;
+      grade: string | null;
       nickname: string | null;
       avatar: string | null;
     } | undefined;
 
     if (!user) {
       return res.status(404).json({ error: "用户不存在" });
+    }
+
+    // 第二阶段：学生账号过期则返回过期标记（前端据此清 token 跳登录）
+    if (user.accountType === 'student') {
+      const today = new Date().toISOString().split('T')[0];
+      const end = user.accompanyEnd || user.vipExpireAt;
+      if (!end || today > end) {
+        return res.json({
+          username,
+          accountType: 'student',
+          role: user.role,
+          expired: true,
+          error: "账号伴学时间已过期，无法访问系统"
+        });
+      }
     }
 
     // 检查是否过期，自动修正
@@ -243,8 +262,12 @@ export const getUserInfo = (req: AuthenticatedRequest, res: express.Response) =>
 
     res.json({
       username,
+      accountType: user.accountType || null,
       role: currentRole,
       vipExpireAt: user.vipExpireAt || null,
+      accompanyEnd: user.accompanyEnd || null,
+      realName: user.realName || null,
+      grade: user.grade || null,
       aiUsedToday: usedToday,
       aiLimit: limit,
       aiRemaining: limit === Infinity ? "无限" : Math.max(0, limit - usedToday),

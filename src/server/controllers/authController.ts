@@ -182,7 +182,9 @@ export const login = (req: express.Request, res: express.Response) => {
         return res.status(400).json({ error: "密码不能为空" });
       }
       const hashedPassword = hashPassword(password);
-      const user = db.prepare("SELECT username, password, role FROM users WHERE username = ?").get(cleanUsername) as { username: string; password: string; role: string } | undefined;
+      const user = db.prepare("SELECT username, password, role, accountType, accompanyEnd, vipExpireAt FROM users WHERE username = ?").get(cleanUsername) as {
+        username: string; password: string; role: string; accountType: string | null; accompanyEnd: string | null; vipExpireAt: string | null;
+      } | undefined;
       if (!user || user.password !== hashedPassword) {
         return res.status(400).json({ error: "用户名或密码错误" });
       }
@@ -190,9 +192,18 @@ export const login = (req: express.Request, res: express.Response) => {
         return res.status(400).json({ error: "此账号为免密登录普通角色，请选择免密登录方式" });
       }
 
+      // 第二阶段：学生账号过期则拒绝登录
+      if (user.accountType === 'student') {
+        const today = new Date().toISOString().split('T')[0];
+        const end = user.accompanyEnd || user.vipExpireAt;
+        if (!end || today > end) {
+          return res.status(403).json({ error: "账号伴学时间已过期，无法登录，请联系教务老师续期" });
+        }
+      }
+
       const token = crypto.randomUUID();
       db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
-      return res.json({ token, username: user.username, role: user.role });
+      return res.json({ token, username: user.username, role: user.role, accountType: user.accountType || null });
     }
   } catch (error: any) {
     console.error("Login Error:", error);

@@ -1,5 +1,5 @@
 import express from "express";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAuth, requireAdmin, requireJiaowu, requireJiaoxue, requireStudent } from "../middleware/auth";
 import { checkAiLimit } from "../middleware/rateLimit";
 import * as authCtrl from "../controllers/authController";
 import * as aiCtrl from "../controllers/aiController";
@@ -7,6 +7,8 @@ import * as qCtrl from "../controllers/questionController";
 import * as adminCtrl from "../controllers/adminController";
 import * as userCtrl from "../controllers/userController";
 import * as taskCtrl from "../controllers/taskController";
+import * as roleCtrl from "../controllers/roleController";
+import * as jiaowuCtrl from "../controllers/jiaowuController";
 import feynmanRoutes from "./feynmanRoutes";
 
 const router = express.Router();
@@ -96,5 +98,19 @@ router.post("/tasks/:id/notified", requireAuth, taskCtrl.updateTaskNotified);
 
 // ================= 费曼学习 路由 =================
 router.use("/feynman", feynmanRoutes);
+
+// ================= 第二阶段：角色与学生账号管理 路由 =================
+// 管理员创建教务/教学老师
+router.post("/admin/jiaowu", requireAdmin, roleCtrl.adminCreateJiaowu);
+router.post("/admin/jiaoxue", requireAdmin, roleCtrl.adminCreateJiaoxue);
+router.get("/admin/roles", requireAdmin, roleCtrl.adminGetRoles);
+// 教务创建教学老师
+router.post("/jiaowu/jiaoxue", requireJiaowu, roleCtrl.jiaowuCreateJiaoxue);
+// 教务学生管理
+router.post("/jiaowu/students", requireJiaowu, jiaowuCtrl.createStudent);
+router.get("/jiaowu/students", requireJiaowu, jiaowuCtrl.getStudents);
+router.get("/jiaowu/jiaoxues", requireJiaowu, jiaowuCtrl.getJiaoxues);
+router.put("/jiaowu/students/:username/renew", requireJiaowu, jiaowuCtrl.renewStudent);
+router.delete("/jiaowu/students/:username", requireJiaowu, jiaowuCtrl.deleteStudent);
 
 export default router;

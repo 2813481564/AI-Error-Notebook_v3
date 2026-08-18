@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect, useRef } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut, GraduationCap } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -13,10 +13,12 @@ import SavedPapers from './components/SavedPapers';
 import TaskCenter from './components/TaskCenter';
 import UserProfile, { UserAvatar } from './components/UserProfile';
 import AIVariationLibrary from './components/AIVariationLibrary';
+import JiaowuDashboard from './components/JiaowuDashboard';
+import RoleManager from './components/RoleManager';
 import { db } from './lib/db';
 import logo from '../logo.png';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles';
 
 const API_PREFIX = '/api';
 
@@ -51,6 +53,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('errorbook_token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('errorbook_username'));
   const [role, setRole] = useState<string | null>(localStorage.getItem('errorbook_role'));
+  const [accountType, setAccountType] = useState<string | null>(localStorage.getItem('errorbook_accountType'));
 
   const [loginRole, setLoginRole] = useState<'student' | 'teacher'>('student');
   const [loginType, setLoginType] = useState<'idCard' | 'phone'>('idCard');
@@ -118,6 +121,32 @@ export default function App() {
         setUserInfo(data);
         localStorage.setItem('errorbook_role', data.role);
         setRole(data.role);
+        // 第二阶段：同步 accountType
+        if (data.accountType) {
+          localStorage.setItem('errorbook_accountType', data.accountType);
+          setAccountType(data.accountType);
+        }
+        // 学生过期兜底：清 token 跳登录
+        if (data.accountType === 'student' && data.expired) {
+          localStorage.removeItem('errorbook_token');
+          localStorage.removeItem('errorbook_username');
+          localStorage.removeItem('errorbook_role');
+          localStorage.removeItem('errorbook_accountType');
+          setToken(null);
+          setUsername(null);
+          setRole(null);
+          setAccountType(null);
+        }
+      } else if (res.status === 403) {
+        // 伴学过期，强制下线
+        localStorage.removeItem('errorbook_token');
+        localStorage.removeItem('errorbook_username');
+        localStorage.removeItem('errorbook_role');
+        localStorage.removeItem('errorbook_accountType');
+        setToken(null);
+        setUsername(null);
+        setRole(null);
+        setAccountType(null);
       }
     } catch (e) {
       console.error("Failed to fetch user info:", e);
@@ -252,9 +281,17 @@ export default function App() {
       localStorage.setItem('errorbook_token', data.token);
       localStorage.setItem('errorbook_username', data.username);
       localStorage.setItem('errorbook_role', data.role || 'student');
+      if (data.accountType) {
+        localStorage.setItem('errorbook_accountType', data.accountType);
+      }
       setToken(data.token);
       setUsername(data.username);
       setRole(data.role || 'student');
+      setAccountType(data.accountType || null);
+      // 登录成功后按角色路由到对应工作台
+      if (data.accountType === 'jiaowu') setCurrentView('jiaowu');
+      else if (data.accountType === 'jiaoxue') setCurrentView('dashboard');
+      else if (data.accountType === 'student') setCurrentView('dashboard');
       setAuthUsername('');
       setAuthPassword('');
       setIdCardLast6('');
@@ -280,9 +317,11 @@ export default function App() {
     localStorage.removeItem('errorbook_token');
     localStorage.removeItem('errorbook_username');
     localStorage.removeItem('errorbook_role');
+    localStorage.removeItem('errorbook_accountType');
     setToken(null);
     setUsername(null);
     setRole(null);
+    setAccountType(null);
     window.location.reload();
   };
 
@@ -817,47 +856,73 @@ export default function App() {
         </div>
 
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
-          <button
-            onClick={() => setCurrentView('dashboard')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'dashboard'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'dashboard' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <Home className="w-4 h-4 ml-1" />
-            <span>首页</span>
-          </button>
+          {/* ===== 第二阶段：教务/教学/学生 专属菜单（accountType 分流） ===== */}
+          {accountType === 'jiaowu' && (
+            <>
+              <SidebarItem
+                active={currentView === 'dashboard'}
+                onClick={() => setCurrentView('dashboard')}
+                icon={<Home className="w-4 h-4 ml-1" />}
+                label="首页"
+              />
+              <SidebarItem
+                active={currentView === 'jiaowu'}
+                onClick={() => setCurrentView('jiaowu')}
+                icon={<Users className="w-4 h-4 ml-1" />}
+                label="学生管理"
+              />
+            </>
+          )}
 
-          <button
-            onClick={() => handleNavigate('library')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'library' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <Database className="w-4 h-4 ml-1" />
-            <span>我的错题本</span>
-          </button>
+          {/* 首页（非 jiaowu 角色共用） */}
+          {accountType !== 'jiaowu' && (
+            <button
+              onClick={() => setCurrentView('dashboard')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'dashboard'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'dashboard' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Home className="w-4 h-4 ml-1" />
+              <span>首页</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => handleNavigate('aiVariation')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'aiVariation'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'aiVariation' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <BookOpen className="w-4 h-4 ml-1" />
-            <span>AI变题库</span>
-          </button>
+          {/* 我的错题本（jiaowu 不显示，jiaoxue/student 可显示） */}
+          {accountType !== 'jiaowu' && (
+            <button
+              onClick={() => handleNavigate('library')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'library' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Database className="w-4 h-4 ml-1" />
+              <span>我的错题本</span>
+            </button>
+          )}
+
+          {accountType !== 'jiaowu' && (
+            <button
+              onClick={() => handleNavigate('aiVariation')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'aiVariation'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'aiVariation' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <BookOpen className="w-4 h-4 ml-1" />
+              <span>AI变题库</span>
+            </button>
+          )}
 
           {role === 'admin' && (
             <button
@@ -882,33 +947,37 @@ export default function App() {
             </button>
           )}
 
-          <button
-            onClick={() => setCurrentView('exercise')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'exercise'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'exercise' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <Sparkles className="w-4 h-4 ml-1" />
-            <span>组卷练习</span>
-          </button>
+          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+            <button
+              onClick={() => setCurrentView('exercise')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'exercise'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'exercise' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <Sparkles className="w-4 h-4 ml-1" />
+              <span>组卷练习</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setCurrentView('papers')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'papers'
-              ? 'bg-blue-50 text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-          >
-            {currentView === 'papers' && (
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
-            )}
-            <FileText className="w-4 h-4 ml-1" />
-            <span>我的试卷</span>
-          </button>
+          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+            <button
+              onClick={() => setCurrentView('papers')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'papers'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'papers' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <FileText className="w-4 h-4 ml-1" />
+              <span>我的试卷</span>
+            </button>
+          )}
 
           {role === 'admin' && (
             <button
@@ -923,6 +992,22 @@ export default function App() {
               )}
               <Users className="w-4 h-4 ml-1" />
               <span>用户管理</span>
+            </button>
+          )}
+
+          {role === 'admin' && (
+            <button
+              onClick={() => setCurrentView('roles')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'roles'
+                ? 'bg-blue-50 text-blue-700 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+            >
+              {currentView === 'roles' && (
+                <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+              )}
+              <GraduationCap className="w-4 h-4 ml-1" />
+              <span>角色管理</span>
             </button>
           )}
 
@@ -961,32 +1046,37 @@ export default function App() {
 
         {/* 侧边栏底部操作区 (参照图1设计) */}
         <div className="mt-auto border-t border-slate-100 bg-white space-y-1">
-          {/* 新建错题按钮 */}
-          <div className="p-3">
-            <button
-              onClick={() => setCurrentView('add')}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/15 active:scale-[0.98]"
-            >
-              <Camera className="w-4 h-4" />
-              <span>上传错题</span>
-            </button>
-          </div>
+          {/* 新建错题按钮（jiaowu 不显示，教务无上传错题功能） */}
+          {accountType !== 'jiaowu' && (
+            <div className="p-3">
+              <button
+                onClick={() => setCurrentView('add')}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/15 active:scale-[0.98]"
+              >
+                <Camera className="w-4 h-4" />
+                <span>上传错题</span>
+              </button>
+            </div>
+          )}
 
           {/* 会员和设置二级项 */}
           <div className="px-3 pb-2 space-y-0.5">
-            <button
-              onClick={() => setCurrentView('vipCenter')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'vipCenter'
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`}
-            >
-              {currentView === 'vipCenter' && (
-                <span className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />
-              )}
-              <Award className="w-4 h-4 ml-1" />
-              <span>会员</span>
-            </button>
+            {/* 会员（jiaowu/jiaoxue 不显示会员入口） */}
+            {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+              <button
+                onClick={() => setCurrentView('vipCenter')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'vipCenter'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  }`}
+              >
+                {currentView === 'vipCenter' && (
+                  <span className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />
+                )}
+                <Award className="w-4 h-4 ml-1" />
+                <span>会员</span>
+              </button>
+            )}
 
             <button
               onClick={() => setCurrentView('profile')}
@@ -1069,6 +1159,7 @@ export default function App() {
         {/* Content Area */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="w-full space-y-6 transition-all">
+            {currentView === 'jiaowu' && <JiaowuDashboard />}
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
             {currentView === 'tasks' && <TaskCenter onNavigate={handleNavigate} />}
@@ -1125,6 +1216,7 @@ export default function App() {
             )}
 
             {currentView === 'users' && username === 'admin' && <UserManagement onNavigate={handleNavigate} />}
+            {currentView === 'roles' && username === 'admin' && <RoleManager />}
             {currentView === 'settings' && username === 'admin' && <SystemSettings />}
             {currentView === 'announcements' && username === 'admin' && <AnnouncementManagement />}
             {currentView === 'vipCenter' && (
@@ -1328,6 +1420,25 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode, label: str
     >
       <div className="w-5 h-5 mb-1">{icon}</div>
       <span className="text-[0.625rem] font-medium">{label}</span>
+    </button>
+  );
+}
+
+// 第二阶段：侧边栏菜单项（用于教务/教学/学生专属菜单）
+function SidebarItem({ icon, label, active, onClick }: { icon: ReactNode, label: string, active: boolean, onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${active
+        ? 'bg-blue-50 text-blue-700 shadow-sm'
+        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+        }`}
+    >
+      {active && (
+        <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />
+      )}
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }
