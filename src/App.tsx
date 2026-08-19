@@ -17,6 +17,7 @@ import JiaowuDashboard from './components/JiaowuDashboard';
 import RoleManager from './components/RoleManager';
 import JiaoxueWorkbench from './components/JiaoxueWorkbench';
 import TeacherQuestionList from './components/TeacherQuestionList';
+import ReportView from './components/ReportView';
 import { db } from './lib/db';
 import logo from '../logo.png';
 
@@ -465,6 +466,12 @@ export default function App() {
       setAuthLoading(false);
     }
   };
+
+  // ===== 第二阶段：免登录学情报表页（/report/:token） =====
+  const reportMatch = typeof window !== 'undefined' ? window.location.pathname.match(/^\/report\/([a-f0-9]+)$/) : null;
+  if (reportMatch) {
+    return <ReportView token={reportMatch[1]} />;
+  }
 
   if (!token) {
     return (

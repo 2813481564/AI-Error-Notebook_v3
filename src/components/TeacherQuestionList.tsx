@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, ArrowLeft, Loader2, Search, Filter, Copy, CheckCircle2 } from 'lucide-react';
+import FormattedMath from './FormattedMath';
 
 const API_PREFIX = '/api';
 
@@ -165,7 +166,7 @@ export default function TeacherQuestionList() {
             )}
 
             {detail.originalText ? (
-              <h2 className="text-xl font-black text-slate-900 leading-relaxed whitespace-pre-wrap">{detail.originalText}</h2>
+              <div className="text-xl font-black text-slate-900 leading-relaxed"><FormattedMath text={detail.originalText} /></div>
             ) : (
               <p className="text-sm text-slate-400 font-medium">该快速答题任务{detail.status === 'failed' ? '识别失败' : '识别中'}，可查看上方原题图片</p>
             )}
@@ -188,9 +189,9 @@ export default function TeacherQuestionList() {
                         {copied ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
                       </button>
                     </div>
-                    <div className="text-sm text-emerald-800 font-medium whitespace-pre-wrap">{qa.standardAnswer || '（无）'}</div>
+                    <div className="text-sm text-emerald-800 font-medium"><FormattedMath text={qa.standardAnswer || '（无）'} /></div>
                     {qa.keySteps && <div className="mt-2 text-xs font-black text-indigo-600 mb-1">关键解题步骤</div>}
-                    {qa.keySteps && <div className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{qa.keySteps}</div>}
+                    {qa.keySteps && <div className="text-sm text-slate-700 font-medium"><FormattedMath text={qa.keySteps} /></div>}
                   </div>
                 ))}
               </div>
@@ -199,7 +200,7 @@ export default function TeacherQuestionList() {
             {detail.studentAnswer && (
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
                 <div className="text-xs font-black text-slate-500 mb-1.5">学生作答</div>
-                <div className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{detail.studentAnswer}</div>
+                <div className="text-sm text-slate-700 font-medium"><FormattedMath text={detail.studentAnswer} /></div>
               </div>
             )}
 
@@ -212,7 +213,7 @@ export default function TeacherQuestionList() {
                     {copied ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
                   </button>
                 </div>
-                <div className="text-sm text-emerald-800 font-medium whitespace-pre-wrap">{detail.standardAnswer}</div>
+                <div className="text-sm text-emerald-800 font-medium"><FormattedMath text={detail.standardAnswer} /></div>
               </div>
             )}
 
@@ -232,7 +233,7 @@ export default function TeacherQuestionList() {
             {detail.errorReason && (
               <div className="bg-rose-50/60 rounded-2xl p-4 border border-rose-100">
                 <div className="text-xs font-black text-rose-600 mb-1.5">错因分析</div>
-                <div className="text-sm text-rose-800 font-medium whitespace-pre-wrap">{detail.errorReason}</div>
+                <div className="text-sm text-rose-800 font-medium"><FormattedMath text={detail.errorReason} /></div>
               </div>
             )}
 
@@ -240,7 +241,7 @@ export default function TeacherQuestionList() {
             {detail.solution && (
               <div className="bg-blue-50/60 rounded-2xl p-4 border border-blue-100">
                 <div className="text-xs font-black text-blue-600 mb-1.5">解题解析</div>
-                <div className="text-sm text-blue-900 font-medium whitespace-pre-wrap">{detail.solution}</div>
+                <div className="text-sm text-blue-900 font-medium"><FormattedMath text={detail.solution} /></div>
               </div>
             )}
 
@@ -250,7 +251,7 @@ export default function TeacherQuestionList() {
                 <div className="text-xs font-black text-slate-500 mb-2">详细诊断</div>
                 {detail.errorDiagnosis.map((d: any, i: number) => (
                   <div key={i} className="text-sm text-slate-700 font-medium mb-1.5">
-                    {typeof d === 'string' ? d : (d.point || d.suggestion || JSON.stringify(d))}
+                    <FormattedMath text={typeof d === 'string' ? d : (d.point || d.suggestion || JSON.stringify(d))} />
                   </div>
                 ))}
               </div>
@@ -260,7 +261,7 @@ export default function TeacherQuestionList() {
             {detail.errorAnalysis && (
               <div className="bg-purple-50/60 rounded-2xl p-4 border border-purple-100">
                 <div className="text-xs font-black text-purple-600 mb-1.5">学习建议</div>
-                <div className="text-sm text-purple-800 font-medium whitespace-pre-wrap">{detail.errorAnalysis}</div>
+                <div className="text-sm text-purple-800 font-medium"><FormattedMath text={detail.errorAnalysis} /></div>
               </div>
             )}
           </div>

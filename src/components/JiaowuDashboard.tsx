@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, GraduationCap, Plus, RefreshCw, Trash2, BookOpen, Pencil, X } from 'lucide-react';
+import { Users, GraduationCap, Plus, RefreshCw, Trash2, BookOpen, Pencil, X, FileBarChart, Copy, CalendarDays, Loader2, CheckCircle2 } from 'lucide-react';
 
 const API_PREFIX = '/api';
 
@@ -33,7 +33,7 @@ interface Jiaoxue {
   studentCount: number;
 }
 
-type Tab = 'overview' | 'students' | 'jiaoxues';
+type Tab = 'overview' | 'students' | 'jiaoxues' | 'report';
 
 const GRADES = ['小学一年级', '小学二年级', '小学三年级', '小学四年级', '小学五年级', '小学六年级', '初一', '初二', '初三', '高一', '高二', '高三'];
 const SUBJECTS = ['数学', '语文', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
@@ -41,6 +41,13 @@ const PAY_TYPES = ['试课用户', '付费用户'];
 
 export default function JiaowuDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
+
+  // 报表状态
+  const [reportForm, setReportForm] = useState({ reportType: 'daily', grade: '', teacherUsername: '', studentUsername: '', dateStart: '', dateEnd: '' });
+  const [reportStudents, setReportStudents] = useState<Student[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportResult, setReportResult] = useState<{ link: string; reportCount: number; totalQuestions: number } | null>(null);
+  const [copiedReport, setCopiedReport] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [jiaoxues, setJiaoxues] = useState<Jiaoxue[]>([]);
   const [loading, setLoading] = useState(false);
@@ -261,6 +268,63 @@ export default function JiaowuDashboard() {
     }
   };
 
+  // 按教学老师加载该老师旗下学生（用于报表筛选）
+  const loadReportStudents = async (teacherUsername: string) => {
+    if (!teacherUsername) { setReportStudents([]); return; }
+    try {
+      const res = await fetch(`${API_PREFIX}/jiaowu/students?teacherUsername=${encodeURIComponent(teacherUsername)}`, { headers: getHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setReportStudents(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      setReportStudents([]);
+    }
+  };
+
+  // 生成报表
+  const handleGenerateReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGeneratingReport(true);
+    setMsg(null);
+    setReportResult(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/jiaowu/reports`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          reportType: reportForm.reportType,
+          grade: reportForm.grade || undefined,
+          teacherUsername: reportForm.teacherUsername || undefined,
+          students: reportForm.studentUsername ? [reportForm.studentUsername] : undefined,
+          dateStart: reportForm.dateStart || undefined,
+          dateEnd: reportForm.dateEnd || undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '生成报表失败');
+      // 拼接完整链接
+      const fullLink = `${window.location.origin}${data.link}`;
+      setReportResult({ link: fullLink, reportCount: data.reportCount, totalQuestions: data.totalQuestions });
+    } catch (e: any) {
+      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
+  // 复制报表链接
+  const copyReportLink = async () => {
+    if (!reportResult) return;
+    try {
+      await navigator.clipboard.writeText(reportResult.link);
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 1500);
+    } catch (e) {
+      alert('复制失败，请手动复制链接');
+    }
+  };
+
   const inputCls = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
   const totalStudents = students.length;
@@ -279,6 +343,7 @@ export default function JiaowuDashboard() {
         <button onClick={() => setTab('overview')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'overview' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>教务概览</button>
         <button onClick={() => setTab('students')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'students' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>学生管理</button>
         <button onClick={() => setTab('jiaoxues')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'jiaoxues' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>教学老师管理</button>
+        <button onClick={() => setTab('report')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'report' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>报表中心</button>
       </div>
 
       {tab === 'overview' && (
@@ -480,6 +545,87 @@ export default function JiaowuDashboard() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {tab === 'report' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h3 className="font-black text-slate-800 flex items-center gap-2 mb-1">
+              <FileBarChart className="w-4 h-4 text-blue-600" />学情报表生成
+            </h3>
+            <p className="text-xs text-slate-400 font-medium mb-4">选择报表类型与筛选条件，生成后以链接形式分享（链接有效期由管理员在系统设置中配置）</p>
+
+            <form onSubmit={handleGenerateReport} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">报表类型 <span className="text-rose-500">*</span></label>
+                  <select className={inputCls} value={reportForm.reportType} onChange={e => setReportForm({ ...reportForm, reportType: e.target.value })}>
+                    <option value="daily">每日学情报表</option>
+                    <option value="weekly">每周学情报表（含举一反三）</option>
+                    <option value="monthly">每月学情报表</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">年级筛选</label>
+                  <select className={inputCls} value={reportForm.grade} onChange={e => setReportForm({ ...reportForm, grade: e.target.value })}>
+                    <option value="">全部年级</option>
+                    {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">教学老师筛选</label>
+                  <select className={inputCls} value={reportForm.teacherUsername}
+                    onChange={e => { setReportForm({ ...reportForm, teacherUsername: e.target.value, studentUsername: '' }); loadReportStudents(e.target.value); }}>
+                    <option value="">全部老师</option>
+                    {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">学生筛选</label>
+                  <select className={inputCls} value={reportForm.studentUsername} onChange={e => setReportForm({ ...reportForm, studentUsername: e.target.value })} disabled={!reportForm.teacherUsername}>
+                    <option value="">{reportForm.teacherUsername ? '全部学生' : '请先选择老师'}</option>
+                    {reportStudents.map(s => <option key={s.username} value={s.username}>{s.realName || s.username}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">开始日期（可选）</label>
+                  <input type="date" className={inputCls} value={reportForm.dateStart} onChange={e => setReportForm({ ...reportForm, dateStart: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">结束日期（可选）</label>
+                  <input type="date" className={inputCls} value={reportForm.dateEnd} onChange={e => setReportForm({ ...reportForm, dateEnd: e.target.value })} />
+                </div>
+              </div>
+              {reportForm.dateStart || reportForm.dateEnd ? (
+                <p className="text-[11px] text-amber-600 font-semibold">已自定义日期范围，将覆盖报表类型的默认统计周期</p>
+              ) : (
+                <p className="text-[11px] text-slate-400 font-medium">不选日期则按报表类型的系统配置周期统计</p>
+              )}
+
+              <button type="submit" disabled={generatingReport} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition cursor-pointer">
+                {generatingReport ? <><Loader2 className="w-4 h-4 animate-spin" />生成中...</> : <><CalendarDays className="w-4 h-4" />生成报表链接</>}
+              </button>
+            </form>
+          </div>
+
+          {/* 生成结果 */}
+          {reportResult && (
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
+              <div className="text-sm font-black text-emerald-700 mb-2 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />报表生成成功（覆盖 {reportResult.reportCount} 名学生，共 {reportResult.totalQuestions} 道错题）
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input readOnly value={reportResult.link} className="flex-1 min-w-[240px] bg-white border border-emerald-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700" />
+                <button onClick={copyReportLink} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
+                  <Copy className="w-3.5 h-3.5" />{copiedReport ? '已复制' : '复制链接'}
+                </button>
+                <a href={reportResult.link} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition cursor-pointer">预览报表</a>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

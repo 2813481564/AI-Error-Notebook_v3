@@ -10,6 +10,7 @@ import * as taskCtrl from "../controllers/taskController";
 import * as roleCtrl from "../controllers/roleController";
 import * as jiaowuCtrl from "../controllers/jiaowuController";
 import * as jiaoxueCtrl from "../controllers/jiaoxueController";
+import * as reportCtrl from "../controllers/reportController";
 import feynmanRoutes from "./feynmanRoutes";
 
 const router = express.Router();
@@ -129,5 +130,14 @@ router.get("/jiaoxue/student/:username/notebook", requireJiaoxue, jiaoxueCtrl.ge
 router.put("/jiaoxue/student/:username", requireJiaoxue, jiaoxueCtrl.updateMyStudent);
 // 题目列表（所有老师上传的题目）
 router.get("/jiaoxue/all-questions", requireJiaoxue, jiaoxueCtrl.getAllTeacherQuestions);
+
+// ================= 第二阶段：学情报表 路由 =================
+// 教务生成报表（日/周/月）
+router.post("/jiaowu/reports", requireJiaowu, reportCtrl.generateReport);
+// 免登录报表查询（链接访问）
+router.get("/report/:token", reportCtrl.getReport);
+// 管理员报表周期配置
+router.get("/admin/report-config", requireAdmin, reportCtrl.getReportConfig);
+router.post("/admin/report-config", requireAdmin, reportCtrl.saveReportConfig);
 
 export default router;

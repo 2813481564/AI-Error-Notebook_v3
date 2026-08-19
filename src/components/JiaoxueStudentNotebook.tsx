@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, BookOpen, Trash2, Eye, Loader2 } from 'lucide-react';
+import FormattedMath from './FormattedMath';
 
 const API_PREFIX = '/api';
 
@@ -30,6 +31,8 @@ interface NotebookQuestion {
   studentAnswer: string;
   masteryStatus: string;
   standardAnswer: string | null;
+  imageUrl?: string;
+  errorAnalysis?: string;
 }
 
 export default function JiaoxueStudentNotebook() {
@@ -184,10 +187,20 @@ export default function JiaoxueStudentNotebook() {
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 relative max-h-[85vh] overflow-y-auto">
             <button onClick={() => setViewQuestion(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             <h3 className="font-black text-slate-900 mb-3">错题详情</h3>
-            <div className="text-sm text-slate-700 whitespace-pre-wrap mb-3">{viewQuestion.originalText}</div>
-            {viewQuestion.studentAnswer && <div className="text-xs text-slate-500 mb-2"><span className="font-bold">学生作答：</span>{viewQuestion.studentAnswer}</div>}
-            {viewQuestion.errorReason && <div className="text-xs text-rose-600 mb-2"><span className="font-bold">错因：</span>{viewQuestion.errorReason}</div>}
-            {viewQuestion.solution && <div className="text-xs text-emerald-700 whitespace-pre-wrap"><span className="font-bold">解析：</span>{viewQuestion.solution}</div>}
+
+            {/* 回显原图 */}
+            {viewQuestion.imageUrl && (
+              <div className="mb-4">
+                <div className="text-xs font-black text-slate-400 mb-2">原题图片</div>
+                <img src={viewQuestion.imageUrl} alt="原题" className="max-w-full max-h-96 rounded-2xl border border-slate-200 object-contain bg-white" />
+              </div>
+            )}
+
+            <div className="text-sm text-slate-700 mb-3"><FormattedMath text={viewQuestion.originalText} /></div>
+            {viewQuestion.errorReason && <div className="text-xs text-rose-600 mb-2"><span className="font-bold">错因：</span><FormattedMath text={viewQuestion.errorReason} /></div>}
+            {viewQuestion.standardAnswer && <div className="text-xs text-emerald-700 mb-2"><span className="font-bold">标准答案：</span><FormattedMath text={viewQuestion.standardAnswer} /></div>}
+            {viewQuestion.solution && <div className="text-xs text-emerald-700 mb-2"><span className="font-bold">解析：</span><FormattedMath text={viewQuestion.solution} /></div>}
+            {viewQuestion.errorAnalysis && <div className="text-xs text-purple-700"><span className="font-bold">学习建议：</span><FormattedMath text={viewQuestion.errorAnalysis} /></div>}
           </div>
         </div>
       )}
