@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, GraduationCap, Plus, RefreshCw, Trash2, BookOpen } from 'lucide-react';
+import { Users, GraduationCap, Plus, RefreshCw, Trash2, BookOpen, Pencil, X } from 'lucide-react';
 
 const API_PREFIX = '/api';
 
@@ -57,6 +57,14 @@ export default function JiaowuDashboard() {
   // 创建教学老师表单
   const [showJiaoxueForm, setShowJiaoxueForm] = useState(false);
   const [jxForm, setJxForm] = useState({ username: '', password: '', realName: '', nickname: '' });
+
+  // 编辑学生表单
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editForm, setEditForm] = useState({ ...emptyStudent, subjects: [] as string[] });
+
+  // 编辑教学老师表单
+  const [editingJiaoxue, setEditingJiaoxue] = useState<Jiaoxue | null>(null);
+  const [jxEditForm, setJxEditForm] = useState({ username: '', realName: '', nickname: '', password: '' });
 
   // 筛选
   const [filterGrade, setFilterGrade] = useState('');
@@ -142,7 +150,8 @@ export default function JiaowuDashboard() {
     if (!window.confirm(`确定删除学生账号 ${username} 吗？此操作不可恢复。`)) return;
     try {
       const res = await fetch(`${API_PREFIX}/jiaowu/students/${username}`, { method: 'DELETE', headers: getHeaders() });
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
       if (!res.ok) throw new Error(data.error || '删除失败');
       setMsg({ type: 'success', text: '学生账号已删除' });
       loadStudents();
@@ -156,6 +165,100 @@ export default function JiaowuDashboard() {
       ...prev,
       subjects: prev.subjects.includes(sub) ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
     }));
+  };
+
+  // 打开编辑表单，回填学生信息
+  const openEdit = (student: Student) => {
+    setEditingStudent(student);
+    setEditForm({
+      realName: student.realName || '',
+      gender: student.gender || '',
+      grade: student.grade || '',
+      city: student.city || '',
+      subjects: student.subjects ? student.subjects.split(',') : [],
+      payType: student.payType || '',
+      accompanyStart: student.accompanyStart || '',
+      accompanyEnd: student.accompanyEnd || '',
+      contactPhone: student.contactPhone || student.username,
+      password: '',
+      teacherUsername: student.teacherUsername || ''
+    });
+  };
+
+  // 保存编辑学生
+  const handleUpdateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/jiaowu/students/${editingStudent.username}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          realName: editForm.realName,
+          gender: editForm.gender,
+          grade: editForm.grade,
+          city: editForm.city,
+          subjects: editForm.subjects,
+          payType: editForm.payType,
+          accompanyStart: editForm.accompanyStart,
+          accompanyEnd: editForm.accompanyEnd,
+          teacherUsername: editForm.teacherUsername,
+          password: editForm.password || undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '更新失败');
+      setMsg({ type: 'success', text: data.message || '学生信息已更新' });
+      setEditingStudent(null);
+      loadStudents();
+    } catch (e: any) {
+      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleEditSubject = (sub: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      subjects: prev.subjects.includes(sub) ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
+    }));
+  };
+
+  // 打开教学老师编辑
+  const openEditJiaoxue = (j: Jiaoxue) => {
+    setEditingJiaoxue(j);
+    setJxEditForm({ username: j.username, realName: j.realName || '', nickname: j.nickname || '', password: '' });
+  };
+
+  // 保存教学老师编辑
+  const handleUpdateJiaoxue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingJiaoxue) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxue/${editingJiaoxue.username}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          realName: jxEditForm.realName,
+          nickname: jxEditForm.nickname,
+          password: jxEditForm.password || undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '更新失败');
+      setMsg({ type: 'success', text: data.message || '教学老师信息已更新' });
+      setEditingJiaoxue(null);
+      loadJiaoxues();
+    } catch (e: any) {
+      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputCls = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40";
@@ -308,7 +411,10 @@ export default function JiaowuDashboard() {
                       <td className="px-4 py-3 text-xs text-slate-500">{s.accompanyStart} ~ {s.accompanyEnd}</td>
                       <td className="px-4 py-3 text-slate-500">{s.username}</td>
                       <td className="px-4 py-3">
-                        <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openEdit(s)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
+                          <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -354,10 +460,11 @@ export default function JiaowuDashboard() {
                   <th className="px-4 py-3 font-bold">账号</th>
                   <th className="px-4 py-3 font-bold">姓名</th>
                   <th className="px-4 py-3 font-bold">名下学生数</th>
+                  <th className="px-4 py-3 font-bold">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {jiaoxues.length === 0 && <tr><td colSpan={3} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无教学老师</td></tr>}
+                {jiaoxues.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无教学老师</td></tr>}
                 {jiaoxues.map(j => (
                   <tr key={j.username} className="border-b border-slate-50 hover:bg-slate-50/50">
                     <td className="px-4 py-3 text-slate-500">{j.username}</td>
@@ -365,11 +472,90 @@ export default function JiaowuDashboard() {
                     <td className="px-4 py-3">
                       <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{j.studentCount} 人</span>
                     </td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => openEditJiaoxue(j)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 编辑学生模态框 */}
+      {editingStudent && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={handleUpdateStudent} className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 relative max-h-[85vh] overflow-y-auto">
+            <button type="button" onClick={() => setEditingStudent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold cursor-pointer"><X className="w-5 h-5" /></button>
+            <h3 className="font-black text-slate-800 flex items-center gap-2 mb-4"><Pencil className="w-4 h-4 text-blue-600" />编辑学生：{editingStudent.realName}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">姓名 <span className="text-rose-500">*</span></label>
+                <input className={inputCls} value={editForm.realName} onChange={e => setEditForm({ ...editForm, realName: e.target.value })} required /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">性别</label>
+                <select className={inputCls} value={editForm.gender} onChange={e => setEditForm({ ...editForm, gender: e.target.value })}>
+                  <option value="">请选择</option><option>男</option><option>女</option>
+                </select></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">年级</label>
+                <select className={inputCls} value={editForm.grade} onChange={e => setEditForm({ ...editForm, grade: e.target.value })}>
+                  <option value="">请选择</option>{GRADES.map(g => <option key={g}>{g}</option>)}
+                </select></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">所在城市</label>
+                <input className={inputCls} value={editForm.city} onChange={e => setEditForm({ ...editForm, city: e.target.value })} /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">付费性质</label>
+                <select className={inputCls} value={editForm.payType} onChange={e => setEditForm({ ...editForm, payType: e.target.value })}>
+                  <option value="">请选择</option>{PAY_TYPES.map(p => <option key={p}>{p}</option>)}
+                </select></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">所属教学老师</label>
+                <select className={inputCls} value={editForm.teacherUsername} onChange={e => setEditForm({ ...editForm, teacherUsername: e.target.value })}>
+                  <option value="">暂不分配</option>
+                  {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}（{j.studentCount}人）</option>)}
+                </select></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学开始日期</label>
+                <input type="date" className={inputCls} value={editForm.accompanyStart} onChange={e => setEditForm({ ...editForm, accompanyStart: e.target.value })} /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学结束日期</label>
+                <input type="date" className={inputCls} value={editForm.accompanyEnd} onChange={e => setEditForm({ ...editForm, accompanyEnd: e.target.value })} /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">重置密码（留空不改）</label>
+                <input type="password" className={inputCls} value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })} placeholder="至少 6 位" /></div>
+            </div>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 block mb-2">需要伴学的科目</label>
+              <div className="flex flex-wrap gap-2">
+                {SUBJECTS.map(sub => (
+                  <button type="button" key={sub} onClick={() => toggleEditSubject(sub)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${editForm.subjects.includes(sub) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'}`}>
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '保存中...' : '保存修改'}</button>
+              <button type="button" onClick={() => setEditingStudent(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* 编辑教学老师模态框 */}
+      {editingJiaoxue && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={handleUpdateJiaoxue} className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative">
+            <button type="button" onClick={() => setEditingJiaoxue(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold cursor-pointer"><X className="w-5 h-5" /></button>
+            <h3 className="font-black text-slate-800 flex items-center gap-2 mb-4"><Pencil className="w-4 h-4 text-blue-600" />编辑教学老师：{editingJiaoxue.username}</h3>
+            <div className="space-y-4 mb-4">
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">真实姓名</label>
+                <input className={inputCls} value={jxEditForm.realName} onChange={e => setJxEditForm({ ...jxEditForm, realName: e.target.value })} /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">昵称</label>
+                <input className={inputCls} value={jxEditForm.nickname} onChange={e => setJxEditForm({ ...jxEditForm, nickname: e.target.value })} /></div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">重置密码（留空不改）</label>
+                <input type="password" className={inputCls} value={jxEditForm.password} onChange={e => setJxEditForm({ ...jxEditForm, password: e.target.value })} placeholder="至少 6 位" /></div>
+            </div>
+            <div className="flex gap-3">
+              <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '保存中...' : '保存修改'}</button>
+              <button type="button" onClick={() => setEditingJiaoxue(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

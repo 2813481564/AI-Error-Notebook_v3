@@ -15,10 +15,12 @@ import UserProfile, { UserAvatar } from './components/UserProfile';
 import AIVariationLibrary from './components/AIVariationLibrary';
 import JiaowuDashboard from './components/JiaowuDashboard';
 import RoleManager from './components/RoleManager';
+import JiaoxueWorkbench from './components/JiaoxueWorkbench';
+import TeacherQuestionList from './components/TeacherQuestionList';
 import { db } from './lib/db';
 import logo from '../logo.png';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles' | 'jiaoxue' | 'teacherQuestions';
 
 const API_PREFIX = '/api';
 
@@ -290,7 +292,7 @@ export default function App() {
       setAccountType(data.accountType || null);
       // 登录成功后按角色路由到对应工作台
       if (data.accountType === 'jiaowu') setCurrentView('jiaowu');
-      else if (data.accountType === 'jiaoxue') setCurrentView('dashboard');
+      else if (data.accountType === 'jiaoxue') setCurrentView('jiaoxue');
       else if (data.accountType === 'student') setCurrentView('dashboard');
       setAuthUsername('');
       setAuthPassword('');
@@ -874,6 +876,30 @@ export default function App() {
             </>
           )}
 
+          {/* 教学老师专属菜单 */}
+          {accountType === 'jiaoxue' && (
+            <>
+              <SidebarItem
+                active={currentView === 'dashboard'}
+                onClick={() => setCurrentView('dashboard')}
+                icon={<Home className="w-4 h-4 ml-1" />}
+                label="首页"
+              />
+              <SidebarItem
+                active={currentView === 'jiaoxue'}
+                onClick={() => setCurrentView('jiaoxue')}
+                icon={<GraduationCap className="w-4 h-4 ml-1" />}
+                label="教学工作台"
+              />
+              <SidebarItem
+                active={currentView === 'teacherQuestions'}
+                onClick={() => setCurrentView('teacherQuestions')}
+                icon={<BookOpen className="w-4 h-4 ml-1" />}
+                label="题目列表"
+              />
+            </>
+          )}
+
           {/* 首页（非 jiaowu 角色共用） */}
           {accountType !== 'jiaowu' && (
             <button
@@ -891,8 +917,8 @@ export default function App() {
             </button>
           )}
 
-          {/* 我的错题本（jiaowu 不显示，jiaoxue/student 可显示） */}
-          {accountType !== 'jiaowu' && (
+          {/* 我的错题本（jiaowu/jiaoxue 不显示，student 可显示） */}
+          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
             <button
               onClick={() => handleNavigate('library')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library'
@@ -908,7 +934,7 @@ export default function App() {
             </button>
           )}
 
-          {accountType !== 'jiaowu' && (
+          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
             <button
               onClick={() => handleNavigate('aiVariation')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'aiVariation'
@@ -1160,6 +1186,8 @@ export default function App() {
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="w-full space-y-6 transition-all">
             {currentView === 'jiaowu' && <JiaowuDashboard />}
+            {currentView === 'jiaoxue' && <JiaoxueWorkbench />}
+            {currentView === 'teacherQuestions' && <TeacherQuestionList />}
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
             {currentView === 'tasks' && <TaskCenter onNavigate={handleNavigate} />}

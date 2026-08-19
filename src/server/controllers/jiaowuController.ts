@@ -161,6 +161,39 @@ export const getJiaoxues = (req: express.Request, res: express.Response) => {
   }
 };
 
+// 教务编辑教学老师信息: PUT /api/jiaowu/jiaoxue/:username
+export const updateJiaoxue = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { username } = req.params;
+    const teacher = db.prepare("SELECT accountType FROM users WHERE username = ?").get(username) as { accountType: string } | undefined;
+    if (!teacher || teacher.accountType !== 'jiaoxue') {
+      return res.status(404).json({ error: "教学老师不存在" });
+    }
+    const { realName, nickname, password } = req.body;
+    db.prepare(`
+      UPDATE users SET
+        realName = COALESCE(?, realName),
+        nickname = COALESCE(?, nickname)
+      WHERE username = ?
+    `).run(
+      realName?.trim() || null,
+      nickname?.trim() || null,
+      username
+    );
+    // 可选重置密码
+    if (password && password.trim() !== "") {
+      if (password.trim().length < 6) {
+        return res.status(400).json({ error: "密码长度不能少于 6 位" });
+      }
+      db.prepare("UPDATE users SET password = ? WHERE username = ?").run(hashPassword(password.trim()), username);
+    }
+    res.json({ success: true, message: "教学老师信息已更新" });
+  } catch (error: any) {
+    console.error("Jiaowu Update Jiaoxue Error:", error);
+    res.status(500).json({ error: error.message || "更新教学老师失败" });
+  }
+};
+
 // 教务续期/更新学生伴学时间: PUT /api/jiaowu/students/:username/renew
 export const renewStudent = (req: AuthenticatedRequest, res: express.Response) => {
   try {
@@ -178,6 +211,97 @@ export const renewStudent = (req: AuthenticatedRequest, res: express.Response) =
   } catch (error: any) {
     console.error("Jiaowu Renew Student Error:", error);
     res.status(500).json({ error: error.message || "更新伴学时间失败" });
+  }
+};
+
+// 教务编辑学生信息（通用编辑）: PUT /api/jiaowu/students/:username
+export const updateStudent = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { username } = req.params;
+    const student = db.prepare("SELECT accountType FROM users WHERE username = ?").get(username) as { accountType: string } | undefined;
+    if (!student || student.accountType !== 'student') {
+      return res.status(404).json({ error: "学生账号不存在" });
+    }
+
+    const {
+      realName, gender, grade, city, subjects, payType,
+      accompanyStart, accompanyEnd, teacherUsername, password
+    } = req.body;
+
+    // 校验伴学时间
+    if (accompanyStart && accompanyEnd && accompanyEnd < accompanyStart) {
+      return res.status(400).json({ error: "伴学结束时间不能早于开始时间" });
+    }
+
+    // 校验所属教学老师（若变更）
+    if (teacherUsername !== undefined && teacherUsername && teacherUsername !== "") {
+      const t = db.prepare("SELECT accountType FROM users WHERE username = ?").get(teacherUsername);
+      if (!t || (t as any).accountType !== 'jiaoxue') {
+        return res.status(400).json({ error: "所属教学老师不存在或非教学角色" });
+      }
+    }
+
+    const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : subjects;
+
+    db.prepare(`
+      UPDATE users SET
+        realName = COALESCE(?, realName),
+        gender = COALESCE(?, gender),
+        grade = COALESCE(?, grade),
+        city = COALESCE(?, city),
+        subjects = COALESCE(?, subjects),
+        payType = COALESCE(?, payType),
+        accompanyStart = COALESCE(?, accompanyStart),
+        accompanyEnd = COALESCE(?, accompanyEnd),
+        vipExpireAt = COALESCE(?, vipExpireAt),
+        teacherUsername = COALESCE(?, teacherUsername)
+      WHERE username = ?
+    `).run(
+      realName?.trim() || null,
+      gender || null,
+      grade || null,
+      city?.trim() || null,
+      subjectsStr ?? null,
+      payType || null,
+      accompanyStart || null,
+      accompanyEnd || null,
+      accompanyEnd || null,
+      teacherUsername?.trim() || null,
+      username
+    );
+
+    // 可选：重置密码
+    if (password && password.trim() !== "") {
+      if (password.trim().length < 6) {
+        return res.status(400).json({ error: "密码长度不能少于 6 位" });
+      }
+      db.prepare("UPDATE users SET password = ? WHERE username = ?").run(hashPassword(password.trim()), username);
+    }
+
+    // 若伴学结束时间变更，同步更新错题本（无操作，仅记录）
+    res.json({ success: true, message: "学生信息已更新" });
+  } catch (error: any) {
+    console.error("Jiaowu Update Student Error:", error);
+    res.status(500).json({ error: error.message || "更新学生信息失败" });
+  }
+};
+
+// 教务获取单个学生详情（用于编辑回填）: GET /api/jiaowu/students/:username
+export const getStudentDetail = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { username } = req.params;
+    const student = db.prepare(`
+      SELECT username, realName, gender, grade, city, subjects, payType,
+             accompanyStart, accompanyEnd, teacherUsername, contactPhone, vipExpireAt
+      FROM users WHERE accountType = 'student' AND username = ?
+    `).get(username) as any;
+    if (!student) {
+      return res.status(404).json({ error: "学生账号不存在" });
+    }
+    res.json(student);
+  } catch (error: any) {
+    console.error("Jiaowu Get Student Detail Error:", error);
+    res.status(500).json({ error: error.message || "获取学生详情失败" });
   }
 };
 

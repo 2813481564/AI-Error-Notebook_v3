@@ -22,17 +22,19 @@ interface QueueTask {
   payload: string; // JSON string
 }
 
-const queue: string[] = [];
-let activeWorkers = 0;
-const MAX_CONCURRENCY = 1; // 串行处理 AI 请求，对速率限制友好
+// ===== 第二阶段：按 userId 分组的线程池队列 =====
+// 需求：同一账号同一时刻仅处理 1 个请求（其余按提交顺序进入该账号专属队列排队），不同账号之间可并行。
+// 为兼容第一阶段，统一使用该分组队列；第一阶段任务也会自动获得"同账号串行、跨账号并行"能力。
+const userQueues = new Map<string, string[]>();      // userId -> taskId 队列
+const userActiveWorkers = new Set<string>();         // 正在处理中的 userId
 
-// 在服务器启动或重载时，将所有未完成且非等待审核的任务加入队列
+// 在服务器启动或重载时，将所有未完成且非等待审核的任务按 userId 加入各自队列
 export const initTaskQueue = () => {
   try {
     const pendingTasks = db.prepare(`
-      SELECT id FROM background_tasks 
+      SELECT id, userId FROM background_tasks 
       WHERE status IN ('queued', 'extracting', 'diagnosing', 'generating_variation')
-    `).all() as { id: string }[];
+    `).all() as { id: string; userId: string }[];
     
     // 重置异常断电时的处理中状态为 queued
     db.prepare(`
@@ -42,25 +44,59 @@ export const initTaskQueue = () => {
     `).run();
 
     for (const task of pendingTasks) {
-      queue.push(task.id);
+      if (!userQueues.has(task.userId)) userQueues.set(task.userId, []);
+      userQueues.get(task.userId)!.push(task.id);
     }
-    console.log(`[TaskQueue] 成功初始化，已将 ${pendingTasks.length} 个挂起任务加入队列。`);
-    triggerQueue();
+    console.log(`[TaskQueue] 成功初始化，已将 ${pendingTasks.length} 个挂起任务按账号分组加入队列。`);
+    triggerAllQueues();
   } catch (err) {
     console.error("[TaskQueue] 初始化失败:", err);
   }
 };
 
-const triggerQueue = () => {
-  if (activeWorkers >= MAX_CONCURRENCY || queue.length === 0) return;
-  const taskId = queue.shift();
-  if (taskId) {
-    activeWorkers++;
-    processTask(taskId).finally(() => {
-      activeWorkers--;
-      triggerQueue();
-    });
+// 触发所有有排队任务的账号队列
+const triggerAllQueues = () => {
+  for (const userId of userQueues.keys()) {
+    triggerQueue(userId);
   }
+};
+
+// 触发指定账号的队列：若该账号当前无在途请求且有排队任务，则取出队首执行
+const triggerQueue = (userId?: string) => {
+  if (!userId) return;
+  const q = userQueues.get(userId);
+  if (!q || q.length === 0) return;
+  if (userActiveWorkers.has(userId)) return; // 该账号已在处理中，其余排队
+  const taskId = q.shift();
+  if (!taskId) return;
+  userActiveWorkers.add(userId);
+  processTask(taskId).finally(() => {
+    userActiveWorkers.delete(userId);
+    // 队列可能还有该账号的后续任务，继续触发
+    triggerQueue(userId);
+  });
+};
+
+// 兼容旧调用（第一阶段 createTask / submitReview 直接调用 triggerQueue）
+// 为了不破坏原有调用点，提供一个通过任务 id 定位 userId 再入队的入口
+const enqueueTask = (taskId: string) => {
+  const task = db.prepare("SELECT userId FROM background_tasks WHERE id = ?").get(taskId) as { userId: string } | undefined;
+  if (!task) return;
+  if (!userQueues.has(task.userId)) userQueues.set(task.userId, []);
+  userQueues.get(task.userId)!.push(taskId);
+  triggerQueue(task.userId);
+};
+
+// 创建任务入队：按 userId 分组
+const enqueueForUser = (userId: string, taskId: string) => {
+  if (!userQueues.has(userId)) userQueues.set(userId, []);
+  userQueues.get(userId)!.push(taskId);
+  triggerQueue(userId);
+};
+
+// 供其他控制器（如 jiaoxueController）将新建任务加入后台线程池队列
+export const enqueueTaskForUser = (userId: string, taskId: string) => {
+  enqueueForUser(userId, taskId);
 };
 
 const processTask = async (id: string) => {
@@ -73,6 +109,55 @@ const processTask = async (id: string) => {
 
   try {
     let payload = JSON.parse(task.payload);
+
+    // ===== 第二阶段：快速答题（仅输出标准答案/关键步骤，跳过诊断） =====
+    if (task.uploadMode === 'quick_answer') {
+      if (task.status === 'queued') {
+        db.prepare("UPDATE background_tasks SET status = 'extracting', progress = 20, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 快速答题：进入文本提取阶段`);
+        const optimizedBase64 = await enhanceImageForOcr(payload.imageBase64);
+        const extracted = await runAiExtract(optimizedBase64, payload.mimeType, payload.extractMode || 'single');
+        payload.extractedQuestions = extracted;
+        task.status = 'extracting';
+        db.prepare("UPDATE background_tasks SET payload = ?, updatedAt = ? WHERE id = ?").run(JSON.stringify(payload), Date.now(), id);
+      }
+
+      if (task.status === 'extracting') {
+        db.prepare("UPDATE background_tasks SET status = 'generating_answer', progress = 60, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 快速答题：生成标准答案/关键步骤`);
+        const answers = await runAiQuickAnswer(payload.extractedQuestions);
+        payload.quickAnswers = answers;
+        db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, payload = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
+          .run(JSON.stringify(payload), Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 快速答题完成`);
+      }
+      return;
+    }
+
+    // ===== 第二阶段：作业批改（完整 OCR + 诊断，完成后进入待审查，归档到学生错题本） =====
+    if (task.uploadMode === 'correct_task') {
+      if (task.status === 'queued') {
+        db.prepare("UPDATE background_tasks SET status = 'extracting', progress = 20, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 作业批改：进入文本提取阶段`);
+        const optimizedBase64 = await enhanceImageForOcr(payload.imageBase64);
+        const extracted = await runAiExtract(optimizedBase64, payload.mimeType, payload.extractMode || 'single');
+        payload.extractedQuestions = extracted;
+        task.status = 'extracting';
+        db.prepare("UPDATE background_tasks SET payload = ?, updatedAt = ? WHERE id = ?").run(JSON.stringify(payload), Date.now(), id);
+      }
+
+      if (task.status === 'extracting') {
+        db.prepare("UPDATE background_tasks SET status = 'diagnosing', progress = 60, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 作业批改：进入 AI 智能诊断阶段`);
+        const diagnosed = await runAiDiagnoseAll(payload.extractedQuestions, payload.imageBase64, task.notebookId);
+        payload.diagnosedQuestions = diagnosed;
+        // 批改完成后自动进入待审查（教学老师需审查确认后才能归档到学生错题本）
+        db.prepare("UPDATE background_tasks SET status = 'pending_diagnose_review', progress = 80, payload = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
+          .run(JSON.stringify(payload), Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 作业批改完成，已进入待审查列表`);
+      }
+      return;
+    }
 
     // 第一阶段：针对 AI 变式题异步排队生成任务
     if (task.uploadMode === 'variation' && task.status === 'queued') {
@@ -250,7 +335,7 @@ const runAiExtract = async (imageBase64: string, mimeType: string, extractMode: 
 };
 
 // 自动解包被错误存储为 JSON 字符串或非严格 JS 对象的文本字段
-function unwrapJsonString(str: any, fieldHint?: 'originalText' | 'studentAnswer' | 'solution' | 'errorAnalysis'): string {
+export function unwrapJsonString(str: any, fieldHint?: 'originalText' | 'studentAnswer' | 'solution' | 'errorAnalysis' | 'standardAnswer'): string {
   if (!str) return '';
   const strVal = typeof str === 'string' ? str : String(str);
   let trimmed = strVal.trim();
@@ -280,6 +365,53 @@ function unwrapJsonString(str: any, fieldHint?: 'originalText' | 'studentAnswer'
   }
   return strVal;
 }
+
+// ===== 第二阶段：快速答题（只求标准答案 + 关键解题步骤，不分析错因） =====
+const runAiQuickAnswer = async (questions: any[]): Promise<any[]> => {
+  const results: any[] = [];
+  for (const item of (questions || [])) {
+    let standardAnswer = item.standardAnswer || '';
+    let keySteps = '';
+    try {
+      const prompt = `
+你是一位快速答题助手。请根据以下题目信息，只输出【标准答案】和【解题关键步骤】，无需分析错因、无需诊断掌握程度。
+
+【题目】
+- 学科: ${item.subject || '数学'}
+- 题干: ${item.originalText || ''}
+${item.studentAnswer ? `- 学生作答（仅供参考）: ${item.studentAnswer}` : ''}
+
+【输出要求】请严格按以下 JSON 对象返回，不要包含 Markdown 代码块标记：
+{
+  "standardAnswer": "本题的标准答案/正确结果",
+  "keySteps": "解题的关键步骤，分步用 1. 2. 3. 列出，含必要的公式"
+}
+数学公式用标准 $ 或 $$ 包围（LaTeX），JSON 中反斜杠双写转义。
+`;
+      const response = await generateContentWithFallback({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { temperature: 0.2 }
+      });
+      const text = response.text || '';
+      if (text) {
+        const extracted = extractJsonString(text);
+        const parsed = JSON.parse(sanitizeJsonString(extracted));
+        standardAnswer = parsed.standardAnswer || standardAnswer;
+        keySteps = parsed.keySteps || '';
+      }
+    } catch (e) {
+      console.warn("快速答题 AI 解析失败，保留 OCR 标准答案:", e);
+    }
+    results.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
+      originalText: unwrapJsonString(item.originalText, 'originalText'),
+      subject: item.subject || '数学',
+      standardAnswer: unwrapJsonString(standardAnswer, 'standardAnswer'),
+      keySteps
+    });
+  }
+  return results;
+};
 
 const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookId: string | null) => {
   const diagnosedResults: any[] = [];
@@ -576,9 +708,8 @@ export const createTask = async (req: AuthenticatedRequest, res: express.Respons
       timeNow
     );
 
-    // 压入后台执行队列，并触发 Worker
-    queue.push(taskId);
-    triggerQueue();
+    // 压入后台执行队列（按 userId 分组），并触发 Worker
+    enqueueForUser(req.userId!, taskId);
 
     res.json({ success: true, taskId });
   } catch (error: any) {
@@ -770,9 +901,8 @@ export const submitReview = async (req: AuthenticatedRequest, res: express.Respo
         WHERE id = ?
       `).run(JSON.stringify(taskPayload), Date.now(), id);
 
-      // 压回队列，继续进行诊断
-      queue.push(id);
-      triggerQueue();
+      // 压回队列（按 userId 分组），继续进行诊断
+      enqueueForUser(req.userId!, id);
 
       return res.json({ success: true, message: "已提交文本校对结果，后台正在进行智能诊断..." });
     } else if (step === 3) {
@@ -813,10 +943,13 @@ export const deleteTask = async (req: AuthenticatedRequest, res: express.Respons
       return res.status(404).json({ error: "删除失败，任务不存在或无权操作" });
     }
 
-    // 从内存处理队列中移除 (如果还在排队)
-    const index = queue.indexOf(id);
-    if (index !== -1) {
-      queue.splice(index, 1);
+    // 从内存处理队列中移除 (如果还在排队，按 userId 分组)
+    const userQueue = userQueues.get(req.userId!);
+    if (userQueue) {
+      const index = userQueue.indexOf(id);
+      if (index !== -1) {
+        userQueue.splice(index, 1);
+      }
     }
 
     res.json({ success: true });

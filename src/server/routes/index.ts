@@ -9,6 +9,7 @@ import * as userCtrl from "../controllers/userController";
 import * as taskCtrl from "../controllers/taskController";
 import * as roleCtrl from "../controllers/roleController";
 import * as jiaowuCtrl from "../controllers/jiaowuController";
+import * as jiaoxueCtrl from "../controllers/jiaoxueController";
 import feynmanRoutes from "./feynmanRoutes";
 
 const router = express.Router();
@@ -106,11 +107,27 @@ router.post("/admin/jiaoxue", requireAdmin, roleCtrl.adminCreateJiaoxue);
 router.get("/admin/roles", requireAdmin, roleCtrl.adminGetRoles);
 // 教务创建教学老师
 router.post("/jiaowu/jiaoxue", requireJiaowu, roleCtrl.jiaowuCreateJiaoxue);
+router.put("/jiaowu/jiaoxue/:username", requireJiaowu, jiaowuCtrl.updateJiaoxue);
 // 教务学生管理
 router.post("/jiaowu/students", requireJiaowu, jiaowuCtrl.createStudent);
 router.get("/jiaowu/students", requireJiaowu, jiaowuCtrl.getStudents);
+router.get("/jiaowu/students/:username", requireJiaowu, jiaowuCtrl.getStudentDetail);
 router.get("/jiaowu/jiaoxues", requireJiaowu, jiaowuCtrl.getJiaoxues);
 router.put("/jiaowu/students/:username/renew", requireJiaowu, jiaowuCtrl.renewStudent);
+router.put("/jiaowu/students/:username", requireJiaowu, jiaowuCtrl.updateStudent);
 router.delete("/jiaowu/students/:username", requireJiaowu, jiaowuCtrl.deleteStudent);
+
+// ================= 第二阶段：教学老师工作台 路由 =================
+// 快速答题
+router.post("/jiaoxue/quick-answer", requireJiaoxue, jiaoxueCtrl.quickAnswer);
+// 作业批改
+router.post("/jiaoxue/correct-task", requireJiaoxue, jiaoxueCtrl.correctTask);
+router.post("/jiaoxue/correct-task/:taskId/review", requireJiaoxue, jiaoxueCtrl.reviewCorrectTask);
+// 学生错题本管理
+router.get("/jiaoxue/students", requireJiaoxue, jiaoxueCtrl.getMyStudents);
+router.get("/jiaoxue/student/:username/notebook", requireJiaoxue, jiaoxueCtrl.getStudentNotebook);
+router.put("/jiaoxue/student/:username", requireJiaoxue, jiaoxueCtrl.updateMyStudent);
+// 题目列表（所有老师上传的题目）
+router.get("/jiaoxue/all-questions", requireJiaoxue, jiaoxueCtrl.getAllTeacherQuestions);
 
 export default router;
