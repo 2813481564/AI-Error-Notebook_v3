@@ -159,6 +159,36 @@ const processTask = async (id: string) => {
       return;
     }
 
+    // ===== 第二阶段：报表举一反三（专属页面勾选题目，每道生成 1 道变式，不归档到学生错题本） =====
+    if (task.uploadMode === 'report_variation') {
+      if (task.status === 'queued') {
+        db.prepare("UPDATE background_tasks SET status = 'generating_variation', progress = 30, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+        console.log(`[TaskQueue] [${id}] 报表举一反三：生成变式题`);
+        try {
+          // payload 含 reportToken + 原题信息，只生成 1 道变式
+          const variationPayload = {
+            originalText: payload.originalText || '',
+            subject: payload.subject || '数学',
+            knowledgePoints: payload.knowledgePoints || [],
+            count: 1, // 每道勾选题只生成 1 道变式
+            grade: payload.grade || null,
+            variantMode: payload.variantMode || '同考点换壳'
+          };
+          const variations = await runAiVariation(variationPayload, task.userId);
+          const single = Array.isArray(variations) ? variations[0] : variations;
+          payload.variation = single || null;
+          db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, payload = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
+            .run(JSON.stringify(payload), Date.now(), id);
+          console.log(`[TaskQueue] [${id}] 报表举一反三完成`);
+        } catch (e) {
+          console.error(`[TaskQueue] [${id}] 报表举一反三失败:`, e);
+          db.prepare("UPDATE background_tasks SET status = 'failed', errorMsg = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
+            .run(String((e as Error).message || '生成失败'), Date.now(), id);
+        }
+      }
+      return;
+    }
+
     // 第一阶段：针对 AI 变式题异步排队生成任务
     if (task.uploadMode === 'variation' && task.status === 'queued') {
       db.prepare("UPDATE background_tasks SET status = 'generating_variation', progress = 30, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);

@@ -26,6 +26,21 @@ function ensureStudentNotebook(username: string, realName: string): string {
   return id;
 }
 
+// 自动为学生创建 AI 变式题本（type='variation'），学生 AI 变题库初始即有本子，无需手动创建
+function ensureStudentVariationNotebook(username: string, realName: string): string {
+  const existing = db.prepare(
+    "SELECT id FROM notebooks WHERE userId = ? AND type = 'variation' AND name = ? LIMIT 1"
+  ).get(username, realName + "的变式题本") as { id: string } | undefined;
+  if (existing) return existing.id;
+
+  const id = "nb_" + Math.random().toString(36).substring(2, 9);
+  db.prepare(`
+    INSERT INTO notebooks (id, name, userId, createdAt, grade, type)
+    VALUES (?, ?, ?, ?, ?, 'variation')
+  `).run(id, realName + "的变式题本", username, Date.now(), null);
+  return id;
+}
+
 // 教务创建学生账号: POST /api/jiaowu/students
 export const createStudent = (req: AuthenticatedRequest, res: express.Response) => {
   try {
@@ -93,8 +108,9 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
         accompanyEnd
       );
 
-      // 自动创建以姓名命名的错题本
+      // 自动创建以姓名命名的错题本 + AI 变式题本
       ensureStudentNotebook(cleanPhone, realName.trim());
+      ensureStudentVariationNotebook(cleanPhone, realName.trim());
     });
     tx();
 

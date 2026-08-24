@@ -134,8 +134,15 @@ router.get("/jiaoxue/all-questions", requireJiaoxue, jiaoxueCtrl.getAllTeacherQu
 // ================= 第二阶段：学情报表 路由 =================
 // 教务生成报表（日/周/月）
 router.post("/jiaowu/reports", requireJiaowu, reportCtrl.generateReport);
+// 教务报表记录管理
+router.get("/jiaowu/reports", requireJiaowu, reportCtrl.getReportHistory);
+router.delete("/jiaowu/reports", requireJiaowu, reportCtrl.batchDeleteReports);
+router.delete("/jiaowu/reports/:token", requireJiaowu, reportCtrl.deleteReport);
 // 免登录报表查询（链接访问）
 router.get("/report/:token", reportCtrl.getReport);
+// 报表举一反三（专属页面）
+router.post("/report/:token/variations", requireJiaowu, reportCtrl.createReportVariations);
+router.get("/report/:token/variations", reportCtrl.getReportVariations);
 // 管理员报表周期配置
 router.get("/admin/report-config", requireAdmin, reportCtrl.getReportConfig);
 router.post("/admin/report-config", requireAdmin, reportCtrl.saveReportConfig);

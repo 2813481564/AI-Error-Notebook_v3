@@ -24,11 +24,21 @@ interface StudentReport {
   weakPoints: { name: string; count: number }[];
 }
 
+interface WorksheetItem {
+  no: number;
+  originalText: string;
+  subject: string;
+  knowledgePoints: string[];
+  standardAnswer?: string;
+  solution?: string;
+}
+
 interface ReportData {
   reportType: string;
   range: { start: string; end: string };
   generatedAt: number;
   reports: StudentReport[];
+  workSheets?: Record<string, WorksheetItem[]>;
 }
 
 const REPORT_TYPE_LABEL: Record<string, string> = {
@@ -294,8 +304,62 @@ export default function ReportView({ token }: { token: string }) {
                 ))}
               </div>
             )}
+
+            {/* 周报：举一反三习题卷附件 */}
+            {reportType === 'weekly' && data.workSheets && Array.isArray(data.workSheets[student.username]) && data.workSheets[student.username].length > 0 && (
+              <div className="px-6 py-5 border-t border-slate-100 bg-amber-50/40">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-black text-amber-700 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4" />举一反三 · 巩固习题卷
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black">
+                    {data.workSheets[student.username].length} 道变式题
+                  </span>
+                </div>
+                <p className="text-xs text-amber-600/80 font-medium mb-4">根据本周错题知识点举一反三生成，帮助巩固欠缺考点</p>
+
+                <div className="space-y-3">
+                  {data.workSheets[student.username].map(q => (
+                    <div key={q.no} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="w-6 h-6 rounded-full bg-amber-600 text-white text-xs font-black flex items-center justify-center shrink-0">{q.no}</span>
+                        {q.subject && <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black">{q.subject}</span>}
+                      </div>
+                      <div className="text-sm font-bold text-slate-800 mb-2 leading-relaxed"><FormattedMath text={q.originalText || ''} /></div>
+                      {Array.isArray(q.knowledgePoints) && q.knowledgePoints.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {q.knowledgePoints.map((kp: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100">{kp}</span>
+                          ))}
+                        </div>
+                      )}
+                      {q.standardAnswer && (
+                        <div className="text-xs text-emerald-700 mb-1"><span className="font-black">答案：</span><FormattedMath text={q.standardAnswer} /></div>
+                      )}
+                      {q.solution && (
+                        <div className="text-xs text-slate-600"><span className="font-black text-slate-500">解析：</span><FormattedMath text={q.solution} /></div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
+
+        {/* 举一反三试卷入口 */}
+        <div className="bg-white rounded-3xl border border-amber-200 shadow-sm p-6 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700"><Sparkles className="w-5 h-5" /></div>
+            <div>
+              <div className="text-sm font-black text-slate-900">本报表的举一反三试卷</div>
+              <p className="text-xs text-slate-500 font-medium">根据本报表错题生成巩固变式题，可勾选题目举一反三并打印练习</p>
+            </div>
+          </div>
+          <a href={`/report/${token}/variations`} className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer">
+            <Sparkles className="w-4 h-4" />进入举一反三
+          </a>
+        </div>
 
         {/* 报表页脚 */}
         <div className="text-center py-6 print:hidden">

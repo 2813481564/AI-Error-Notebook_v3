@@ -325,9 +325,9 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
     // 搜索关键词
     const search = (req.query.search as string) || '';
 
-    // ===== ① 正式题目（questions 表，已审核，教学老师上传） =====
-    let whereSql = "WHERE q.status = 'audited' AND EXISTS (SELECT 1 FROM users u WHERE u.username = q.userId AND u.accountType = 'jiaoxue')";
-    const qParams: any[] = [];
+    // ===== ① 正式题目（questions 表，已审核，当前登录教学老师上传） =====
+    let whereSql = "WHERE q.status = 'audited' AND q.userId = ?";
+    const qParams: any[] = [req.userId];
 
     const subject = (req.query.subject as string) || 'all';
     if (subject !== 'all') {
@@ -351,6 +351,7 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
       id: row.id,
       kind: 'question',
       isQuickTask: false,
+      sourceType: row.studentId ? 'correct_task' : 'normal',
       userId: row.userId,
       studentId: row.studentId || undefined,
       status: row.status || 'pending',
@@ -373,10 +374,10 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
       teacherName: row.teacherRealName || row.teacherNickname || row.userId
     }));
 
-    // ===== ② 快速答题占位任务（background_tasks，uploadMode='quick_answer'，教学老师创建） =====
+    // ===== ② 快速答题占位任务（background_tasks，uploadMode='quick_answer'，当前登录教学老师创建） =====
     // 无论识别是否完成都展示为占位卡片
-    let taskWhere = "WHERE t.uploadMode = 'quick_answer' AND EXISTS (SELECT 1 FROM users u WHERE u.username = t.userId AND u.accountType = 'jiaoxue')";
-    const tParams: any[] = [];
+    let taskWhere = "WHERE t.uploadMode = 'quick_answer' AND t.userId = ?";
+    const tParams: any[] = [req.userId];
     if (search.trim() !== '') {
       // 搜索：快速答题任务无题干字段，按任务名或识别结果文本搜索
       taskWhere += " AND (t.taskName LIKE ? OR t.payload LIKE ?)";
@@ -401,6 +402,7 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
         id: row.id,
         kind: 'quick_task',
         isQuickTask: true,
+        sourceType: 'quick_answer',
         userId: row.userId,
         status: row.status || 'queued',
         // 原题图片：裁剪后的选区图（用于详情回显）

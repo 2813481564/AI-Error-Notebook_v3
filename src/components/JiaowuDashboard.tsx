@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, GraduationCap, Plus, RefreshCw, Trash2, BookOpen, Pencil, X, FileBarChart, Copy, CalendarDays, Loader2, CheckCircle2 } from 'lucide-react';
+import { Users, Plus, RefreshCw, Trash2, Pencil, X, Loader2 } from 'lucide-react';
 
 const API_PREFIX = '/api';
 
@@ -33,21 +33,11 @@ interface Jiaoxue {
   studentCount: number;
 }
 
-type Tab = 'overview' | 'students' | 'jiaoxues' | 'report';
-
 const GRADES = ['小学一年级', '小学二年级', '小学三年级', '小学四年级', '小学五年级', '小学六年级', '初一', '初二', '初三', '高一', '高二', '高三'];
 const SUBJECTS = ['数学', '语文', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
 const PAY_TYPES = ['试课用户', '付费用户'];
 
 export default function JiaowuDashboard() {
-  const [tab, setTab] = useState<Tab>('overview');
-
-  // 报表状态
-  const [reportForm, setReportForm] = useState({ reportType: 'daily', grade: '', teacherUsername: '', studentUsername: '', dateStart: '', dateEnd: '' });
-  const [reportStudents, setReportStudents] = useState<Student[]>([]);
-  const [generatingReport, setGeneratingReport] = useState(false);
-  const [reportResult, setReportResult] = useState<{ link: string; reportCount: number; totalQuestions: number } | null>(null);
-  const [copiedReport, setCopiedReport] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [jiaoxues, setJiaoxues] = useState<Jiaoxue[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,23 +51,23 @@ export default function JiaowuDashboard() {
   };
   const [studentForm, setStudentForm] = useState(emptyStudent);
 
-  // 创建教学老师表单
-  const [showJiaoxueForm, setShowJiaoxueForm] = useState(false);
-  const [jxForm, setJxForm] = useState({ username: '', password: '', realName: '', nickname: '' });
-
   // 编辑学生表单
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyStudent, subjects: [] as string[] });
-
-  // 编辑教学老师表单
-  const [editingJiaoxue, setEditingJiaoxue] = useState<Jiaoxue | null>(null);
-  const [jxEditForm, setJxEditForm] = useState({ username: '', realName: '', nickname: '', password: '' });
 
   // 筛选
   const [filterGrade, setFilterGrade] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('');
 
+  const loadJiaoxues = async () => {
+    try {
+      const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxues`, { headers: getHeaders() });
+      if (res.ok) setJiaoxues(await res.json());
+    } catch (e) { /* ignore */ }
+  };
+
   const loadStudents = async () => {
+    setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filterGrade) params.set('grade', filterGrade);
@@ -85,19 +75,12 @@ export default function JiaowuDashboard() {
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`${API_PREFIX}/jiaowu/students${qs}`, { headers: getHeaders() });
       if (!res.ok) throw new Error('获取学生列表失败');
-      setStudents(await res.json());
+      const data = await res.json();
+      setStudents(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setMsg({ type: 'error', text: e.message });
-    }
-  };
-
-  const loadJiaoxues = async () => {
-    try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxues`, { headers: getHeaders() });
-      if (!res.ok) throw new Error('获取教学老师列表失败');
-      setJiaoxues(await res.json());
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -113,8 +96,7 @@ export default function JiaowuDashboard() {
     setMsg(null);
     try {
       const res = await fetch(`${API_PREFIX}/jiaowu/students`, {
-        method: 'POST',
-        headers: getHeaders(),
+        method: 'POST', headers: getHeaders(),
         body: JSON.stringify({ ...studentForm, subjects: studentForm.subjects })
       });
       const data = await res.json();
@@ -130,22 +112,42 @@ export default function JiaowuDashboard() {
     }
   };
 
-  const handleCreateJiaoxue = async (e: React.FormEvent) => {
+  const openEdit = (student: Student) => {
+    setEditingStudent(student);
+    setEditForm({
+      realName: student.realName || '',
+      gender: student.gender || '',
+      grade: student.grade || '',
+      city: student.city || '',
+      subjects: student.subjects ? student.subjects.split(',') : [],
+      payType: student.payType || '',
+      accompanyStart: student.accompanyStart || '',
+      accompanyEnd: student.accompanyEnd || '',
+      contactPhone: student.contactPhone || student.username,
+      password: '',
+      teacherUsername: student.teacherUsername || ''
+    });
+  };
+
+  const handleUpdateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingStudent) return;
     setLoading(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxue`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(jxForm)
+      const res = await fetch(`${API_PREFIX}/jiaowu/students/${editingStudent.username}`, {
+        method: 'PUT', headers: getHeaders(),
+        body: JSON.stringify({
+          realName: editForm.realName, gender: editForm.gender, grade: editForm.grade, city: editForm.city,
+          subjects: editForm.subjects, payType: editForm.payType, accompanyStart: editForm.accompanyStart,
+          accompanyEnd: editForm.accompanyEnd, teacherUsername: editForm.teacherUsername, password: editForm.password || undefined
+        })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '创建失败');
-      setMsg({ type: 'success', text: data.message || '教学老师创建成功' });
-      setShowJiaoxueForm(false);
-      setJxForm({ username: '', password: '', realName: '', nickname: '' });
-      loadJiaoxues();
+      if (!res.ok) throw new Error(data.error || '更新失败');
+      setMsg({ type: 'success', text: data.message || '学生信息已更新' });
+      setEditingStudent(null);
+      loadStudents();
     } catch (e: any) {
       setMsg({ type: 'error', text: e.message });
     } finally {
@@ -167,467 +169,146 @@ export default function JiaowuDashboard() {
     }
   };
 
-  const toggleSubject = (sub: string) => {
-    setStudentForm(prev => ({
-      ...prev,
-      subjects: prev.subjects.includes(sub) ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
-    }));
-  };
-
-  // 打开编辑表单，回填学生信息
-  const openEdit = (student: Student) => {
-    setEditingStudent(student);
-    setEditForm({
-      realName: student.realName || '',
-      gender: student.gender || '',
-      grade: student.grade || '',
-      city: student.city || '',
-      subjects: student.subjects ? student.subjects.split(',') : [],
-      payType: student.payType || '',
-      accompanyStart: student.accompanyStart || '',
-      accompanyEnd: student.accompanyEnd || '',
-      contactPhone: student.contactPhone || student.username,
-      password: '',
-      teacherUsername: student.teacherUsername || ''
-    });
-  };
-
-  // 保存编辑学生
-  const handleUpdateStudent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingStudent) return;
-    setLoading(true);
-    setMsg(null);
-    try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/students/${editingStudent.username}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          realName: editForm.realName,
-          gender: editForm.gender,
-          grade: editForm.grade,
-          city: editForm.city,
-          subjects: editForm.subjects,
-          payType: editForm.payType,
-          accompanyStart: editForm.accompanyStart,
-          accompanyEnd: editForm.accompanyEnd,
-          teacherUsername: editForm.teacherUsername,
-          password: editForm.password || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '更新失败');
-      setMsg({ type: 'success', text: data.message || '学生信息已更新' });
-      setEditingStudent(null);
-      loadStudents();
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleEditSubject = (sub: string) => {
-    setEditForm(prev => ({
-      ...prev,
-      subjects: prev.subjects.includes(sub) ? prev.subjects.filter(s => s !== sub) : [...prev.subjects, sub]
-    }));
-  };
-
-  // 打开教学老师编辑
-  const openEditJiaoxue = (j: Jiaoxue) => {
-    setEditingJiaoxue(j);
-    setJxEditForm({ username: j.username, realName: j.realName || '', nickname: j.nickname || '', password: '' });
-  };
-
-  // 保存教学老师编辑
-  const handleUpdateJiaoxue = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingJiaoxue) return;
-    setLoading(true);
-    setMsg(null);
-    try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxue/${editingJiaoxue.username}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          realName: jxEditForm.realName,
-          nickname: jxEditForm.nickname,
-          password: jxEditForm.password || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '更新失败');
-      setMsg({ type: 'success', text: data.message || '教学老师信息已更新' });
-      setEditingJiaoxue(null);
-      loadJiaoxues();
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 按教学老师加载该老师旗下学生（用于报表筛选）
-  const loadReportStudents = async (teacherUsername: string) => {
-    if (!teacherUsername) { setReportStudents([]); return; }
-    try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/students?teacherUsername=${encodeURIComponent(teacherUsername)}`, { headers: getHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setReportStudents(Array.isArray(data) ? data : []);
-      }
-    } catch (e) {
-      setReportStudents([]);
-    }
-  };
-
-  // 生成报表
-  const handleGenerateReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setGeneratingReport(true);
-    setMsg(null);
-    setReportResult(null);
-    try {
-      const res = await fetch(`${API_PREFIX}/jiaowu/reports`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          reportType: reportForm.reportType,
-          grade: reportForm.grade || undefined,
-          teacherUsername: reportForm.teacherUsername || undefined,
-          students: reportForm.studentUsername ? [reportForm.studentUsername] : undefined,
-          dateStart: reportForm.dateStart || undefined,
-          dateEnd: reportForm.dateEnd || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '生成报表失败');
-      // 拼接完整链接
-      const fullLink = `${window.location.origin}${data.link}`;
-      setReportResult({ link: fullLink, reportCount: data.reportCount, totalQuestions: data.totalQuestions });
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
-    } finally {
-      setGeneratingReport(false);
-    }
-  };
-
-  // 复制报表链接
-  const copyReportLink = async () => {
-    if (!reportResult) return;
-    try {
-      await navigator.clipboard.writeText(reportResult.link);
-      setCopiedReport(true);
-      setTimeout(() => setCopiedReport(false), 1500);
-    } catch (e) {
-      alert('复制失败，请手动复制链接');
-    }
+  const toggleSubject = (sub: string, isEdit = false) => {
+    const setter = isEdit ? setEditForm : setStudentForm;
+    const cur = isEdit ? editForm : studentForm;
+    const updated = cur.subjects.includes(sub) ? cur.subjects.filter(s => s !== sub) : [...cur.subjects, sub];
+    if (isEdit) setEditForm({ ...editForm, subjects: updated });
+    else setStudentForm({ ...studentForm, subjects: updated });
   };
 
   const inputCls = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
-  const totalStudents = students.length;
-  const totalJiaoxues = jiaoxues.length;
-
   return (
     <div className="space-y-6">
       {msg && (
-        <div className={`px-4 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2 ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-          {msg.text}
-        </div>
+        <div className={`px-4 py-3 rounded-2xl text-sm font-semibold ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>{msg.text}</div>
       )}
 
-      {/* Tab 切换 */}
-      <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 w-fit">
-        <button onClick={() => setTab('overview')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'overview' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>教务概览</button>
-        <button onClick={() => setTab('students')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'students' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>学生管理</button>
-        <button onClick={() => setTab('jiaoxues')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'jiaoxues' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>教学老师管理</button>
-        <button onClick={() => setTab('report')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === 'report' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>报表中心</button>
+      {/* 名下学生数卡片 */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4">
+        <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center"><Users className="w-6 h-6 text-blue-600" /></div>
+        <div>
+          <div className="text-2xl font-black text-slate-800">{students.length}</div>
+          <div className="text-xs text-slate-400 font-bold">名下学生数</div>
+        </div>
       </div>
 
-      {tab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center"><Users className="w-6 h-6 text-blue-600" /></div>
-            <div>
-              <div className="text-2xl font-black text-slate-800">{totalStudents}</div>
-              <div className="text-xs text-slate-400 font-bold">名下学生数</div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center"><GraduationCap className="w-6 h-6 text-indigo-600" /></div>
-            <div>
-              <div className="text-2xl font-black text-slate-800">{totalJiaoxues}</div>
-              <div className="text-xs text-slate-400 font-bold">教学老师数</div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4">
-            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center"><BookOpen className="w-6 h-6 text-amber-600" /></div>
-            <div className="text-xs text-slate-500 font-semibold leading-relaxed">
-              教务老师可创建学生账号与教学老师，并可生成学情报表（报表功能将在后续版本开放）。
-            </div>
-          </div>
+      {/* 筛选栏 */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-xs font-bold text-slate-500 block mb-1">年级筛选</label>
+          <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} className={inputCls + ' w-40'}>
+            <option value="">全部年级</option>
+            {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
         </div>
-      )}
+        <div>
+          <label className="text-xs font-bold text-slate-500 block mb-1">教学老师筛选</label>
+          <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} className={inputCls + ' w-44'}>
+            <option value="">全部老师</option>
+            {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}</option>)}
+          </select>
+        </div>
+        <button onClick={loadStudents} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-1.5"><RefreshCw className="w-4 h-4" />刷新</button>
+        <button onClick={() => setShowStudentForm(!showStudentForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 ml-auto"><Plus className="w-4 h-4" />创建学生</button>
+      </div>
 
-      {tab === 'students' && (
-        <div className="space-y-4">
-          {/* 筛选栏 */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">年级筛选</label>
-              <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} className={inputCls + ' w-40'}>
-                <option value="">全部年级</option>
-                {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">教学老师筛选</label>
-              <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} className={inputCls + ' w-44'}>
-                <option value="">全部老师</option>
-                {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}</option>)}
-              </select>
-            </div>
-            <button onClick={loadStudents} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-1.5"><RefreshCw className="w-4 h-4" />刷新</button>
-            <button onClick={() => setShowStudentForm(!showStudentForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 ml-auto"><Plus className="w-4 h-4" />创建学生</button>
+      {/* 创建学生表单 */}
+      {showStudentForm && (
+        <form onSubmit={handleCreateStudent} className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
+          <h3 className="font-black text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-600" />创建学生账号</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">姓名 <span className="text-rose-500">*</span></label>
+              <input className={inputCls} value={studentForm.realName} onChange={e => setStudentForm({ ...studentForm, realName: e.target.value })} placeholder="学生姓名" required /></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">性别</label>
+              <select className={inputCls} value={studentForm.gender} onChange={e => setStudentForm({ ...studentForm, gender: e.target.value })}>
+                <option value="">请选择</option><option>男</option><option>女</option>
+              </select></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">年级</label>
+              <select className={inputCls} value={studentForm.grade} onChange={e => setStudentForm({ ...studentForm, grade: e.target.value })}>
+                <option value="">请选择</option>{GRADES.map(g => <option key={g}>{g}</option>)}
+              </select></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">所在城市</label>
+              <input className={inputCls} value={studentForm.city} onChange={e => setStudentForm({ ...studentForm, city: e.target.value })} placeholder="如：上海" /></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">付费性质</label>
+              <select className={inputCls} value={studentForm.payType} onChange={e => setStudentForm({ ...studentForm, payType: e.target.value })}>
+                <option value="">请选择</option>{PAY_TYPES.map(p => <option key={p}>{p}</option>)}
+              </select></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">所属教学老师</label>
+              <select className={inputCls} value={studentForm.teacherUsername} onChange={e => setStudentForm({ ...studentForm, teacherUsername: e.target.value })}>
+                <option value="">暂不分配</option>
+                {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}（{j.studentCount}人）</option>)}
+              </select></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">联系方式（登录账号）<span className="text-rose-500">*</span></label>
+              <input className={inputCls} value={studentForm.contactPhone} onChange={e => setStudentForm({ ...studentForm, contactPhone: e.target.value })} placeholder="手机号，即登录账号" required /></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">登录密码（默认123456）</label>
+              <input className={inputCls} value={studentForm.password} onChange={e => setStudentForm({ ...studentForm, password: e.target.value })} placeholder="留空则默认 123456" /></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学开始日期 <span className="text-rose-500">*</span></label>
+              <input type="date" className={inputCls} value={studentForm.accompanyStart} onChange={e => setStudentForm({ ...studentForm, accompanyStart: e.target.value })} required /></div>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学结束日期 <span className="text-rose-500">*</span></label>
+              <input type="date" className={inputCls} value={studentForm.accompanyEnd} onChange={e => setStudentForm({ ...studentForm, accompanyEnd: e.target.value })} required /></div>
           </div>
-
-          {/* 创建学生表单 */}
-          {showStudentForm && (
-            <form onSubmit={handleCreateStudent} className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
-              <h3 className="font-black text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-600" />创建学生账号</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">姓名 <span className="text-rose-500">*</span></label>
-                  <input className={inputCls} value={studentForm.realName} onChange={e => setStudentForm({ ...studentForm, realName: e.target.value })} placeholder="学生姓名" required /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">性别</label>
-                  <select className={inputCls} value={studentForm.gender} onChange={e => setStudentForm({ ...studentForm, gender: e.target.value })}>
-                    <option value="">请选择</option><option>男</option><option>女</option>
-                  </select></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">年级</label>
-                  <select className={inputCls} value={studentForm.grade} onChange={e => setStudentForm({ ...studentForm, grade: e.target.value })}>
-                    <option value="">请选择</option>{GRADES.map(g => <option key={g}>{g}</option>)}
-                  </select></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">所在城市</label>
-                  <input className={inputCls} value={studentForm.city} onChange={e => setStudentForm({ ...studentForm, city: e.target.value })} placeholder="如：上海" /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">付费性质</label>
-                  <select className={inputCls} value={studentForm.payType} onChange={e => setStudentForm({ ...studentForm, payType: e.target.value })}>
-                    <option value="">请选择</option>{PAY_TYPES.map(p => <option key={p}>{p}</option>)}
-                  </select></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">所属教学老师</label>
-                  <select className={inputCls} value={studentForm.teacherUsername} onChange={e => setStudentForm({ ...studentForm, teacherUsername: e.target.value })}>
-                    <option value="">暂不分配</option>
-                    {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}（{j.studentCount}人）</option>)}
-                  </select></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">联系方式（登录账号）<span className="text-rose-500">*</span></label>
-                  <input className={inputCls} value={studentForm.contactPhone} onChange={e => setStudentForm({ ...studentForm, contactPhone: e.target.value })} placeholder="手机号，即登录账号" required /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">登录密码（默认123456）</label>
-                  <input className={inputCls} value={studentForm.password} onChange={e => setStudentForm({ ...studentForm, password: e.target.value })} placeholder="留空则默认 123456" /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学开始日期 <span className="text-rose-500">*</span></label>
-                  <input type="date" className={inputCls} value={studentForm.accompanyStart} onChange={e => setStudentForm({ ...studentForm, accompanyStart: e.target.value })} required /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">伴学结束日期 <span className="text-rose-500">*</span></label>
-                  <input type="date" className={inputCls} value={studentForm.accompanyEnd} onChange={e => setStudentForm({ ...studentForm, accompanyEnd: e.target.value })} required /></div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 block mb-2">需要伴学的科目</label>
-                <div className="flex flex-wrap gap-2">
-                  {SUBJECTS.map(sub => (
-                    <button type="button" key={sub} onClick={() => toggleSubject(sub)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${studentForm.subjects.includes(sub) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'}`}>
-                      {sub}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">
-                  {loading ? '创建中...' : '确认创建'}
+          <div>
+            <label className="text-xs font-bold text-slate-500 block mb-2">需要伴学的科目</label>
+            <div className="flex flex-wrap gap-2">
+              {SUBJECTS.map(sub => (
+                <button type="button" key={sub} onClick={() => toggleSubject(sub)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${studentForm.subjects.includes(sub) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'}`}>
+                  {sub}
                 </button>
-                <button type="button" onClick={() => setShowStudentForm(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
-              </div>
-            </form>
-          )}
-
-          {/* 学生列表 */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                    <th className="px-4 py-3 font-bold">姓名</th>
-                    <th className="px-4 py-3 font-bold">年级</th>
-                    <th className="px-4 py-3 font-bold">科目</th>
-                    <th className="px-4 py-3 font-bold">付费性质</th>
-                    <th className="px-4 py-3 font-bold">教学老师</th>
-                    <th className="px-4 py-3 font-bold">伴学时间</th>
-                    <th className="px-4 py-3 font-bold">登录账号</th>
-                    <th className="px-4 py-3 font-bold">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无学生，点击"创建学生"添加</td></tr>}
-                  {students.map(s => (
-                    <tr key={s.username} className="border-b border-slate-50 hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-bold text-slate-700">{s.realName || '-'} <span className="text-slate-400 text-xs ml-1">{s.gender || ''}</span></td>
-                      <td className="px-4 py-3 text-slate-500">{s.grade || '-'}</td>
-                      <td className="px-4 py-3 text-slate-500">{s.subjects || '-'}</td>
-                      <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${s.payType === '付费用户' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{s.payType || '-'}</span></td>
-                      <td className="px-4 py-3 text-slate-500">{jiaoxues.find(j => j.username === s.teacherUsername)?.realName || s.teacherUsername || '-'}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{s.accompanyStart} ~ {s.accompanyEnd}</td>
-                      <td className="px-4 py-3 text-slate-500">{s.username}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => openEdit(s)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
-                          <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              ))}
             </div>
           </div>
-        </div>
+          <div className="flex gap-3">
+            <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '创建中...' : '确认创建'}</button>
+            <button type="button" onClick={() => setShowStudentForm(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
+          </div>
+        </form>
       )}
 
-      {tab === 'jiaoxues' && (
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between">
-            <div className="text-sm font-bold text-slate-600">教学老师（{totalJiaoxues} 人）</div>
-            <button onClick={() => setShowJiaoxueForm(!showJiaoxueForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5"><Plus className="w-4 h-4" />创建教学老师</button>
-          </div>
-
-          {showJiaoxueForm && (
-            <form onSubmit={handleCreateJiaoxue} className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
-              <h3 className="font-black text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-600" />创建教学老师</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">登录账号 <span className="text-rose-500">*</span></label>
-                  <input className={inputCls} value={jxForm.username} onChange={e => setJxForm({ ...jxForm, username: e.target.value })} required /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">登录密码 <span className="text-rose-500">*</span></label>
-                  <input type="password" className={inputCls} value={jxForm.password} onChange={e => setJxForm({ ...jxForm, password: e.target.value })} required /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">真实姓名</label>
-                  <input className={inputCls} value={jxForm.realName} onChange={e => setJxForm({ ...jxForm, realName: e.target.value })} /></div>
-                <div><label className="text-xs font-bold text-slate-500 block mb-1">昵称</label>
-                  <input className={inputCls} value={jxForm.nickname} onChange={e => setJxForm({ ...jxForm, nickname: e.target.value })} /></div>
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '创建中...' : '确认创建'}</button>
-                <button type="button" onClick={() => setShowJiaoxueForm(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
-              </div>
-            </form>
-          )}
-
-          {/* 教学老师列表 */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                  <th className="px-4 py-3 font-bold">账号</th>
-                  <th className="px-4 py-3 font-bold">姓名</th>
-                  <th className="px-4 py-3 font-bold">名下学生数</th>
-                  <th className="px-4 py-3 font-bold">操作</th>
+      {/* 学生列表 */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                <th className="px-4 py-3 font-bold">姓名</th>
+                <th className="px-4 py-3 font-bold">年级</th>
+                <th className="px-4 py-3 font-bold">科目</th>
+                <th className="px-4 py-3 font-bold">付费性质</th>
+                <th className="px-4 py-3 font-bold">教学老师</th>
+                <th className="px-4 py-3 font-bold">伴学时间</th>
+                <th className="px-4 py-3 font-bold">登录账号</th>
+                <th className="px-4 py-3 font-bold">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} className="px-4 py-10 text-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto" /></td></tr>
+              ) : students.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无学生，点击"创建学生"添加</td></tr>
+              ) : students.map(s => (
+                <tr key={s.username} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <td className="px-4 py-3 font-bold text-slate-700">{s.realName || '-'} <span className="text-slate-400 text-xs ml-1">{s.gender || ''}</span></td>
+                  <td className="px-4 py-3 text-slate-500">{s.grade || '-'}</td>
+                  <td className="px-4 py-3 text-slate-500">{s.subjects || '-'}</td>
+                  <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${s.payType === '付费用户' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{s.payType || '-'}</span></td>
+                  <td className="px-4 py-3 text-slate-500">{jiaoxues.find(j => j.username === s.teacherUsername)?.realName || s.teacherUsername || '-'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{s.accompanyStart} ~ {s.accompanyEnd}</td>
+                  <td className="px-4 py-3 text-slate-500">{s.username}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openEdit(s)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
+                      <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {jiaoxues.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无教学老师</td></tr>}
-                {jiaoxues.map(j => (
-                  <tr key={j.username} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-4 py-3 text-slate-500">{j.username}</td>
-                    <td className="px-4 py-3 font-bold text-slate-700">{j.realName || j.nickname || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{j.studentCount} 人</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => openEditJiaoxue(j)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
-
-      {tab === 'report' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
-            <h3 className="font-black text-slate-800 flex items-center gap-2 mb-1">
-              <FileBarChart className="w-4 h-4 text-blue-600" />学情报表生成
-            </h3>
-            <p className="text-xs text-slate-400 font-medium mb-4">选择报表类型与筛选条件，生成后以链接形式分享（链接有效期由管理员在系统设置中配置）</p>
-
-            <form onSubmit={handleGenerateReport} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">报表类型 <span className="text-rose-500">*</span></label>
-                  <select className={inputCls} value={reportForm.reportType} onChange={e => setReportForm({ ...reportForm, reportType: e.target.value })}>
-                    <option value="daily">每日学情报表</option>
-                    <option value="weekly">每周学情报表（含举一反三）</option>
-                    <option value="monthly">每月学情报表</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">年级筛选</label>
-                  <select className={inputCls} value={reportForm.grade} onChange={e => setReportForm({ ...reportForm, grade: e.target.value })}>
-                    <option value="">全部年级</option>
-                    {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">教学老师筛选</label>
-                  <select className={inputCls} value={reportForm.teacherUsername}
-                    onChange={e => { setReportForm({ ...reportForm, teacherUsername: e.target.value, studentUsername: '' }); loadReportStudents(e.target.value); }}>
-                    <option value="">全部老师</option>
-                    {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">学生筛选</label>
-                  <select className={inputCls} value={reportForm.studentUsername} onChange={e => setReportForm({ ...reportForm, studentUsername: e.target.value })} disabled={!reportForm.teacherUsername}>
-                    <option value="">{reportForm.teacherUsername ? '全部学生' : '请先选择老师'}</option>
-                    {reportStudents.map(s => <option key={s.username} value={s.username}>{s.realName || s.username}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">开始日期（可选）</label>
-                  <input type="date" className={inputCls} value={reportForm.dateStart} onChange={e => setReportForm({ ...reportForm, dateStart: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">结束日期（可选）</label>
-                  <input type="date" className={inputCls} value={reportForm.dateEnd} onChange={e => setReportForm({ ...reportForm, dateEnd: e.target.value })} />
-                </div>
-              </div>
-              {reportForm.dateStart || reportForm.dateEnd ? (
-                <p className="text-[11px] text-amber-600 font-semibold">已自定义日期范围，将覆盖报表类型的默认统计周期</p>
-              ) : (
-                <p className="text-[11px] text-slate-400 font-medium">不选日期则按报表类型的系统配置周期统计</p>
-              )}
-
-              <button type="submit" disabled={generatingReport} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition cursor-pointer">
-                {generatingReport ? <><Loader2 className="w-4 h-4 animate-spin" />生成中...</> : <><CalendarDays className="w-4 h-4" />生成报表链接</>}
-              </button>
-            </form>
-          </div>
-
-          {/* 生成结果 */}
-          {reportResult && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
-              <div className="text-sm font-black text-emerald-700 mb-2 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />报表生成成功（覆盖 {reportResult.reportCount} 名学生，共 {reportResult.totalQuestions} 道错题）
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <input readOnly value={reportResult.link} className="flex-1 min-w-[240px] bg-white border border-emerald-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700" />
-                <button onClick={copyReportLink} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
-                  <Copy className="w-3.5 h-3.5" />{copiedReport ? '已复制' : '复制链接'}
-                </button>
-                <a href={reportResult.link} target="_blank" rel="noreferrer" className="px-4 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition cursor-pointer">预览报表</a>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      </div>
 
       {/* 编辑学生模态框 */}
       {editingStudent && (
@@ -668,7 +349,7 @@ export default function JiaowuDashboard() {
               <label className="text-xs font-bold text-slate-500 block mb-2">需要伴学的科目</label>
               <div className="flex flex-wrap gap-2">
                 {SUBJECTS.map(sub => (
-                  <button type="button" key={sub} onClick={() => toggleEditSubject(sub)}
+                  <button type="button" key={sub} onClick={() => toggleSubject(sub, true)}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${editForm.subjects.includes(sub) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'}`}>
                     {sub}
                   </button>
@@ -678,28 +359,6 @@ export default function JiaowuDashboard() {
             <div className="flex gap-3">
               <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '保存中...' : '保存修改'}</button>
               <button type="button" onClick={() => setEditingStudent(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* 编辑教学老师模态框 */}
-      {editingJiaoxue && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleUpdateJiaoxue} className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative">
-            <button type="button" onClick={() => setEditingJiaoxue(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold cursor-pointer"><X className="w-5 h-5" /></button>
-            <h3 className="font-black text-slate-800 flex items-center gap-2 mb-4"><Pencil className="w-4 h-4 text-blue-600" />编辑教学老师：{editingJiaoxue.username}</h3>
-            <div className="space-y-4 mb-4">
-              <div><label className="text-xs font-bold text-slate-500 block mb-1">真实姓名</label>
-                <input className={inputCls} value={jxEditForm.realName} onChange={e => setJxEditForm({ ...jxEditForm, realName: e.target.value })} /></div>
-              <div><label className="text-xs font-bold text-slate-500 block mb-1">昵称</label>
-                <input className={inputCls} value={jxEditForm.nickname} onChange={e => setJxEditForm({ ...jxEditForm, nickname: e.target.value })} /></div>
-              <div><label className="text-xs font-bold text-slate-500 block mb-1">重置密码（留空不改）</label>
-                <input type="password" className={inputCls} value={jxEditForm.password} onChange={e => setJxEditForm({ ...jxEditForm, password: e.target.value })} placeholder="至少 6 位" /></div>
-            </div>
-            <div className="flex gap-3">
-              <button type="submit" disabled={loading} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50">{loading ? '保存中...' : '保存修改'}</button>
-              <button type="button" onClick={() => setEditingJiaoxue(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold">取消</button>
             </div>
           </form>
         </div>

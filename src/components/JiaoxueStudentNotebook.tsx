@@ -157,20 +157,14 @@ export default function JiaoxueStudentNotebook() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-slate-800 line-clamp-2">{q.originalText}</div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold">{q.subject}</span>
+                        <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{q.subject}</span>
                         {Array.isArray(q.knowledgePoints) && q.knowledgePoints.slice(0, 3).map((kp, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold">{kp}</span>
+                          <span key={i} className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold">{kp}</span>
                         ))}
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${q.masteryStatus === 'mastered' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                          {q.masteryStatus === 'mastered' ? '已掌握' : '未掌握'}
-                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => setViewQuestion(q)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="查看"><Eye className="w-4 h-4" /></button>
-                      <button onClick={() => handleToggleMastery(q)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer" title="切换掌握状态">
-                        <BookOpen className="w-4 h-4" />
-                      </button>
                       <button onClick={() => handleDelete(q.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="删除"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>

@@ -79,7 +79,8 @@ export default function QuestionLibrary({
   onRefreshUserInfo,
   initialNotebookId,
   initialSearchKey,
-  initialMasteryStatus
+  initialMasteryStatus,
+  hideMasteryUI = false
 }: {
   onNavigate: (v: any, params?: any) => void;
   onGeneratePaper?: (questions: ErrorQuestion[]) => void;
@@ -88,6 +89,7 @@ export default function QuestionLibrary({
   initialNotebookId?: string | null;
   initialSearchKey?: string | null;
   initialMasteryStatus?: 'all' | 'not_mastered' | 'mastered' | null;
+  hideMasteryUI?: boolean;
 }) {
   const [questions, setQuestions] = useState<ErrorQuestion[]>([]);
   const [search, setSearch] = useState(initialSearchKey || '');
@@ -765,7 +767,8 @@ export default function QuestionLibrary({
 
           {/* Filter and Tab section */}
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-200/60 pb-4">
-            {/* 左侧掌握状态 Tab */}
+            {/* 左侧掌握状态 Tab（hideMasteryUI 时隐藏） */}
+            {!hideMasteryUI && (
             <div className="flex bg-slate-100/70 p-1 rounded-2xl gap-1 self-start">
               <button
                 onClick={() => setFilterMastery('all')}
@@ -817,6 +820,7 @@ export default function QuestionLibrary({
                 </>
               )}
             </div>
+            )}
 
             {/* 右侧搜索与过滤 */}
             <div className="flex flex-wrap items-center gap-2 lg:justify-end flex-1">
@@ -1045,6 +1049,7 @@ export default function QuestionLibrary({
 
                           {/* 右侧：已/未掌握状态胶囊 & 删除按钮 */}
                           <div className="flex items-center gap-2 shrink-0">
+                            {!hideMasteryUI && (
                             <button
                               onClick={(e) => !isPending && handleToggleMastery(q.id, q.masteryStatus, e)}
                               disabled={isPending}
@@ -1057,6 +1062,7 @@ export default function QuestionLibrary({
                             >
                               {q.masteryStatus === 'mastered' ? '已掌握' : '未掌握'}
                             </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();

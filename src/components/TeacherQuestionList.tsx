@@ -18,6 +18,7 @@ interface TeacherQuestion {
   studentId?: string;
   kind?: string;
   isQuickTask?: boolean;
+  sourceType?: 'quick_answer' | 'correct_task' | 'normal';
   originalText: string;
   subject: string;
   knowledgePoints: string[];
@@ -35,6 +36,13 @@ interface TeacherQuestion {
   quickAnswers?: { originalText: string; subject: string; standardAnswer: string; keySteps: string }[];
   errorMsg?: string;
 }
+
+// 题目类型标签（卡片/详情通用）
+const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
+  quick_answer: { label: '⚡ 快速识别', color: 'bg-indigo-50 text-indigo-700 border border-indigo-100' },
+  correct_task: { label: '📋 作业批改', color: 'bg-purple-50 text-purple-700 border border-purple-100' },
+  normal: { label: '📤 普通上传', color: 'bg-slate-50 text-slate-600 border border-slate-200' }
+};
 
 // 快速答题任务状态显示
 const QUICK_STATUS: Record<string, { label: string; color: string }> = {
@@ -140,8 +148,11 @@ export default function TeacherQuestionList() {
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           {/* 头部 */}
           <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">{detail.subject || (detail.isQuickTask ? '快速答题' : '数学')}</span>
+              {detail.sourceType && SOURCE_LABEL[detail.sourceType] && (
+                <span className={`px-2.5 py-1 rounded-full text-xs font-black ${SOURCE_LABEL[detail.sourceType].color}`}>{SOURCE_LABEL[detail.sourceType].label}</span>
+              )}
               {detail.isQuickTask && (
                 <span className={`px-2.5 py-1 rounded-full text-xs font-black ${(QUICK_STATUS[detail.status] || QUICK_STATUS.queued).color}`}>
                   {(QUICK_STATUS[detail.status] || QUICK_STATUS.queued).label}
@@ -322,8 +333,11 @@ export default function TeacherQuestionList() {
                 className="bg-white rounded-2xl border border-slate-200 p-5 text-left hover:border-blue-300 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">{q.subject || (q.isQuickTask ? '快速答题' : '数学')}</span>
+                    {q.sourceType && SOURCE_LABEL[q.sourceType] && (
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-black ${SOURCE_LABEL[q.sourceType].color}`}>{SOURCE_LABEL[q.sourceType].label}</span>
+                    )}
                     {q.isQuickTask && quickMeta && (
                       <span className={`px-2 py-1 rounded-full text-[10px] font-black ${quickMeta.color}`}>{quickMeta.label}</span>
                     )}

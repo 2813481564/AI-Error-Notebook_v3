@@ -2,8 +2,72 @@ import express from "express";
 import crypto from "crypto";
 import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
+import { enqueueTaskForUser } from "./taskController";
+import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
 
 // ================= 学情报表（第二阶段） =================
+
+// 周报举一反三习题卷：基于某学生本周错题，调用 AI 生成一份举一反三习题卷
+async function generateWorksheetForStudent(studentReport: any): Promise<any[]> {
+  const items = studentReport.items || [];
+  if (items.length === 0) return [];
+
+  // 汇总题干与考点（取前 5 道错题，避免提示词过长）
+  const source = items.slice(0, 5).map((it: any) => ({
+    originalText: it.originalText || '',
+    subject: it.subject || '数学',
+    knowledgePoints: Array.isArray(it.knowledgePoints) ? it.knowledgePoints : []
+  }));
+
+  try {
+    const prompt = `
+你是资深命题老师。请根据以下学生本周的错题（题干与考点），举一反三生成一份习题卷，帮助该学生巩固欠缺知识点。
+
+【学生错题素材】
+${JSON.stringify(source, null, 2)}
+
+【要求】
+1. 生成 ${Math.min(5, Math.max(3, source.length))} 道同类型、不同数字/情境的变式练习题。
+2. 题目难度循序渐进，覆盖上述错题涉及的考点。
+3. 每道题输出：题干、考点、标准答案、详细解析。
+
+【输出格式】严格返回 JSON 数组，不要 Markdown 代码块标记：
+[
+  {
+    "no": 1,
+    "originalText": "变式题题干（含公式用 $...$ 包裹）",
+    "subject": "学科",
+    "knowledgePoints": ["考点1", "考点2"],
+    "standardAnswer": "标准答案",
+    "solution": "分步解析"
+  }
+]
+数学公式用 $ 或 $$ 包裹（LaTeX），JSON 中反斜杠双写转义。
+`;
+    const response = await generateContentWithFallback({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: { temperature: 0.4 }
+    });
+    const text = response.text || '';
+    if (text) {
+      const extracted = extractJsonString(text);
+      const parsed = JSON.parse(sanitizeJsonString(extracted));
+      if (Array.isArray(parsed)) {
+        return parsed.map((q: any, i: number) => ({
+          no: i + 1,
+          originalText: q.originalText || '',
+          subject: q.subject || '数学',
+          knowledgePoints: Array.isArray(q.knowledgePoints) ? q.knowledgePoints : [],
+          standardAnswer: q.standardAnswer || '',
+          solution: q.solution || ''
+        }));
+      }
+    }
+  } catch (e) {
+    console.warn("周报习题卷生成失败:", e);
+  }
+  return [];
+}
 
 // 读取报表周期配置
 function readReportConfig(): { dailyMode: string; weeklyMode: string; monthlyMode: string; expiryDays: number } {
@@ -122,7 +186,7 @@ function buildStudentReport(studentUsername: string, reportType: string, range: 
 }
 
 // 教务生成报表: POST /api/jiaowu/reports
-export const generateReport = (req: AuthenticatedRequest, res: express.Response) => {
+export const generateReport = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const { reportType, grade, teacherUsername, students, dateStart, dateEnd } = req.body;
     if (!['daily', 'weekly', 'monthly'].includes(reportType)) {
@@ -143,7 +207,7 @@ export const generateReport = (req: AuthenticatedRequest, res: express.Response)
     }
     const targetStudents = getTargetStudents({ grade, teacherUsername, students });
 
-    // 为每个学生生成报表
+    // 为每个学生生成报表（简单学情报表，不自动生成举一反三；举一反三由报表记录进入专属页面手动勾选生成）
     const reports = targetStudents.map(username => buildStudentReport(username, reportType, range));
 
     // 生成 token（加密）并存储
@@ -183,6 +247,198 @@ export const generateReport = (req: AuthenticatedRequest, res: express.Response)
   } catch (error: any) {
     console.error("Generate Report Error:", error);
     res.status(500).json({ error: error.message || "生成报表失败" });
+  }
+};
+
+// 创建报表举一反三任务（教务专属）: POST /api/report/:token/variations
+// 每道勾选题生成 1 道变式题，挂后台线程池串行处理（同一用户同时仅 1 个）
+export const createReportVariations = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { token } = req.params;
+    const { questions, variantMode } = req.body;
+    const report = db.prepare("SELECT * FROM study_reports WHERE token = ?").get(token) as any;
+    if (!report) {
+      return res.status(404).json({ error: "报表不存在" });
+    }
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: "请至少勾选一道题" });
+    }
+    // 难度模式：同考点换壳 / 条件升级 / 逆向陷阱
+    const mode = ['同考点换壳', '条件升级', '逆向陷阱'].includes(variantMode) ? variantMode : '同考点换壳';
+
+    // 学生信息（取 grade）
+    const created: { taskId: string; questionNo: number }[] = [];
+    for (const q of questions) {
+      const studentUsername = q.studentUsername;
+      if (!studentUsername) continue;
+      // 找到学生的 grade（报表 dataJson 里有）
+      let grade: string | null = q.grade || null;
+      const taskId = "task_" + Math.random().toString(36).substring(2, 9);
+      const now = Date.now();
+      const payload = {
+        reportToken: token,
+        studentUsername,
+        questionNo: q.no || 0,
+        originalText: q.originalText || '',
+        subject: q.subject || '数学',
+        knowledgePoints: q.knowledgePoints || [],
+        grade,
+        variantMode: mode
+      };
+      db.prepare(`
+        INSERT INTO background_tasks (id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt, isNotified)
+        VALUES (?, ?, ?, 'queued', 0, 1, 'report_variation', NULL, ?, ?, ?, 0)
+      `).run(taskId, req.userId || '', `报表举一反三-题${q.no || ''}`, JSON.stringify(payload), now, now);
+      // 加入后台线程池队列（按用户串行）
+      enqueueTaskForUser(req.userId || '', taskId);
+      created.push({ taskId, questionNo: q.no || 0 });
+    }
+
+    res.json({ success: true, message: `已创建 ${created.length} 个举一反三任务`, tasks: created });
+  } catch (error: any) {
+    console.error("Create Report Variations Error:", error);
+    res.status(500).json({ error: error.message || "创建举一反三任务失败" });
+  }
+};
+
+// 查询报表错题及举一反三任务（免登录）: GET /api/report/:token/variations
+export const getReportVariations = (req: express.Request, res: express.Response) => {
+  try {
+    const { token } = req.params;
+    const report = db.prepare("SELECT * FROM study_reports WHERE token = ?").get(token) as any;
+    if (!report) {
+      return res.status(404).json({ error: "报表不存在" });
+    }
+    if (Date.now() > report.expiresAt) {
+      return res.status(401).json({ error: "报表链接已过期" });
+    }
+    const data = JSON.parse(report.dataJson || '{}');
+
+    // 各题的举一反三任务（report_variation，reportToken 匹配）
+    const tasks = db.prepare(`
+      SELECT id, userId, taskName, status, progress, errorMsg, payload, createdAt
+      FROM background_tasks
+      WHERE uploadMode = 'report_variation' AND payload LIKE ?
+      ORDER BY createdAt ASC
+    `).all(`%"reportToken":"${token}"%`) as any[];
+
+    const taskMap: Record<string, any[]> = {};
+    tasks.forEach(t => {
+      let p: any = {};
+      try { p = JSON.parse(t.payload || '{}'); } catch (e) { p = {}; }
+      const key = `${p.studentUsername || ''}_${p.questionNo || 0}`;
+      if (!taskMap[key]) taskMap[key] = [];
+      taskMap[key].push({
+        id: t.id,
+        status: t.status,
+        progress: t.progress,
+        errorMsg: t.errorMsg,
+        variation: p.variation || null
+      });
+    });
+
+    // 报表错题 + 关联任务
+    const reportsWithVariations = (data.reports || []).map((studentReport: any) => ({
+      ...studentReport,
+      items: (studentReport.items || []).map((item: any) => {
+        const key = `${studentReport.username}_${item.no}`;
+        return {
+          ...item,
+          variationTasks: taskMap[key] || []
+        };
+      })
+    }));
+
+    res.json({
+      token,
+      reportType: report.reportType,
+      range: data.range,
+      generatedAt: data.generatedAt,
+      reports: reportsWithVariations
+    });
+  } catch (error: any) {
+    console.error("Get Report Variations Error:", error);
+    res.status(500).json({ error: error.message || "获取举一反三数据失败" });
+  }
+};
+
+// 教务查询本人报表生成记录: GET /api/jiaowu/reports
+export const getReportHistory = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const rows = db.prepare(`
+      SELECT token, reportType, filters, createdAt, expiresAt
+      FROM study_reports
+      WHERE ownerUsername = ?
+      ORDER BY createdAt DESC
+    `).all(req.userId || '') as any[];
+
+    const history = rows.map(row => {
+      let filters: any = {};
+      try { filters = JSON.parse(row.filters || '{}'); } catch (e) { filters = {}; }
+      const data: any = (() => { try { return JSON.parse((db.prepare("SELECT dataJson FROM study_reports WHERE token = ?").get(row.token) as any).dataJson || '{}'); } catch (e) { return {}; } })();
+      return {
+        token: row.token,
+        reportType: row.reportType,
+        filters,
+        link: `/report/${row.token}`,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+        expired: Date.now() > row.expiresAt,
+        studentCount: data.reports ? data.reports.length : 0,
+        totalQuestions: data.reports ? data.reports.reduce((s: number, r: any) => s + (r.total || 0), 0) : 0
+      };
+    });
+
+    res.json(history);
+  } catch (error: any) {
+    console.error("Get Report History Error:", error);
+    res.status(500).json({ error: error.message || "获取报表记录失败" });
+  }
+};
+
+// 删除单条报表记录: DELETE /api/jiaowu/reports/:token
+export const deleteReport = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { token } = req.params;
+    const row = db.prepare("SELECT * FROM study_reports WHERE token = ?").get(token) as any;
+    if (!row) {
+      return res.status(404).json({ error: "报表记录不存在" });
+    }
+    // 仅本人可删
+    if (row.ownerUsername !== req.userId) {
+      return res.status(403).json({ error: "无权删除他人报表" });
+    }
+    db.prepare("DELETE FROM study_reports WHERE token = ?").run(token);
+    res.json({ success: true, message: "报表记录已删除" });
+  } catch (error: any) {
+    console.error("Delete Report Error:", error);
+    res.status(500).json({ error: error.message || "删除报表失败" });
+  }
+};
+
+// 批量删除报表记录: DELETE /api/jiaowu/reports?tokens=a,b,c
+export const batchDeleteReports = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const tokensParam = req.query.tokens as string;
+    if (!tokensParam) {
+      return res.status(400).json({ error: "请指定要删除的报表 token" });
+    }
+    const tokens = tokensParam.split(',').map(t => t.trim()).filter(Boolean);
+    if (tokens.length === 0) {
+      return res.status(400).json({ error: "请指定要删除的报表 token" });
+    }
+    const placeholders = tokens.map(() => '?').join(',');
+    // 先校验所有权
+    const rows = db.prepare(`SELECT token, ownerUsername FROM study_reports WHERE token IN (${placeholders})`).all(...tokens) as any[];
+    const owned = rows.filter(r => r.ownerUsername === req.userId).map(r => r.token);
+    if (owned.length > 0) {
+      const ownedPlaceholders = owned.map(() => '?').join(',');
+      db.prepare(`DELETE FROM study_reports WHERE token IN (${ownedPlaceholders})`).run(...owned);
+    }
+    res.json({ success: true, message: `已删除 ${owned.length} 条报表记录` });
+  } catch (error: any) {
+    console.error("Batch Delete Reports Error:", error);
+    res.status(500).json({ error: error.message || "批量删除失败" });
   }
 };
 

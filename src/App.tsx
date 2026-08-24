@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect, useRef } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut, GraduationCap } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut, GraduationCap, FileBarChart } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -18,15 +18,29 @@ import RoleManager from './components/RoleManager';
 import JiaoxueWorkbench from './components/JiaoxueWorkbench';
 import TeacherQuestionList from './components/TeacherQuestionList';
 import ReportView from './components/ReportView';
+import ReportCenter from './components/ReportCenter';
+import ReportVariations from './components/ReportVariations';
+import TeacherManager from './components/TeacherManager';
 import { db } from './lib/db';
 import logo from '../logo.png';
 
-type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles' | 'jiaoxue' | 'teacherQuestions';
+type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles' | 'jiaoxue' | 'teacherQuestions' | 'reportCenter' | 'teacherManager';
 
 const API_PREFIX = '/api';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  // 初始 view：优先恢复上次所在页面，否则按账号角色给默认
+  const [currentView, setCurrentView] = useState<View>(() => {
+    const saved = localStorage.getItem('errorbook_currentView');
+    if (saved && (saved === 'library' || saved === 'aiVariation' || saved === 'jiaowu' || saved === 'jiaoxue' || saved === 'dashboard')) {
+      return saved as View;
+    }
+    const savedType = localStorage.getItem('errorbook_accountType');
+    if (savedType === 'jiaowu') return 'jiaowu';
+    if (savedType === 'jiaoxue') return 'jiaoxue';
+    if (savedType === 'student') return 'library';
+    return 'dashboard';
+  });
   const [showSqlTip, setShowSqlTip] = useState(false);
   const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
   const [paperOptions, setPaperOptions] = useState<{ customImages?: Record<string, string>, hiddenImages?: Record<string, boolean> }>({});
@@ -112,6 +126,11 @@ export default function App() {
     }
   }, [forgotCountdown]);
 
+  // 记住当前所在页面，刷新后恢复（避免刷新跳回数据看板）
+  useEffect(() => {
+    localStorage.setItem('errorbook_currentView', currentView);
+  }, [currentView]);
+
   // 拉取个人会员及额度信息
   const fetchUserInfo = async () => {
     if (!token) return;
@@ -135,6 +154,7 @@ export default function App() {
           localStorage.removeItem('errorbook_username');
           localStorage.removeItem('errorbook_role');
           localStorage.removeItem('errorbook_accountType');
+          localStorage.removeItem('errorbook_currentView');
           setToken(null);
           setUsername(null);
           setRole(null);
@@ -146,6 +166,7 @@ export default function App() {
         localStorage.removeItem('errorbook_username');
         localStorage.removeItem('errorbook_role');
         localStorage.removeItem('errorbook_accountType');
+        localStorage.removeItem('errorbook_currentView');
         setToken(null);
         setUsername(null);
         setRole(null);
@@ -294,7 +315,7 @@ export default function App() {
       // 登录成功后按角色路由到对应工作台
       if (data.accountType === 'jiaowu') setCurrentView('jiaowu');
       else if (data.accountType === 'jiaoxue') setCurrentView('jiaoxue');
-      else if (data.accountType === 'student') setCurrentView('dashboard');
+      else if (data.accountType === 'student') setCurrentView('library');
       setAuthUsername('');
       setAuthPassword('');
       setIdCardLast6('');
@@ -321,6 +342,7 @@ export default function App() {
     localStorage.removeItem('errorbook_username');
     localStorage.removeItem('errorbook_role');
     localStorage.removeItem('errorbook_accountType');
+    localStorage.removeItem('errorbook_currentView');
     setToken(null);
     setUsername(null);
     setRole(null);
@@ -467,8 +489,13 @@ export default function App() {
     }
   };
 
-  // ===== 第二阶段：免登录学情报表页（/report/:token） =====
-  const reportMatch = typeof window !== 'undefined' ? window.location.pathname.match(/^\/report\/([a-f0-9]+)$/) : null;
+  // ===== 第二阶段：免登录报表页（/report/:token）与举一反三页（/report/:token/variations） =====
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const reportVariationsMatch = path.match(/^\/report\/([a-f0-9]+)\/variations$/);
+  if (reportVariationsMatch) {
+    return <ReportVariations token={reportVariationsMatch[1]} />;
+  }
+  const reportMatch = path.match(/^\/report\/([a-f0-9]+)$/);
   if (reportMatch) {
     return <ReportView token={reportMatch[1]} />;
   }
@@ -860,7 +887,7 @@ export default function App() {
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">
               <span className="text-white font-bold text-xs">AI</span>
             </div>
-            <h1 className="text-lg font-extrabold tracking-tight text-slate-900">智能错题本</h1>
+            <h1 className="text-lg font-extrabold tracking-tight text-slate-900">数学满分</h1>
           </div>
         </div>
 
@@ -869,16 +896,22 @@ export default function App() {
           {accountType === 'jiaowu' && (
             <>
               <SidebarItem
-                active={currentView === 'dashboard'}
-                onClick={() => setCurrentView('dashboard')}
-                icon={<Home className="w-4 h-4 ml-1" />}
-                label="首页"
-              />
-              <SidebarItem
                 active={currentView === 'jiaowu'}
                 onClick={() => setCurrentView('jiaowu')}
                 icon={<Users className="w-4 h-4 ml-1" />}
                 label="学生管理"
+              />
+              <SidebarItem
+                active={currentView === 'teacherManager'}
+                onClick={() => setCurrentView('teacherManager')}
+                icon={<GraduationCap className="w-4 h-4 ml-1" />}
+                label="教学老师管理"
+              />
+              <SidebarItem
+                active={currentView === 'reportCenter'}
+                onClick={() => setCurrentView('reportCenter')}
+                icon={<FileBarChart className="w-4 h-4 ml-1" />}
+                label="报表中心"
               />
             </>
           )}
@@ -886,12 +919,6 @@ export default function App() {
           {/* 教学老师专属菜单 */}
           {accountType === 'jiaoxue' && (
             <>
-              <SidebarItem
-                active={currentView === 'dashboard'}
-                onClick={() => setCurrentView('dashboard')}
-                icon={<Home className="w-4 h-4 ml-1" />}
-                label="首页"
-              />
               <SidebarItem
                 active={currentView === 'jiaoxue'}
                 onClick={() => setCurrentView('jiaoxue')}
@@ -907,8 +934,8 @@ export default function App() {
             </>
           )}
 
-          {/* 首页（非 jiaowu 角色共用） */}
-          {accountType !== 'jiaowu' && (
+          {/* 首页（仅旧账号角色显示，jiaowu/jiaoxue/student 均不显示） */}
+          {!accountType && (
             <button
               onClick={() => setCurrentView('dashboard')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'dashboard'
@@ -980,7 +1007,7 @@ export default function App() {
             </button>
           )}
 
-          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+          {!accountType && (
             <button
               onClick={() => setCurrentView('exercise')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'exercise'
@@ -996,7 +1023,7 @@ export default function App() {
             </button>
           )}
 
-          {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+          {!accountType && (
             <button
               onClick={() => setCurrentView('papers')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'papers'
@@ -1079,8 +1106,8 @@ export default function App() {
 
         {/* 侧边栏底部操作区 (参照图1设计) */}
         <div className="mt-auto border-t border-slate-100 bg-white space-y-1">
-          {/* 新建错题按钮（jiaowu 不显示，教务无上传错题功能） */}
-          {accountType !== 'jiaowu' && (
+          {/* 新建错题按钮（仅旧账号角色显示，教务/教学/学生均隐藏） */}
+          {!accountType && (
             <div className="p-3">
               <button
                 onClick={() => setCurrentView('add')}
@@ -1095,7 +1122,7 @@ export default function App() {
           {/* 会员和设置二级项 */}
           <div className="px-3 pb-2 space-y-0.5">
             {/* 会员（jiaowu/jiaoxue 不显示会员入口） */}
-            {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+            {!accountType && (
               <button
                 onClick={() => setCurrentView('vipCenter')}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'vipCenter'
@@ -1193,7 +1220,9 @@ export default function App() {
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="w-full space-y-6 transition-all">
             {currentView === 'jiaowu' && <JiaowuDashboard />}
-            {currentView === 'jiaoxue' && <JiaoxueWorkbench />}
+            {currentView === 'reportCenter' && <ReportCenter />}
+            {currentView === 'teacherManager' && <TeacherManager />}
+            {currentView === 'jiaoxue' && <JiaoxueWorkbench initialTab={(localStorage.getItem('errorbook_jiaoxue_initialTab') as any) || undefined} />}
             {currentView === 'teacherQuestions' && <TeacherQuestionList />}
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
@@ -1206,6 +1235,7 @@ export default function App() {
                 initialNotebookId={libraryNotebookId}
                 initialSearchKey={librarySearchKey}
                 initialMasteryStatus={libraryMasteryStatus}
+                hideMasteryUI={accountType === 'student'}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('library');
@@ -1221,6 +1251,7 @@ export default function App() {
                 initialNotebookId={libraryNotebookId}
                 initialSearchKey={librarySearchKey}
                 initialMasteryStatus={libraryMasteryStatus}
+                hideMasteryUI={accountType === 'student'}
                 onGeneratePaper={(selected) => {
                   setPaperQuestions(selected);
                   setPaperSourceView('aiVariation');
@@ -1300,7 +1331,7 @@ export default function App() {
               active={currentView === 'users'}
               onClick={() => setCurrentView('users')}
             />
-          ) : (
+          ) : !accountType ? (
             <div className="relative -top-5">
               <button
                 onClick={() => setCurrentView('add')}
@@ -1309,6 +1340,8 @@ export default function App() {
                 <Camera className="w-6 h-6" />
               </button>
             </div>
+          ) : (
+            <div className="w-14 h-14" />
           )}
           <NavItem
             icon={<Database className="w-5 h-5" />} label="错题库"
@@ -1401,7 +1434,13 @@ export default function App() {
                 {['pending_extract_review', 'pending_diagnose_review', 'failed'].includes(n.status) ? (
                   <button
                     onClick={() => {
-                      setCurrentView('tasks');
+                      // 教学老师：直接跳到对应工作台（不进入管理员 TaskCenter）
+                      if (accountType === 'jiaoxue' && n.status === 'pending_diagnose_review') {
+                        localStorage.setItem('errorbook_jiaoxue_initialTab', 'proofread');
+                        setCurrentView('jiaoxue');
+                      } else {
+                        setCurrentView('tasks');
+                      }
                       handleDismissNotification(n.id, n.alertKey);
                     }}
                     className={`text-[0.625rem] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${n.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' :

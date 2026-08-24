@@ -398,13 +398,13 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
                     {task.status === 'pending_diagnose_review' ? <Clock className="w-5 h-5" /> : task.status === 'completed' ? <CheckCircle2 className="w-5 h-5" /> : <Loader2 className="w-5 h-5 animate-spin" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-800 truncate">{task.taskName}</span>
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-black shrink-0 ${task.status === 'pending_diagnose_review' ? 'bg-amber-50 text-amber-600 animate-pulse' : task.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : task.status === 'failed' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-base font-bold text-slate-800 truncate">{task.taskName}</span>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-black shrink-0 ${task.status === 'pending_diagnose_review' ? 'bg-amber-50 text-amber-600 animate-pulse' : task.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : task.status === 'failed' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
                         {REVIEW_STATUS[task.status] || task.status}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{task.id} {studentId ? `· 学生: ${studentId}` : ''}</div>
+                    <div className="text-xs text-slate-500 font-mono mt-0.5">{task.id} {studentId ? `· 学生: ${studentId}` : ''}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {task.status === 'pending_diagnose_review' && (
@@ -414,11 +414,11 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
                         (task.payload?.diagnosedQuestions || []).forEach((q: any, idx: number) => { reasons[idx] = q.errorReason || ''; });
                         setEditedReasons(reasons);
                         setDetailTask(task);
-                      }} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition">
-                        <Eye className="w-3.5 h-3.5" />审查归档
+                      }} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold flex items-center gap-1 cursor-pointer transition">
+                        <Eye className="w-4 h-4" />审查归档
                       </button>
                     )}
-                    {task.status === 'pending_diagnose_review' && <span className="text-[10px] text-slate-400 font-bold">识别出 {diagnosed.length} 道题</span>}
+                    {task.status === 'pending_diagnose_review' && <span className="text-xs text-slate-500 font-bold">识别出 {diagnosed.length} 道题</span>}
                   </div>
                 </div>
                 {!['pending_diagnose_review', 'completed'].includes(task.status) && (

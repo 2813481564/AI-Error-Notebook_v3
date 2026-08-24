@@ -1,5 +1,5 @@
 {
-  "name": "AI智能错题本",
+  "name": "数学满分",
   "description": "拍照录入、AI解析、数据分析及同类题推荐",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

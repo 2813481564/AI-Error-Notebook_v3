@@ -16,8 +16,15 @@ function getHeaders(): HeadersInit {
   };
 }
 
-export default function JiaoxueWorkbench() {
-  const [tab, setTab] = useState<Tab>('quick');
+export default function JiaoxueWorkbench({ initialTab }: { initialTab?: Tab } = {}) {
+  // 一次性使用：读取后清空 localStorage 避免后续进入仍受污染
+  const [tab, setTab] = useState<Tab>(() => {
+    const fromProp = initialTab;
+    const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('errorbook_jiaoxue_initialTab') as Tab | null : null;
+    const tab2 = fromProp || fromStorage || 'quick';
+    if (typeof window !== 'undefined' && fromStorage) localStorage.removeItem('errorbook_jiaoxue_initialTab');
+    return tab2 as Tab;
+  });
   const [students, setStudents] = useState<{ username: string; realName: string | null; grade: string | null }[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
 

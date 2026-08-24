@@ -203,6 +203,22 @@ export const login = (req: express.Request, res: express.Response) => {
 
       const token = crypto.randomUUID();
       db.prepare("INSERT INTO sessions (token, username, createdAt) VALUES (?, ?, ?)").run(token, user.username, Date.now());
+
+      // 第二阶段：学生账号兜底创建 AI 变式题本（旧学生首次登录自动补齐）
+      if (user.accountType === 'student') {
+        try {
+          const realName = (db.prepare("SELECT realName FROM users WHERE username = ?").get(user.username) as any)?.realName || user.username;
+          const variationNb = db.prepare("SELECT id FROM notebooks WHERE userId = ? AND type = 'variation' LIMIT 1").get(user.username) as { id: string } | undefined;
+          if (!variationNb) {
+            const nbId = "nb_" + Math.random().toString(36).substring(2, 9);
+            db.prepare(`INSERT INTO notebooks (id, name, userId, createdAt, grade, type) VALUES (?, ?, ?, ?, NULL, 'variation')`)
+              .run(nbId, realName + "的变式题本", user.username, Date.now());
+          }
+        } catch (e) {
+          console.error("学生变式题本兜底创建失败:", e);
+        }
+      }
+
       return res.json({ token, username: user.username, role: user.role, accountType: user.accountType || null });
     }
   } catch (error: any) {
