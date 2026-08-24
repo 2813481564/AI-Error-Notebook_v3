@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Loader2, Clock, CheckCircle2, XCircle, Trash2, Copy, Camera, MousePointer, Scissors, X, Plus } from 'lucide-react';
+import { Upload, Loader2, Clock, CheckCircle2, XCircle, Trash2, Copy, Camera, MousePointer, Scissors, X, Plus, Lock } from 'lucide-react';
 
 const API_PREFIX = '/api';
 
@@ -93,7 +93,7 @@ const statusMeta: Record<string, { label: string; color: string; icon: React.Rea
   failed: { label: '失败', color: 'bg-rose-50 text-rose-600', icon: <XCircle className="w-3.5 h-3.5" /> }
 };
 
-export default function QuickAnswerList() {
+export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: string }) {
   const [tasks, setTasks] = useState<QuickTask[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -108,6 +108,11 @@ export default function QuickAnswerList() {
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawCur, setDrawCur] = useState({ x: 0, y: 0 });
   const [recognizing, setRecognizing] = useState(false);
+  // 二次编辑：当前选中（锁定）编辑的框 id，选中后该框可拖动调整大小/位置，其它框变灰
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  // 当前正在拖动的编辑类型：'move'（移动）或控制点方向 nw/ne/sw/se/n/s/e/w
+  const [editing, setEditing] = useState(false);
+  const [editType, setEditType] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 轮询单任务状态
@@ -219,32 +224,151 @@ export default function QuickAnswerList() {
       setEditImage(compressed);
       setEditMime('image/jpeg');
       setBoxes([]);
+      setSelectedBoxId(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
       setErr(e.message || '图片处理失败');
     }
   };
 
-  // ===== 框选交互 =====
+  // ===== 框选交互（支持二次编辑：拖动角/边改大小、拖动内部移动） =====
+
+  // 根据点击坐标判断命中的控制点方向，命中返回方向，否则返回 null
+  const hitControlPoint = (box: QuadBox, x: number, y: number): string | null => {
+    const T = 4; // 命中容差（百分比）
+    const pts: { k: string; px: number; py: number }[] = [
+      { k: 'nw', px: box.p0.x, py: box.p0.y },
+      { k: 'ne', px: box.p2.x, py: box.p0.y },
+      { k: 'sw', px: box.p0.x, py: box.p2.y },
+      { k: 'se', px: box.p2.x, py: box.p2.y },
+      { k: 'n', px: (box.p0.x + box.p2.x) / 2, py: box.p0.y },
+      { k: 's', px: (box.p0.x + box.p2.x) / 2, py: box.p2.y },
+      { k: 'e', px: box.p2.x, py: (box.p0.y + box.p2.y) / 2 },
+      { k: 'w', px: box.p0.x, py: (box.p0.y + box.p2.y) / 2 }
+    ];
+    for (const p of pts) {
+      if (Math.abs(x - p.px) <= T && Math.abs(y - p.py) <= T) return p.k;
+    }
+    return null;
+  };
+
+  // 判断点是否在框内部（用于移动）
+  const hitBoxInside = (box: QuadBox, x: number, y: number): boolean => {
+    const minX = Math.min(box.p0.x, box.p2.x);
+    const maxX = Math.max(box.p0.x, box.p2.x);
+    const minY = Math.min(box.p0.y, box.p2.y);
+    const maxY = Math.max(box.p0.y, box.p2.y);
+    return x >= minX && x <= maxX && y >= minY && y <= maxY;
+  };
+
+  const clampBox = (box: QuadBox): QuadBox => {
+    let x0 = Math.max(0, Math.min(100, Math.min(box.p0.x, box.p2.x)));
+    let y0 = Math.max(0, Math.min(100, Math.min(box.p0.y, box.p2.y)));
+    let x1 = Math.max(0, Math.min(100, Math.max(box.p0.x, box.p2.x)));
+    let y1 = Math.max(0, Math.min(100, Math.max(box.p0.y, box.p2.y)));
+    if (x1 - x0 < 1) x1 = x0 + 1;
+    if (y1 - y0 < 1) y1 = y0 + 1;
+    return {
+      id: box.id,
+      p0: { x: x0, y: y0 },
+      p1: { x: x1, y: y0 },
+      p2: { x: x1, y: y1 },
+      p3: { x: x0, y: y1 }
+    };
+  };
+
+  const startEdit = (id: string, type: string, x: number, y: number) => {
+    setSelectedBoxId(id);
+    setEditing(true);
+    setEditType(type);
+    setDrawing(false);
+    editStartRef.current = { id, type, x, y, startBox: boxes.find(b => b.id === id) || null };
+  };
+  // 记录编辑起始状态（用于移动时的偏移计算）
+  const editStartRef = useRef<{ id: string; type: string; x: number; y: number; startBox: QuadBox | null } | null>(null);
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    // 优先判断是否命中已选中框的控制点（二次编辑大小）
+    if (selectedBoxId) {
+      const box = boxes.find(b => b.id === selectedBoxId);
+      if (box) {
+        const cp = hitControlPoint(box, x, y);
+        if (cp) {
+          startEdit(selectedBoxId, cp, x, y);
+          return;
+        }
+        if (hitBoxInside(box, x, y)) {
+          startEdit(selectedBoxId, 'move', x, y);
+          return;
+        }
+      }
+    }
+
+    // 否则：开始画新框
     setDrawing(true);
     setDrawStart({ x, y });
     setDrawCur({ x, y });
   };
 
+  // 根据编辑类型更新框坐标
+  const applyEdit = (box: QuadBox, type: string, x: number, y: number): QuadBox => {
+    const st = editStartRef.current;
+    if (!st || !st.startBox) return box;
+    const b = st.startBox;
+    let x0 = b.p0.x, y0 = b.p0.y, x1 = b.p2.x, y1 = b.p2.y;
+    switch (type) {
+      case 'move': {
+        const dx = x - st.x, dy = y - st.y;
+        x0 += dx; y0 += dy; x1 += dx; y1 += dy;
+        break;
+      }
+      case 'nw': x0 = x; y0 = y; break;
+      case 'ne': x1 = x; y0 = y; break;
+      case 'sw': x0 = x; y1 = y; break;
+      case 'se': x1 = x; y1 = y; break;
+      case 'n': y0 = y; break;
+      case 's': y1 = y; break;
+      case 'e': x1 = x; break;
+      case 'w': x0 = x; break;
+    }
+    return clampBox({
+      id: box.id,
+      p0: { x: x0, y: y0 },
+      p1: { x: x1, y: y0 },
+      p2: { x: x1, y: y1 },
+      p3: { x: x0, y: y1 }
+    });
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawing || !containerRef.current) return;
+    if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-    setDrawCur({ x, y });
+
+    // 编辑已选中的框
+    if (editing && editType && editStartRef.current) {
+      setBoxes(prev => prev.map(b => b.id === editStartRef.current!.id ? applyEdit(b, editType!, x, y) : b));
+      return;
+    }
+    // 绘制新框
+    if (drawing) {
+      setDrawCur({ x, y });
+    }
   };
 
   const handleMouseUp = () => {
+    if (editing) {
+      setEditing(false);
+      setEditType(null);
+      editStartRef.current = null;
+      return;
+    }
     if (!drawing) return;
     setDrawing(false);
     const x = Math.min(drawStart.x, drawCur.x);
@@ -252,16 +376,84 @@ export default function QuickAnswerList() {
     const w = Math.abs(drawCur.x - drawStart.x);
     const h = Math.abs(drawCur.y - drawStart.y);
     if (w > 1.5 && h > 1.5) {
-      setBoxes(prev => [...prev, {
+      const newBox: QuadBox = {
         id: 'box_' + Math.random().toString(36).substring(2, 9),
         p0: { x, y }, p1: { x: x + w, y }, p2: { x: x + w, y: y + h }, p3: { x, y: y + h }
-      }]);
+      };
+      setBoxes(prev => [...prev, newBox]);
+      // 新建后自动选中，便于立即二次编辑
+      setSelectedBoxId(newBox.id);
     }
   };
 
   const deleteBox = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setBoxes(prev => prev.filter(b => b.id !== id));
+    if (selectedBoxId === id) setSelectedBoxId(null);
+  };
+
+  // ===== 触摸框选（手机端支持，含二次编辑） =====
+  const getTouchPoint = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return null;
+    const rect = containerRef.current.getBoundingClientRect();
+    const touch = e.touches[0];
+    if (!touch) return null;
+    return {
+      x: Math.max(0, Math.min(100, ((touch.clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((touch.clientY - rect.top) / rect.height) * 100))
+    };
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const p = getTouchPoint(e);
+    if (!p) return;
+    // 命中已选中框控制点/内部 → 编辑；否则画新框
+    if (selectedBoxId) {
+      const box = boxes.find(b => b.id === selectedBoxId);
+      if (box) {
+        const cp = hitControlPoint(box, p.x, p.y);
+        if (cp) { startEdit(selectedBoxId, cp, p.x, p.y); return; }
+        if (hitBoxInside(box, p.x, p.y)) { startEdit(selectedBoxId, 'move', p.x, p.y); return; }
+      }
+    }
+    setDrawing(true);
+    setDrawStart(p);
+    setDrawCur(p);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const p = getTouchPoint(e);
+    if (!p) return;
+    if (editing && editType && editStartRef.current) {
+      setBoxes(prev => prev.map(b => b.id === editStartRef.current!.id ? applyEdit(b, editType!, p.x, p.y) : b));
+      return;
+    }
+    if (drawing) {
+      setDrawCur(p);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (editing) {
+      setEditing(false);
+      setEditType(null);
+      editStartRef.current = null;
+      return;
+    }
+    if (!drawing) return;
+    setDrawing(false);
+    const x = Math.min(drawStart.x, drawCur.x);
+    const y = Math.min(drawStart.y, drawCur.y);
+    const w = Math.abs(drawCur.x - drawStart.x);
+    const h = Math.abs(drawCur.y - drawStart.y);
+    if (w > 1.5 && h > 1.5) {
+      const newBox: QuadBox = {
+        id: 'box_' + Math.random().toString(36).substring(2, 9),
+        p0: { x, y }, p1: { x: x + w, y }, p2: { x: x + w, y: y + h }, p3: { x, y: y + h }
+      };
+      setBoxes(prev => [...prev, newBox]);
+      setSelectedBoxId(newBox.id);
+    }
   };
 
   // ===== 开始识别：每个框选区域单独创建任务 =====
@@ -287,7 +479,8 @@ export default function QuickAnswerList() {
             body: JSON.stringify({
               taskName: `题目${i + 1} ${new Date().toLocaleTimeString()}`,
               imageBase64: singleCrop,
-              mimeType: editMime
+              mimeType: editMime,
+              studentUsername: defaultStudent || null
             })
           });
           const data = await res.json();
@@ -314,6 +507,7 @@ export default function QuickAnswerList() {
       // 清空框选，进入结果查看
       setEditImage(null);
       setBoxes([]);
+      setSelectedBoxId(null);
     } catch (e: any) {
       setErr(e.message || '识别提交失败');
     } finally {
@@ -339,15 +533,24 @@ export default function QuickAnswerList() {
     return (
       <div className="space-y-5">
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
             <div>
               <h3 className="font-black text-slate-800 flex items-center gap-2">
                 <MousePointer className="w-4 h-4 text-blue-600" />框选题目区域
               </h3>
-              <p className="text-xs text-slate-400 font-medium mt-1">在图片上<b className="text-blue-600">拖拽鼠标</b>框选每道题，可框选多个区域；每个区域将<b className="text-indigo-600">单独</b>裁剪并独立识别答案</p>
+              <p className="text-xs text-slate-400 font-medium mt-1">在图片上<b className="text-blue-600">拖拽/滑动</b>框选每道题，可框选多个区域；每个区域将<b className="text-indigo-600">单独</b>裁剪并独立识别答案</p>
+              {defaultStudent ? (
+                <p className="text-xs text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />已绑定学生：{defaultStudent}，识别完成后可直接在作业批改中复用
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600 font-bold mt-1.5 flex items-center gap-1">
+                  <XCircle className="w-3.5 h-3.5" />未绑定学生：如需后续在作业批改中直接选择本题目，请返回顶部先选择学生
+                </p>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => { setEditImage(null); setBoxes([]); }} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-1"><X className="w-3.5 h-3.5" />取消</button>
+            <div className="flex items-center gap-2 flex-wrap justify-start md:justify-end">
+              <button onClick={() => { setEditImage(null); setBoxes([]); setSelectedBoxId(null); }} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-1"><X className="w-3.5 h-3.5" />取消</button>
               <button onClick={handleRecognize} disabled={recognizing || boxes.length === 0} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition cursor-pointer">
                 {recognizing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />识别中...</> : <><Scissors className="w-3.5 h-3.5" />开始识别 {boxes.length > 0 ? `(${boxes.length}个区域)` : ''}</>}
               </button>
@@ -356,37 +559,113 @@ export default function QuickAnswerList() {
 
           {err && <div className="mb-3 px-4 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">{err}</div>}
 
-          <div
-            ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="relative border-2 border-dashed border-slate-200 rounded-2xl overflow-hidden select-none cursor-crosshair bg-slate-50"
-          >
-            <img src={editImage} alt="待框选" className="w-full h-auto block" draggable={false} />
-            {/* 已框选区域 */}
-            {boxes.map(box => (
-              <div key={box.id}
-                className="absolute border-2 border-blue-500 bg-blue-500/15"
-                style={{ left: `${box.p0.x}%`, top: `${box.p0.y}%`, width: `${box.p2.x - box.p0.x}%`, height: `${box.p2.y - box.p0.y}%` }}>
-                <button onClick={e => deleteBox(box.id, e)} className="absolute -top-3 -right-3 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow cursor-pointer" title="删除选区">
-                  <X className="w-3 h-3" />
-                </button>
-                <span className="absolute -top-5 left-0 text-[10px] font-black text-blue-600 bg-white px-1.5 rounded shadow-sm">
-                  {boxes.findIndex(b => b.id === box.id) + 1}
-                </span>
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* 图片框选区 */}
+            <div className="flex-1 min-w-0">
+              <div
+                ref={containerRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+                className="relative border-2 border-dashed border-slate-200 rounded-2xl overflow-hidden select-none cursor-crosshair bg-slate-50 touch-none"
+              >
+                <img src={editImage} alt="待框选" className="w-full h-auto block" draggable={false} />
+                {/* 已框选区域 */}
+                {boxes.map(box => {
+                  const idx = boxes.findIndex(b => b.id === box.id) + 1;
+                  const isSel = box.id === selectedBoxId;
+                  const isGrey = selectedBoxId && !isSel && editing; // 编辑其他框时，未选中框变灰防误触
+                  return (
+                    <div key={box.id}
+                      className={`absolute border-2 ${isSel ? 'border-blue-600 bg-blue-500/15' : isGrey ? 'border-slate-300 bg-slate-300/10 pointer-events-none' : 'border-blue-400 bg-blue-400/10 pointer-events-none'}`}
+                      style={{ left: `${box.p0.x}%`, top: `${box.p0.y}%`, width: `${box.p2.x - box.p0.x}%`, height: `${box.p2.y - box.p0.y}%` }}>
+                      {isSel && (
+                        <button onClick={e => deleteBox(box.id, e)} className="absolute -top-3 -right-3 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow cursor-pointer" title="删除选区">
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                      <span className={`absolute -top-5 left-0 text-[10px] font-black bg-white px-1.5 rounded shadow-sm ${isSel ? 'text-blue-600' : 'text-slate-500'}`}>
+                        框{idx}
+                      </span>
+                    </div>
+                  );
+                })}
+                {/* 选中框的 8 个控制点（拖动改大小） */}
+                {selectedBoxId && (() => {
+                  const box = boxes.find(b => b.id === selectedBoxId);
+                  if (!box) return null;
+                  const controls: { k: string; left: number; top: number; cls: string }[] = [
+                    { k: 'nw', left: box.p0.x, top: box.p0.y, cls: 'cursor-nwse-resize' },
+                    { k: 'ne', left: box.p2.x, top: box.p0.y, cls: 'cursor-nesw-resize' },
+                    { k: 'sw', left: box.p0.x, top: box.p2.y, cls: 'cursor-nesw-resize' },
+                    { k: 'se', left: box.p2.x, top: box.p2.y, cls: 'cursor-nwse-resize' },
+                    { k: 'n', left: (box.p0.x + box.p2.x) / 2, top: box.p0.y, cls: 'cursor-ns-resize' },
+                    { k: 's', left: (box.p0.x + box.p2.x) / 2, top: box.p2.y, cls: 'cursor-ns-resize' },
+                    { k: 'e', left: box.p2.x, top: (box.p0.y + box.p2.y) / 2, cls: 'cursor-ew-resize' },
+                    { k: 'w', left: box.p0.x, top: (box.p0.y + box.p2.y) / 2, cls: 'cursor-ew-resize' }
+                  ];
+                  return controls.map(c => (
+                    <div key={c.k} className={`absolute w-3 h-3 bg-white border-2 border-blue-600 rounded-full ${c.cls}`}
+                      style={{ left: `calc(${c.left}% - 6px)`, top: `calc(${c.top}% - 6px)` }} />
+                  ));
+                })()}
+                {/* 正在绘制的选区 */}
+                {drawing && (
+                  <div className="absolute border-2 border-indigo-400 bg-indigo-400/20"
+                    style={{ left: `${Math.min(drawStart.x, drawCur.x)}%`, top: `${Math.min(drawStart.y, drawCur.y)}%`, width: `${Math.abs(drawCur.x - drawStart.x)}%`, height: `${Math.abs(drawCur.y - drawStart.y)}%` }} />
+                )}
               </div>
-            ))}
-            {/* 正在绘制的选区 */}
-            {drawing && (
-              <div className="absolute border-2 border-indigo-400 bg-indigo-400/20"
-                style={{ left: `${Math.min(drawStart.x, drawCur.x)}%`, top: `${Math.min(drawStart.y, drawCur.y)}%`, width: `${Math.abs(drawCur.x - drawStart.x)}%`, height: `${Math.abs(drawCur.y - drawStart.y)}%` }} />
-            )}
-          </div>
+              <div className="mt-3 text-xs text-slate-400 font-bold flex items-center gap-2 flex-wrap">
+                <Plus className="w-3.5 h-3.5" />已框选 {boxes.length} 个区域
+                {selectedBoxId ? (
+                  <span className="text-emerald-600">（正在编辑框{boxes.findIndex(b => b.id === selectedBoxId) + 1}：拖动角/边改大小，拖动内部移动，其他框已灰化防误触）</span>
+                ) : (
+                  <span className="text-amber-600">（在图片上拖动框选题目，框选后从右侧列表点选某框可锁定并二次编辑大小）</span>
+                )}
+              </div>
+            </div>
 
-          <div className="mt-4 text-xs text-slate-400 font-bold flex items-center gap-2">
-            <Plus className="w-3.5 h-3.5" />已框选 {boxes.length} 个区域，确认无误后点击"开始识别"
+            {/* 框选区域列表（点击条目锁定/选中该框，便于二次编辑） */}
+            <div className="w-full md:w-56 shrink-0">
+              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-3">
+                <div className="text-xs font-black text-slate-700 mb-2 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-blue-600" />已框选区域
+                  <span className="text-[10px] text-slate-400 font-bold ml-auto">{boxes.length} 个</span>
+                </div>
+                {boxes.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 font-bold py-2">暂无框选，请在图片上拖动框选题目</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {boxes.map((box, i) => {
+                      const isSel = box.id === selectedBoxId;
+                      return (
+                        <div
+                          key={box.id}
+                          onClick={() => setSelectedBoxId(isSel ? null : box.id)}
+                          className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-xs font-bold cursor-pointer transition ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'}`}
+                        >
+                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 ${isSel ? 'bg-white/20' : 'bg-blue-50 text-blue-600'}`}>{i + 1}</span>
+                          <span className="flex-1 truncate">框{i + 1}</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); deleteBox(box.id, e as any); }}
+                            title="删除该框"
+                            className={`w-6 h-6 rounded-md flex items-center justify-center transition shrink-0 ${isSel ? 'bg-white/20 hover:bg-white/30 text-white' : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600'}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-400 font-medium mt-2 leading-relaxed">点选某框后即可拖动<b className="text-blue-600">四角/边缘</b>改大小、拖动<b className="text-blue-600">内部</b>移动位置，其他框自动灰化避免误触。</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -399,9 +678,18 @@ export default function QuickAnswerList() {
       {/* 上传区 */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
         <h3 className="font-black text-slate-800 flex items-center gap-2 mb-1">
-          <Camera className="w-4 h-4 text-blue-600" />快速答题（上传原题，框选后立即获取答案）
+          <Camera className="w-4 h-4 text-blue-600" />AI解题（上传原题，框选后立即获取答案）
         </h3>
-        <p className="text-xs text-slate-400 font-medium mb-4">上传试卷/题目图片后，可手动框选多个题目区域，系统将<b className="text-indigo-600">每个框选区域拆分为独立任务</b>分别识别答案，互不影响、可同时进行。</p>
+        <p className="text-xs text-slate-400 font-medium mb-2">上传试卷/题目图片后，可手动框选多个题目区域，系统将<b className="text-indigo-600">每个框选区域拆分为独立任务</b>分别识别答案，互不影响、可同时进行。</p>
+        {defaultStudent ? (
+          <p className="text-xs text-emerald-600 font-bold mb-4 flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />当前绑定学生：{defaultStudent}，识别后可到「作业批改」下拉直接复用本题目
+          </p>
+        ) : (
+          <p className="text-xs text-amber-600 font-bold mb-4 flex items-center gap-1">
+            <XCircle className="w-3.5 h-3.5" />尚未选择学生：如需后续在作业批改中直接选用，请先在顶部选择学生
+          </p>
+        )}
         <input
           ref={fileInputRef}
           type="file"

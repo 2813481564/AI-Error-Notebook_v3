@@ -1,5 +1,5 @@
 import React, { useState, ReactNode, useEffect, useRef } from 'react';
-import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut, GraduationCap, FileBarChart } from 'lucide-react';
+import { Camera, Database, Home, HelpCircle, HardDrive, Users, BookOpen, Award, CheckCircle2, Sparkles, FileText, Globe, Check, Mail, EyeOff, Eye, Lock, User, Settings, Megaphone, Clock, LogOut, GraduationCap, FileBarChart, Menu, X, Zap, ClipboardCheck } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AddQuestion from './components/AddQuestion';
 import QuestionLibrary from './components/QuestionLibrary';
@@ -42,6 +42,11 @@ export default function App() {
     return 'dashboard';
   });
   const [showSqlTip, setShowSqlTip] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [jiaoxueTab, setJiaoxueTab] = useState<'quick' | 'proofread' | 'notebook'>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('errorbook_jiaoxue_mobileTab') as 'quick' | 'proofread' | 'notebook' | null : null;
+    return saved || 'quick';
+  });
   const [paperQuestions, setPaperQuestions] = useState<any[]>([]);
   const [paperOptions, setPaperOptions] = useState<{ customImages?: Record<string, string>, hiddenImages?: Record<string, boolean> }>({});
   const [paperSourceView, setPaperSourceView] = useState<View>('library');
@@ -884,9 +889,7 @@ export default function App() {
       <aside className="no-print w-64 bg-white border-r border-slate-200 hidden md:flex flex-col shrink-0">
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">
-              <span className="text-white font-bold text-xs">AI</span>
-            </div>
+            <img src={logo} alt="数学满分" className="w-8 h-8 object-contain" />
             <h1 className="text-lg font-extrabold tracking-tight text-slate-900">数学满分</h1>
           </div>
         </div>
@@ -1194,9 +1197,14 @@ export default function App() {
         {/* Mobile Header (Hidden on Desktop) */}
         <header className="no-print md:hidden flex h-16 bg-white border-b border-slate-200 items-center justify-between px-5 sticky top-0 z-25 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-[10px]">AI</span>
-            </div>
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-colors cursor-pointer shrink-0"
+              aria-label="打开菜单"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+            <img src={logo} alt="数学满分" className="w-6 h-6 object-contain" />
             <h1 className="text-md font-extrabold tracking-tight text-slate-900">智能错题本</h1>
           </div>
           <div className="flex gap-2">
@@ -1222,7 +1230,7 @@ export default function App() {
             {currentView === 'jiaowu' && <JiaowuDashboard />}
             {currentView === 'reportCenter' && <ReportCenter />}
             {currentView === 'teacherManager' && <TeacherManager />}
-            {currentView === 'jiaoxue' && <JiaoxueWorkbench initialTab={(localStorage.getItem('errorbook_jiaoxue_initialTab') as any) || undefined} />}
+            {currentView === 'jiaoxue' && <JiaoxueWorkbench initialTab={(localStorage.getItem('errorbook_jiaoxue_initialTab') as any) || undefined} controlledTab={jiaoxueTab} />}
             {currentView === 'teacherQuestions' && <TeacherQuestionList />}
             {currentView === 'dashboard' && <Dashboard onNavigate={handleNavigate} pendingTasksCount={pendingTasksCount} />}
             {currentView === 'add' && <AddQuestion onNavigate={handleNavigate} initialUploadMode={addUploadMode} />}
@@ -1315,46 +1323,189 @@ export default function App() {
 
         {/* Mobile Navigation - Only Bottom */}
         <nav className="no-print md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
-          <NavItem
-            icon={<Home className="w-5 h-5" />} label="首页"
-            active={currentView === 'dashboard'}
-            onClick={() => setCurrentView('dashboard')}
-          />
-          <NavItem
-            icon={<Database className="w-5 h-5" />} label="错题库"
-            active={currentView === 'library'}
-            onClick={() => handleNavigate('library')}
-          />
-          {role === 'admin' ? (
-            <NavItem
-              icon={<Users className="w-5 h-5" />} label="用户管理"
-              active={currentView === 'users'}
-              onClick={() => setCurrentView('users')}
-            />
-          ) : !accountType ? (
-            <div className="relative -top-5">
-              <button
-                onClick={() => setCurrentView('add')}
-                className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
-              >
-                <Camera className="w-6 h-6" />
-              </button>
-            </div>
+          {accountType === 'jiaoxue' ? (
+            <>
+              <NavItem
+                icon={<Zap className="w-5 h-5" />} label="AI解题"
+                active={currentView === 'jiaoxue' && jiaoxueTab === 'quick'}
+                onClick={() => { setJiaoxueTab('quick'); setCurrentView('jiaoxue'); }}
+              />
+              <NavItem
+                icon={<ClipboardCheck className="w-5 h-5" />} label="作业批改"
+                active={currentView === 'jiaoxue' && jiaoxueTab === 'proofread'}
+                onClick={() => { setJiaoxueTab('proofread'); setCurrentView('jiaoxue'); }}
+              />
+              <NavItem
+                icon={<BookOpen className="w-5 h-5" />} label="学生错题本"
+                active={currentView === 'jiaoxue' && jiaoxueTab === 'notebook'}
+                onClick={() => { setJiaoxueTab('notebook'); setCurrentView('jiaoxue'); }}
+              />
+            </>
           ) : (
-            <div className="w-14 h-14" />
+            <>
+              <NavItem
+                icon={<Home className="w-5 h-5" />} label="首页"
+                active={currentView === 'dashboard'}
+                onClick={() => setCurrentView('dashboard')}
+              />
+              <NavItem
+                icon={<Database className="w-5 h-5" />} label="错题库"
+                active={currentView === 'library'}
+                onClick={() => handleNavigate('library')}
+              />
+              {role === 'admin' ? (
+                <NavItem
+                  icon={<Users className="w-5 h-5" />} label="用户管理"
+                  active={currentView === 'users'}
+                  onClick={() => setCurrentView('users')}
+                />
+              ) : !accountType ? (
+                <div className="relative -top-5">
+                  <button
+                    onClick={() => setCurrentView('add')}
+                    className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
+                  >
+                    <Camera className="w-6 h-6" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-14 h-14" />
+              )}
+              <NavItem
+                icon={<Database className="w-5 h-5" />} label="错题库"
+                active={currentView === 'library'}
+                onClick={() => handleNavigate('library')}
+              />
+              <NavItem
+                icon={<Award className="w-5 h-5" />} label="会员中心"
+                active={currentView === 'vipCenter'}
+                onClick={() => setCurrentView('vipCenter')}
+              />
+            </>
           )}
-          <NavItem
-            icon={<Database className="w-5 h-5" />} label="错题库"
-            active={currentView === 'library'}
-            onClick={() => handleNavigate('library')}
-          />
-          <NavItem
-            icon={<Award className="w-5 h-5" />} label="会员中心"
-            active={currentView === 'vipCenter'}
-            onClick={() => setCurrentView('vipCenter')}
-          />
-
         </nav>
+
+        {/* Mobile Drawer Menu */}
+        {mobileMenuOpen && (
+          <div className="no-print md:hidden fixed inset-0 z-30">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
+            <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[80vw] bg-white shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <img src={logo} alt="数学满分" className="w-8 h-8 object-contain" />
+                  <h1 className="text-lg font-extrabold tracking-tight text-slate-900">数学满分</h1>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-colors cursor-pointer" aria-label="关闭菜单">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+                {/* ===== 第二阶段：教务/教学/学生 专属菜单（accountType 分流） ===== */}
+                {accountType === 'jiaowu' && (
+                  <>
+                    <SidebarItem active={currentView === 'jiaowu'} onClick={() => { setMobileMenuOpen(false); setCurrentView('jiaowu'); }} icon={<Users className="w-4 h-4 ml-1" />} label="学生管理" />
+                    <SidebarItem active={currentView === 'teacherManager'} onClick={() => { setMobileMenuOpen(false); setCurrentView('teacherManager'); }} icon={<GraduationCap className="w-4 h-4 ml-1" />} label="教学老师管理" />
+                    <SidebarItem active={currentView === 'reportCenter'} onClick={() => { setMobileMenuOpen(false); setCurrentView('reportCenter'); }} icon={<FileBarChart className="w-4 h-4 ml-1" />} label="报表中心" />
+                  </>
+                )}
+                {/* 教学老师专属菜单 */}
+                {accountType === 'jiaoxue' && (
+                  <>
+                    <SidebarItem active={currentView === 'jiaoxue'} onClick={() => { setMobileMenuOpen(false); setCurrentView('jiaoxue'); }} icon={<GraduationCap className="w-4 h-4 ml-1" />} label="教学工作台" />
+                    <SidebarItem active={currentView === 'teacherQuestions'} onClick={() => { setMobileMenuOpen(false); setCurrentView('teacherQuestions'); }} icon={<BookOpen className="w-4 h-4 ml-1" />} label="题目列表" />
+                  </>
+                )}
+                {/* 首页 */}
+                {!accountType && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('dashboard'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'dashboard' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'dashboard' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Home className="w-4 h-4 ml-1" /><span>首页</span>
+                  </button>
+                )}
+                {/* 我的错题本 */}
+                {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+                  <button onClick={() => { setMobileMenuOpen(false); handleNavigate('library'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'library' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'library' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Database className="w-4 h-4 ml-1" /><span>我的错题本</span>
+                  </button>
+                )}
+                {accountType !== 'jiaowu' && accountType !== 'jiaoxue' && (
+                  <button onClick={() => { setMobileMenuOpen(false); handleNavigate('aiVariation'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'aiVariation' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'aiVariation' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <BookOpen className="w-4 h-4 ml-1" /><span>AI变题库</span>
+                  </button>
+                )}
+                {role === 'admin' && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('tasks'); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'tasks' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'tasks' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <div className="flex items-center gap-3 ml-1"><Clock className="w-4 h-4" /><span>后台任务</span></div>
+                    {pendingTasksCount > 0 && <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 mr-1">{pendingTasksCount}</span>}
+                  </button>
+                )}
+                {!accountType && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('exercise'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'exercise' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'exercise' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Sparkles className="w-4 h-4 ml-1" /><span>组卷练习</span>
+                  </button>
+                )}
+                {!accountType && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('papers'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'papers' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'papers' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <FileText className="w-4 h-4 ml-1" /><span>我的试卷</span>
+                  </button>
+                )}
+                {role === 'admin' && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('users'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'users' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'users' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Users className="w-4 h-4 ml-1" /><span>用户管理</span>
+                  </button>
+                )}
+                {role === 'admin' && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('roles'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'roles' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'roles' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <GraduationCap className="w-4 h-4 ml-1" /><span>角色管理</span>
+                  </button>
+                )}
+                {role === 'admin' && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('settings'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'settings' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'settings' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Settings className="w-4 h-4 ml-1" /><span>系统设置</span>
+                  </button>
+                )}
+                {role === 'admin' && (
+                  <button onClick={() => { setMobileMenuOpen(false); setCurrentView('announcements'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all relative ${currentView === 'announcements' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                    {currentView === 'announcements' && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-blue-600 rounded-r-full" />}
+                    <Megaphone className="w-4 h-4 ml-1" /><span>公告管理</span>
+                  </button>
+                )}
+              </nav>
+
+              {/* 抽屉底部：设置 + 用户卡片 + 退出 */}
+              <div className="border-t border-slate-100 bg-white px-3 py-3 space-y-1">
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setCurrentView('profile'); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all relative ${currentView === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+                >
+                  {currentView === 'profile' && <span className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />}
+                  <Settings className="w-4 h-4 ml-1" /><span>设置</span>
+                </button>
+                <div className="px-4 pt-2 flex items-center justify-between gap-3 border-t border-slate-100">
+                  <div onClick={() => { setMobileMenuOpen(false); setCurrentView('profile'); }} className="flex items-center gap-2.5 cursor-pointer hover:opacity-85 transition-opacity overflow-hidden flex-1">
+                    <UserAvatar avatar={userInfo?.avatar || null} username={username} className="w-9 h-9 text-xs" />
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-xs font-bold text-slate-700 truncate">{userInfo?.nickname || username || '未登录'}</span>
+                      <span className="text-[9px] text-slate-400 font-bold truncate uppercase tracking-wider">{userInfo?.role || 'STUDENT'}</span>
+                    </div>
+                  </div>
+                  <button onClick={handleLogout} title="退出登录" className="w-8 h-8 rounded-xl border border-slate-150 bg-white hover:bg-slate-50 text-slate-450 hover:text-slate-700 flex items-center justify-center transition-all cursor-pointer shrink-0">
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SQLite Instruction Modal */}

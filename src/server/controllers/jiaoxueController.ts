@@ -11,12 +11,25 @@ import { unwrapJsonString, enqueueTaskForUser } from "./taskController";
 // 仅输出标准答案/关键步骤，跳过诊断。返回 taskId，前端轮询占位符。
 export const quickAnswer = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { taskName, imageBase64, mimeType } = req.body;
+    const { taskName, imageBase64, mimeType, studentUsername } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "请上传题目图片" });
     }
     if (!isBase64Image(imageBase64)) {
       return res.status(400).json({ error: "图片格式无效" });
+    }
+
+    // 可选绑定学生：若传入则校验该学生属于当前教学老师名下
+    if (studentUsername) {
+      const stu = db.prepare(
+        "SELECT accountType, teacherUsername FROM users WHERE username = ?"
+      ).get(studentUsername) as { accountType: string; teacherUsername: string | null } | undefined;
+      if (!stu || stu.accountType !== 'student') {
+        return res.status(404).json({ error: "目标学生不存在" });
+      }
+      if (stu.teacherUsername && stu.teacherUsername !== req.userId) {
+        return res.status(403).json({ error: "该学生不属于您名下" });
+      }
     }
 
     let savedImageUrl: string | null = null;
@@ -32,7 +45,8 @@ export const quickAnswer = async (req: AuthenticatedRequest, res: express.Respon
       imageBase64,
       mimeType: mimeType || 'image/jpeg',
       extractMode: 'single',
-      savedImageUrl
+      savedImageUrl,
+      studentId: studentUsername || null
     };
 
     db.prepare(`
@@ -405,6 +419,7 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
         sourceType: 'quick_answer',
         userId: row.userId,
         status: row.status || 'queued',
+        studentId: p.studentId || undefined,
         // 原题图片：裁剪后的选区图（用于详情回显）
         imageUrl: p.savedImageUrl || undefined,
         originalText: (qa && qa.originalText) || p.extractedText || "",
@@ -435,6 +450,46 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
   } catch (error: any) {
     console.error("Get All Teacher Questions Error:", error);
     res.status(500).json({ error: error.message || "获取题目列表失败" });
+  }
+};
+
+// 获取已完成并绑定了学生的 AI 解题错题（供作业批改直接下拉复用，避免重复上传）:
+// GET /api/jiaoxue/quick-answer-bound-questions
+export const getQuickAnswerBoundQuestions = (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const rows = db.prepare(`
+      SELECT id, taskName, status, uploadMode, payload, createdAt, errorMsg
+      FROM background_tasks
+      WHERE userId = ? AND uploadMode = 'quick_answer' AND status = 'completed'
+      ORDER BY createdAt DESC
+      LIMIT 100
+    `).all(req.userId) as any[];
+
+    const items = rows
+      .map(row => {
+        let p: any = {};
+        try { p = row.payload ? JSON.parse(row.payload) : {}; } catch (e) { p = {}; }
+        const qa = Array.isArray(p.quickAnswers) ? p.quickAnswers[0] : undefined;
+        // 仅返回绑定了学生的，且已有识别结果
+        if (!p.studentId) return null;
+        return {
+          id: row.id,
+          taskName: row.taskName,
+          studentId: p.studentId,
+          originalText: (qa && qa.originalText) || p.extractedText || "",
+          standardAnswer: (qa && qa.standardAnswer) || "",
+          subject: (qa && qa.subject) || "",
+          imageUrl: p.savedImageUrl || undefined,
+          quickAnswers: p.quickAnswers || undefined,
+          createdAt: row.createdAt
+        };
+      })
+      .filter((x: any) => !!x);
+
+    res.json(items);
+  } catch (error: any) {
+    console.error("Get Quick Answer Bound Questions Error:", error);
+    res.status(500).json({ error: error.message || "获取AI解题错题失败" });
   }
 };
 

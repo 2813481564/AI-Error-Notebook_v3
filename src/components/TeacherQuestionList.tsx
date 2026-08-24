@@ -158,12 +158,12 @@ export default function TeacherQuestionList() {
                   {(QUICK_STATUS[detail.status] || QUICK_STATUS.queued).label}
                 </span>
               )}
-              {!detail.isQuickTask && detail.masteryStatus && (
+              {!detail.isQuickTask && detail.masteryStatus && detail.sourceType !== 'correct_task' && (
                 <span className={`px-2.5 py-1 rounded-full text-xs font-black ${detail.masteryStatus === 'mastered' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                   {detail.masteryStatus === 'mastered' ? '已掌握' : '未掌握'}
                 </span>
               )}
-              {detail.score !== undefined && detail.score !== null && (
+              {detail.score !== undefined && detail.score !== null && detail.sourceType !== 'correct_task' && (
                 <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-black">得分 {detail.score}</span>
               )}
             </div>

@@ -127,6 +127,8 @@ router.post("/jiaoxue/correct-task/:taskId/review", requireJiaoxue, jiaoxueCtrl.
 // 学生错题本管理
 router.get("/jiaoxue/students", requireJiaoxue, jiaoxueCtrl.getMyStudents);
 router.get("/jiaoxue/student/:username/notebook", requireJiaoxue, jiaoxueCtrl.getStudentNotebook);
+// AI解题已完成错题（绑定了学生，供作业批改直接复用）
+router.get("/jiaoxue/quick-answer-bound-questions", requireJiaoxue, jiaoxueCtrl.getQuickAnswerBoundQuestions);
 router.put("/jiaoxue/student/:username", requireJiaoxue, jiaoxueCtrl.updateMyStudent);
 // 题目列表（所有老师上传的题目）
 router.get("/jiaoxue/all-questions", requireJiaoxue, jiaoxueCtrl.getAllTeacherQuestions);
