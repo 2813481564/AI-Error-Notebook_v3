@@ -65,6 +65,75 @@ export const quickAnswer = async (req: AuthenticatedRequest, res: express.Respon
   }
 };
 
+// 教学老师 AI 解题（一步式）: POST /api/jiaoxue/quick-answer-direct
+// 前端已手动框选单题，跳过 OCR 抽取，直接对图调用视觉模型一次输出题干+标准答案+关键步骤。
+// 使用独立 uploadMode 'quick_answer_direct'，完全不影响原两步流程。
+export const quickAnswerDirect = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { taskName, imageBase64, mimeType, studentUsername } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: "请上传题目图片" });
+    }
+    if (!isBase64Image(imageBase64)) {
+      return res.status(400).json({ error: "图片格式无效" });
+    }
+
+    // 可选绑定学生
+    if (studentUsername) {
+      const stu = db.prepare(
+        "SELECT accountType, teacherUsername FROM users WHERE username = ?"
+      ).get(studentUsername) as { accountType: string; teacherUsername: string | null } | undefined;
+      if (!stu || stu.accountType !== 'student') {
+        return res.status(404).json({ error: "目标学生不存在" });
+      }
+      if (stu.teacherUsername && stu.teacherUsername !== req.userId) {
+        return res.status(403).json({ error: "该学生不属于您名下" });
+      }
+    }
+
+    let savedImageUrl: string | null = null;
+    try {
+      savedImageUrl = saveBase64Image(imageBase64);
+    } catch (e) {
+      console.warn("AI解题(一步式)图片落盘失败:", e);
+    }
+
+    // 若绑定了学生，获取其默认错题本（供复查归档时进入学生错题本）
+    let notebookId: string | null = null;
+    let notebookName: string | null = null;
+    if (studentUsername) {
+      const studentInfo = db.prepare("SELECT realName FROM users WHERE username = ?").get(studentUsername) as { realName: string | null };
+      const nb = db.prepare("SELECT id FROM notebooks WHERE userId = ? AND type = 'normal' LIMIT 1").get(studentUsername) as { id: string } | undefined;
+      notebookId = nb ? nb.id : null;
+      notebookName = studentInfo?.realName ? `${studentInfo.realName}的错题本` : `${studentUsername}的错题本`;
+    }
+
+    const taskId = "task_" + Math.random().toString(36).substring(2, 9);
+    const timeNow = Date.now();
+    const payload = {
+      imageBase64,
+      mimeType: mimeType || 'image/jpeg',
+      savedImageUrl,
+      studentId: studentUsername || null,
+      notebookId,
+      notebookName
+    };
+
+    db.prepare(`
+      INSERT INTO background_tasks (
+        id, userId, taskName, status, progress, autoRun, uploadMode, notebookId, payload, createdAt, updatedAt, isNotified
+      ) VALUES (?, ?, ?, 'queued', 0, 1, 'quick_answer_direct', ?, ?, ?, ?, 0)
+    `).run(taskId, req.userId, taskName || `AI解题 ${new Date().toLocaleString()}`, notebookId, JSON.stringify(payload), timeNow, timeNow);
+
+    enqueueTaskForUser(req.userId!, taskId);
+
+    res.json({ success: true, taskId, message: "AI解题(一步式)任务已提交，正在排队识别..." });
+  } catch (error: any) {
+    console.error("Quick Answer Direct Error:", error);
+    res.status(500).json({ error: error.message || "AI解题任务创建失败" });
+  }
+};
+
 // 创建作业批改任务: POST /api/jiaoxue/correct-task
 // 携带目标学生，走完整 OCR+诊断，完成后进入待审查，审查后归档到学生错题本。
 export const correctTask = async (req: AuthenticatedRequest, res: express.Response) => {
@@ -145,8 +214,8 @@ export const reviewCorrectTask = async (req: AuthenticatedRequest, res: express.
     if (!task) {
       return res.status(404).json({ error: "任务不存在" });
     }
-    if (task.uploadMode !== 'correct_task') {
-      return res.status(400).json({ error: "该任务不是作业批改任务" });
+    if (task.uploadMode !== 'correct_task' && task.uploadMode !== 'quick_answer_direct') {
+      return res.status(400).json({ error: "该任务不是可归档任务" });
     }
     if (task.status !== 'pending_diagnose_review') {
       return res.status(400).json({ error: "任务当前状态不是待审查" });
@@ -193,7 +262,8 @@ export const reviewCorrectTask = async (req: AuthenticatedRequest, res: express.
 
     // 归档到学生错题本：studentId = 学生账号，notebookId = 学生默认错题本，userId = 教学老师
     const studentNotebookId = taskPayload.notebookId || null;
-    const archived = saveCorrectedToStudent(task.userId, studentId, finalDiagnosed, taskPayload.imageBase64, studentNotebookId);
+    const sourceType = task.uploadMode === 'quick_answer_direct' ? 'quick_answer_direct' : 'correct_task';
+    const archived = saveCorrectedToStudent(task.userId, studentId, finalDiagnosed, taskPayload.imageBase64, studentNotebookId, sourceType);
 
     db.prepare("UPDATE background_tasks SET status = 'completed', progress = 100, updatedAt = ?, isNotified = 0 WHERE id = ?")
       .run(Date.now(), taskId);
@@ -211,7 +281,8 @@ function saveCorrectedToStudent(
   studentId: string,
   diagnosedQuestions: any[],
   imageBase64: string,
-  notebookId: string | null
+  notebookId: string | null,
+  sourceType: string = 'correct_task'
 ): number {
   const activeQuestions = diagnosedQuestions.filter((q: any) => q.errorReason !== '不纳入归档');
   if (activeQuestions.length === 0) return 0;
@@ -227,8 +298,8 @@ function saveCorrectedToStudent(
 
   const stmt = db.prepare(`
     INSERT INTO questions (
-      id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer, examDirection
-    ) VALUES (?, ?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, userId, studentId, status, imageUrl, originalText, subject, knowledgePoints, errorReason, solution, createdAt, studentAnswer, errorDiagnosis, errorAnalysis, notebookId, score, masteryStatus, standardAnswer, examDirection, sourceType
+    ) VALUES (?, ?, ?, 'audited', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (let i = 0; i < activeQuestions.length; i++) {
@@ -252,7 +323,8 @@ function saveCorrectedToStudent(
       q.score !== undefined ? q.score : null,
       q.masteryStatus || 'not_mastered',
       q.standardAnswer || null,
-      q.examDirection || null
+      q.examDirection || null,
+      sourceType
     );
   }
   return activeQuestions.length;
@@ -390,7 +462,7 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
 
     // ===== ② 快速答题占位任务（background_tasks，uploadMode='quick_answer'，当前登录教学老师创建） =====
     // 无论识别是否完成都展示为占位卡片
-    let taskWhere = "WHERE t.uploadMode = 'quick_answer' AND t.userId = ?";
+    let taskWhere = "WHERE t.uploadMode IN ('quick_answer', 'quick_answer_direct') AND t.userId = ?";
     const tParams: any[] = [req.userId];
     if (search.trim() !== '') {
       // 搜索：快速答题任务无题干字段，按任务名或识别结果文本搜索
@@ -460,7 +532,7 @@ export const getQuickAnswerBoundQuestions = (req: AuthenticatedRequest, res: exp
     const rows = db.prepare(`
       SELECT id, taskName, status, uploadMode, payload, createdAt, errorMsg
       FROM background_tasks
-      WHERE userId = ? AND uploadMode = 'quick_answer' AND status = 'completed'
+      WHERE userId = ? AND uploadMode IN ('quick_answer', 'quick_answer_direct') AND status = 'completed'
       ORDER BY createdAt DESC
       LIMIT 100
     `).all(req.userId) as any[];
@@ -531,7 +603,8 @@ export const getStudentNotebook = (req: AuthenticatedRequest, res: express.Respo
       masteryStatus: q.masteryStatus || 'not_mastered',
       standardAnswer: q.standardAnswer || null,
       score: q.score || null,
-      examDirection: q.examDirection || null
+      examDirection: q.examDirection || null,
+      sourceType: q.sourceType || null
     }));
 
     res.json(mapped);

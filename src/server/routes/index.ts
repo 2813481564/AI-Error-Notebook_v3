@@ -121,6 +121,8 @@ router.delete("/jiaowu/students/:username", requireJiaowu, jiaowuCtrl.deleteStud
 // ================= 第二阶段：教学老师工作台 路由 =================
 // 快速答题
 router.post("/jiaoxue/quick-answer", requireJiaoxue, jiaoxueCtrl.quickAnswer);
+// 教学老师 AI 解题（一步式，跳过 OCR 抽取，直接对图出答案）
+router.post("/jiaoxue/quick-answer-direct", requireJiaoxue, jiaoxueCtrl.quickAnswerDirect);
 // 作业批改
 router.post("/jiaoxue/correct-task", requireJiaoxue, jiaoxueCtrl.correctTask);
 router.post("/jiaoxue/correct-task/:taskId/review", requireJiaoxue, jiaoxueCtrl.reviewCorrectTask);

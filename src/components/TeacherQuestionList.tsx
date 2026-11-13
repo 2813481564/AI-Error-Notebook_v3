@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, ArrowLeft, Loader2, Search, Filter, Copy, CheckCircle2 } from 'lucide-react';
-import FormattedMath from './FormattedMath';
+import FormattedMath, { InlineContent, cleanTextForSummary } from './FormattedMath';
+import { copyToClipboard } from '../lib/clipboard';
 
 const API_PREFIX = '/api';
 
@@ -128,11 +129,12 @@ export default function TeacherQuestionList() {
     }
   };
 
-  const copyAnswer = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyAnswer = async (text: string) => {
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -207,27 +209,6 @@ export default function TeacherQuestionList() {
                 ))}
               </div>
             )}
-            {/* 学生作答 */}
-            {detail.studentAnswer && (
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <div className="text-xs font-black text-slate-500 mb-1.5">学生作答</div>
-                <div className="text-sm text-slate-700 font-medium"><FormattedMath text={detail.studentAnswer} /></div>
-              </div>
-            )}
-
-            {/* 标准答案 */}
-            {detail.standardAnswer && (
-              <div className="bg-emerald-50/60 rounded-2xl p-4 border border-emerald-100">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="text-xs font-black text-emerald-600">标准答案</div>
-                  <button onClick={() => copyAnswer(detail.standardAnswer!)} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-emerald-600 transition cursor-pointer">
-                    {copied ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
-                  </button>
-                </div>
-                <div className="text-sm text-emerald-800 font-medium"><FormattedMath text={detail.standardAnswer} /></div>
-              </div>
-            )}
-
             {/* 考点 */}
             {Array.isArray(detail.knowledgePoints) && detail.knowledgePoints.length > 0 && (
               <div>
@@ -353,7 +334,7 @@ export default function TeacherQuestionList() {
                     )}
                     <div className="flex-1 min-w-0">
                       {q.originalText ? (
-                        <p className="text-sm font-bold text-slate-800 line-clamp-3 group-hover:text-blue-700 transition">{q.originalText}</p>
+                        <p className="text-sm font-bold text-slate-800 line-clamp-3 group-hover:text-blue-700 transition"><InlineContent text={cleanTextForSummary(q.originalText)} /></p>
                       ) : (
                         <p className="text-sm text-slate-400 font-medium line-clamp-2">快速答题任务（识别{q.status === 'failed' ? '失败' : '中'}，点击查看原题图片）</p>
                       )}
@@ -361,7 +342,7 @@ export default function TeacherQuestionList() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm font-bold text-slate-800 line-clamp-3 mb-3 group-hover:text-blue-700 transition">{q.originalText}</p>
+                  <p className="text-sm font-bold text-slate-800 line-clamp-3 mb-3 group-hover:text-blue-700 transition"><InlineContent text={cleanTextForSummary(q.originalText)} /></p>
                 )}
 
                 {!q.isQuickTask && Array.isArray(q.knowledgePoints) && q.knowledgePoints.length > 0 && (

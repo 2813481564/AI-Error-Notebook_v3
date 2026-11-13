@@ -1,14 +1,41 @@
+# 依赖与构建产物
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+dist.zip
+*.zip
+*.tar.gz
+
+# 环境变量（仅允许提交示例文件）
 .env*
 !.env.example
+
+# 本地数据库（含真实数据，禁止入库）
 *.db
 *.db-shm
 *.db-wal
-.codegraph/
-.codegraph
+*.sqlite
+*.sqlite3
+questions.db*
+
+# 备份与临时文件
+*.bak
+*.bak_*
+*.log
+dev.log
+prodtest*.log
+scratch/
+
+# 旧版备份与草稿片段（本地保留，不上传）
+server_original.ts
+fix_geo.txt
+
+# 上传数据与源码参考目录
 uploads/
+uploads*/
+错题源码/
+
+# 工具缓存
+.codegraph/
+.DS_Store

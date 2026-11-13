@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, BookOpen, Trash2, Eye, Loader2 } from 'lucide-react';
-import FormattedMath from './FormattedMath';
+import FormattedMath, { InlineContent, cleanTextForSummary } from './FormattedMath';
 
 const API_PREFIX = '/api';
 
@@ -33,6 +33,7 @@ interface NotebookQuestion {
   standardAnswer: string | null;
   imageUrl?: string;
   errorAnalysis?: string;
+  sourceType?: string | null;
 }
 
 export default function JiaoxueStudentNotebook() {
@@ -155,16 +156,21 @@ export default function JiaoxueStudentNotebook() {
                 <div key={q.id} className="p-4 hover:bg-slate-50/50 transition">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-800 line-clamp-2">{q.originalText}</div>
+                      <div className="text-sm font-bold text-slate-800 line-clamp-2"><InlineContent text={cleanTextForSummary(q.originalText)} /></div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold">{q.subject}</span>
+                        {q.sourceType === 'quick_answer_direct' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 text-xs font-bold">解题答案</span>
+                        ) : q.sourceType === 'correct_task' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-teal-50 text-teal-600 text-xs font-bold">作业批改</span>
+                        ) : null}
                         {Array.isArray(q.knowledgePoints) && q.knowledgePoints.slice(0, 3).map((kp, i) => (
                           <span key={i} className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold">{kp}</span>
                         ))}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setViewQuestion(q)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="查看"><Eye className="w-4 h-4" /></button>
+                      <button onClick={() => setViewQuestion(q)} className="px-2.5 py-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer text-xs font-bold flex items-center gap-1" title="查看"><Eye className="w-3.5 h-3.5" />查看</button>
                       <button onClick={() => handleDelete(q.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="删除"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -192,7 +198,6 @@ export default function JiaoxueStudentNotebook() {
 
             <div className="text-sm text-slate-700 mb-3"><FormattedMath text={viewQuestion.originalText} /></div>
             {viewQuestion.errorReason && <div className="text-xs text-rose-600 mb-2"><span className="font-bold">错因：</span><FormattedMath text={viewQuestion.errorReason} /></div>}
-            {viewQuestion.standardAnswer && <div className="text-xs text-emerald-700 mb-2"><span className="font-bold">标准答案：</span><FormattedMath text={viewQuestion.standardAnswer} /></div>}
             {viewQuestion.solution && <div className="text-xs text-emerald-700 mb-2"><span className="font-bold">解析：</span><FormattedMath text={viewQuestion.solution} /></div>}
             {viewQuestion.errorAnalysis && <div className="text-xs text-purple-700"><span className="font-bold">学习建议：</span><FormattedMath text={viewQuestion.errorAnalysis} /></div>}
           </div>

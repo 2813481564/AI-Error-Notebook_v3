@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, XCircle, Loader2, Eye, Clock, GraduationCap, Upload, MousePointer, Scissors, X, Link2, Lock, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Eye, Clock, GraduationCap, Upload, MousePointer, Scissors, X, Link2, Lock, Trash2, AlertTriangle } from 'lucide-react';
 import FormattedMath from './FormattedMath';
 
 const API_PREFIX = '/api';
@@ -91,6 +91,7 @@ const REVIEW_STATUS: Record<string, string> = {
   queued: '排队中',
   extracting: 'OCR识别中',
   diagnosing: '错因分析中',
+  generating_answer: '解题生成中',
   pending_diagnose_review: '待审查',
   completed: '已归档',
   failed: '已驳回/失败'
@@ -100,6 +101,7 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
   const [tasks, setTasks] = useState<CorrectTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [needStudentModal, setNeedStudentModal] = useState(false); // 未选择学生弹窗
   const [detailTask, setDetailTask] = useState<CorrectTask | null>(null);
   const [editedReasons, setEditedReasons] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -129,7 +131,8 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
       if (!text) { setTasks([]); return; }
       const data = JSON.parse(text);
       if (!Array.isArray(data)) { setTasks([]); return; }
-      const correctTasks = data.filter((t: any) => t.uploadMode === 'correct_task');
+      // 作业批改 + AI解题答案均进入待审查统一复查归档
+      const correctTasks = data.filter((t: any) => t.uploadMode === 'correct_task' || t.uploadMode === 'quick_answer_direct');
       setTasks(correctTasks);
     } catch (e: any) {
       setMsg({ type: 'error', text: e.message });
@@ -429,7 +432,7 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
       return;
     }
     if (!defaultStudent) {
-      setUploadMsg('请先在顶部选择目标学生');
+      setNeedStudentModal(true);
       return;
     }
     setRecognizing(true);
@@ -519,7 +522,7 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-start md:justify-end">
               <button onClick={() => { setEditImage(null); setBoxes([]); setSelectedBoxId(null); }} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-1"><X className="w-3.5 h-3.5" />取消</button>
-              <button onClick={handleStartCorrect} disabled={recognizing || boxes.length === 0 || !defaultStudent} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition cursor-pointer">
+              <button onClick={handleStartCorrect} disabled={recognizing || boxes.length === 0} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition cursor-pointer">
                 {recognizing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />提交中...</> : <><Scissors className="w-3.5 h-3.5" />开始批改 {boxes.length > 0 ? `(${boxes.length}个区域)` : ''}</>}
               </button>
             </div>
@@ -527,6 +530,20 @@ export default function ProofreadReview({ defaultStudent }: { defaultStudent?: s
 
           {!defaultStudent && <div className="mb-3 px-4 py-2.5 bg-amber-50 text-amber-600 rounded-xl text-xs font-semibold">请先在顶部选择目标学生</div>}
           {uploadMsg && <div className="mb-3 px-4 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">{uploadMsg}</div>}
+
+          {/* 未选择学生弹窗 */}
+          {needStudentModal && (
+            <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-center">
+                <div className="w-14 h-14 mx-auto mb-4 bg-amber-50 rounded-full flex items-center justify-center"><AlertTriangle className="w-7 h-7 text-amber-500" /></div>
+                <h3 className="font-black text-slate-800 mb-2 text-lg">请先选择学生</h3>
+                <p className="text-sm text-slate-500 font-medium mb-6">批改后的题目需要归档到学生错题本，请先在顶部选择目标学生后再开始批改。</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => setNeedStudentModal(false)} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold cursor-pointer transition">我知道了</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col md:flex-row gap-4">
             {/* 图片框选区 */}

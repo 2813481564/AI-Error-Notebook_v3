@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { FileBarChart, Copy, CalendarDays, Loader2, CheckCircle2, ExternalLink, Trash2, Eye, RefreshCw, Sparkles } from 'lucide-react';
+import { FileBarChart, Copy, CalendarDays, Loader2, CheckCircle2, ExternalLink, Trash2, Eye, RefreshCw, Sparkles, Share2 } from 'lucide-react';
+import { reportPathPrefix } from '../lib/reportPath';
+import { copyToClipboard } from '../lib/clipboard';
 
-const API_PREFIX = '/api';
+const API_PREFIX = `${reportPathPrefix}/api`;
 
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('errorbook_token');
@@ -20,6 +22,7 @@ interface ReportRecord {
   expiresAt: number;
   expired: boolean;
   studentCount: number;
+  studentNames: string;
   totalQuestions: number;
 }
 
@@ -50,6 +53,7 @@ export default function ReportCenter() {
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [result, setResult] = useState<{ link: string; reportCount: number; totalQuestions: number } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedVarToken, setCopiedVarToken] = useState<string | null>(null);
   const [selectedTokens, setSelectedTokens] = useState<string[]>([]);
 
   const inputCls = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40";
@@ -122,11 +126,26 @@ export default function ReportCenter() {
   };
 
   const copyLink = async (link: string) => {
-    try {
-      await navigator.clipboard.writeText(link);
+    const ok = await copyToClipboard(link);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (e) { alert('复制失败，请手动复制'); }
+    } else {
+      alert('复制失败，请手动复制');
+    }
+  };
+
+  // 复制当前报表的举一反三分享链接（免登录可查看）
+  const copyVariationLink = async (token: string) => {
+    const record = history.find(h => h.token === token);
+    if (!record) return;
+    const ok = await copyToClipboard(`${window.location.origin}${record.link}/variations`);
+    if (ok) {
+      setCopiedVarToken(token);
+      setTimeout(() => setCopiedVarToken(null), 1500);
+    } else {
+      alert('复制失败，请手动复制');
+    }
   };
 
   const handleDelete = async (token: string) => {
@@ -266,57 +285,118 @@ export default function ReportCenter() {
         ) : history.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-xs font-bold">暂无报表生成记录</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-400 border-b border-slate-100 bg-slate-50/40">
-                  <th className="px-4 py-3 font-bold w-10">
-                    <input type="checkbox" checked={selectedTokens.length === history.length && history.length > 0} onChange={toggleSelectAll} className="accent-blue-600" />
-                  </th>
-                  <th className="px-4 py-3 font-bold">类型</th>
-                  <th className="px-4 py-3 font-bold">筛选条件</th>
-                  <th className="px-4 py-3 font-bold">覆盖</th>
-                  <th className="px-4 py-3 font-bold">生成时间</th>
-                  <th className="px-4 py-3 font-bold">状态</th>
-                  <th className="px-4 py-3 font-bold">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {history.map(h => (
-                  <tr key={h.token} className="hover:bg-slate-50/40">
-                    <td className="px-4 py-3">
-                      <input type="checkbox" checked={selectedTokens.includes(h.token)} onChange={() => toggleSelect(h.token)} className="accent-blue-600" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700">{REPORT_TYPE_LABEL[h.reportType] || h.reportType}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
-                      {h.filters?.grade || ''}{h.filters?.grade ? ' · ' : ''}{h.filters?.teacherUsername ? '老师:' + h.filters.teacherUsername : ''}
-                      {Array.isArray(h.filters?.students) && h.filters.students.length > 0 ? ` · ${h.filters.students.length}学生` : ''}
-                      {!h.filters?.grade && !h.filters?.teacherUsername && (!h.filters?.students || h.filters.students.length === 0) ? '全部' : ''}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{h.studentCount}人 / {h.totalQuestions}题</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{formatTime(h.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${h.expired ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                        {h.expired ? '已过期' : '有效'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <a href={`${window.location.origin}${h.link}/variations`} target="_blank" rel="noreferrer" className="px-2 py-1 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-black transition cursor-pointer" title="编辑当前报表举一反三">
-                          <Sparkles className="w-3.5 h-3.5 inline mr-0.5" />编辑举一反三
-                        </a>
-                        <a href={h.link} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="预览"><ExternalLink className="w-4 h-4" /></a>
-                        <button onClick={() => copyLink(window.location.origin + h.link)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="复制链接"><Copy className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(h.token)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="删除"><Trash2 className="w-4 h-4" /></button>
+          <>
+            {/* 移动端：卡片列表 */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {history.map(h => {
+                const filterText =
+                  (h.filters?.grade || '') +
+                  (h.filters?.grade ? ' · ' : '') +
+                  (h.filters?.teacherUsername ? '老师:' + h.filters.teacherUsername : '') +
+                  (Array.isArray(h.filters?.students) && h.filters.students.length > 0 ? ` · ${h.filters.students.length}学生` : '') +
+                  (!h.filters?.grade && !h.filters?.teacherUsername && (!h.filters?.students || h.filters.students.length === 0) ? '全部' : '');
+                return (
+                  <div key={h.token} className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input type="checkbox" checked={selectedTokens.includes(h.token)} onChange={() => toggleSelect(h.token)} className="accent-blue-600 shrink-0" />
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-blue-50 text-blue-700 shrink-0">{REPORT_TYPE_LABEL[h.reportType] || h.reportType}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${h.expired ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                          {h.expired ? '已过期' : '有效'}
+                        </span>
                       </div>
-                    </td>
+                      <span className="text-xs text-slate-400 font-medium shrink-0">{formatTime(h.createdAt)}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="col-span-2 flex items-start gap-1.5">
+                        <span className="text-slate-400 font-bold shrink-0">筛选</span>
+                        <span className="text-slate-600 font-semibold">{filterText}</span>
+                      </div>
+                      <div className="col-span-2 flex items-start gap-1.5">
+                        <span className="text-slate-400 font-bold shrink-0">学生</span>
+                        <span className="text-slate-600 font-semibold break-all">{h.studentNames || '-'}</span>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1.5">
+                        <span className="text-slate-400 font-bold shrink-0">覆盖</span>
+                        <span className="text-slate-600 font-semibold">{h.studentCount}人 / {h.totalQuestions}题</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                      <a href={`${window.location.origin}${h.link}/variations`} target="_blank" rel="noreferrer" className="px-2 py-1.5 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-black transition cursor-pointer">
+                        <Sparkles className="w-3.5 h-3.5 inline mr-0.5" />编辑举一反三
+                      </a>
+                      <button onClick={() => copyVariationLink(h.token)} className={`px-2 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${copiedVarToken === h.token ? 'bg-emerald-600 text-white' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`} title="复制举一反三页面分享链接（免登录可查看）">
+                        <Share2 className="w-3.5 h-3.5 inline mr-0.5" />{copiedVarToken === h.token ? '已复制' : '分享举一反三'}
+                      </button>
+                      <a href={h.link} target="_blank" rel="noreferrer" className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="预览"><ExternalLink className="w-4 h-4" /></a>
+                      <button onClick={() => copyLink(window.location.origin + h.link)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="复制链接"><Copy className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(h.token)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="删除"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* PC 端：表格 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400 border-b border-slate-100 bg-slate-50/40">
+                    <th className="px-4 py-3 font-bold w-10">
+                      <input type="checkbox" checked={selectedTokens.length === history.length && history.length > 0} onChange={toggleSelectAll} className="accent-blue-600" />
+                    </th>
+                    <th className="px-4 py-3 font-bold">类型</th>
+                    <th className="px-4 py-3 font-bold">筛选条件</th>
+                    <th className="px-4 py-3 font-bold">学生姓名</th>
+                    <th className="px-4 py-3 font-bold">覆盖</th>
+                    <th className="px-4 py-3 font-bold">生成时间</th>
+                    <th className="px-4 py-3 font-bold">状态</th>
+                    <th className="px-4 py-3 font-bold">操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {history.map(h => (
+                    <tr key={h.token} className="hover:bg-slate-50/40">
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={selectedTokens.includes(h.token)} onChange={() => toggleSelect(h.token)} className="accent-blue-600" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700">{REPORT_TYPE_LABEL[h.reportType] || h.reportType}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">
+                        {h.filters?.grade || ''}{h.filters?.grade ? ' · ' : ''}{h.filters?.teacherUsername ? '老师:' + h.filters.teacherUsername : ''}
+                        {Array.isArray(h.filters?.students) && h.filters.students.length > 0 ? ` · ${h.filters.students.length}学生` : ''}
+                        {!h.filters?.grade && !h.filters?.teacherUsername && (!h.filters?.students || h.filters.students.length === 0) ? '全部' : ''}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600 font-medium max-w-[220px] truncate" title={h.studentNames}>
+                        {h.studentNames || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{h.studentCount}人 / {h.totalQuestions}题</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatTime(h.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${h.expired ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                          {h.expired ? '已过期' : '有效'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <a href={`${window.location.origin}${h.link}/variations`} target="_blank" rel="noreferrer" className="px-2 py-1 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-black transition cursor-pointer" title="编辑当前报表举一反三">
+                            <Sparkles className="w-3.5 h-3.5 inline mr-0.5" />编辑举一反三
+                          </a>
+                          <button onClick={() => copyVariationLink(h.token)} className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer ${copiedVarToken === h.token ? 'bg-emerald-600 text-white' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`} title="复制举一反三页面分享链接（免登录可查看）">
+                            <Share2 className="w-3.5 h-3.5 inline mr-0.5" />{copiedVarToken === h.token ? '已复制' : '分享举一反三'}
+                          </button>
+                          <a href={h.link} target="_blank" rel="noreferrer" className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="预览"><ExternalLink className="w-4 h-4" /></a>
+                          <button onClick={() => copyLink(window.location.origin + h.link)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer" title="复制链接"><Copy className="w-4 h-4" /></button>
+                          <button onClick={() => handleDelete(h.token)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="删除"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

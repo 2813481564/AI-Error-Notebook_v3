@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Loader2, Clock, CheckCircle2, XCircle, Trash2, Copy, Camera, MousePointer, Scissors, X, Plus, Lock } from 'lucide-react';
+import { Upload, Loader2, Clock, CheckCircle2, XCircle, Trash2, Copy, Camera, MousePointer, Scissors, X, Plus, Lock, AlertTriangle } from 'lucide-react';
+import { copyToClipboard } from '../lib/clipboard';
 
 const API_PREFIX = '/api';
 
@@ -89,6 +90,7 @@ const statusMeta: Record<string, { label: string; color: string; icon: React.Rea
   queued: { label: '排队中', color: 'bg-slate-100 text-slate-500', icon: <Clock className="w-3.5 h-3.5" />, animate: true },
   extracting: { label: 'OCR识别中', color: 'bg-blue-50 text-blue-600', icon: <Loader2 className="w-3.5 h-3.5 animate-spin" /> },
   generating_answer: { label: '生成答案中', color: 'bg-indigo-50 text-indigo-600', icon: <Loader2 className="w-3.5 h-3.5 animate-spin" /> },
+  pending_diagnose_review: { label: '待复查', color: 'bg-amber-50 text-amber-600', icon: <Clock className="w-3.5 h-3.5" />, animate: true },
   completed: { label: '已完成', color: 'bg-emerald-50 text-emerald-600', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   failed: { label: '失败', color: 'bg-rose-50 text-rose-600', icon: <XCircle className="w-3.5 h-3.5" /> }
 };
@@ -97,6 +99,7 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
   const [tasks, setTasks] = useState<QuickTask[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [needStudentModal, setNeedStudentModal] = useState(false); // 未选择学生弹窗
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
@@ -132,7 +135,7 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
           errorMsg: data.errorMsg,
           quickAnswers: p.quickAnswers || t.quickAnswers
         } : t));
-        if (['completed', 'failed'].includes(data.status)) {
+        if (['completed', 'failed', 'pending_diagnose_review'].includes(data.status)) {
           clearInterval(timer);
           pollTimers.current.delete(taskId);
         }
@@ -154,7 +157,7 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
       const data = JSON.parse(text);
       const arr = Array.isArray(data) ? data : (Array.isArray(data.tasks) ? data.tasks : []);
       const quickTasks: QuickTask[] = arr
-        .filter((t: any) => t.uploadMode === 'quick_answer')
+        .filter((t: any) => t.uploadMode === 'quick_answer' || t.uploadMode === 'quick_answer_direct')
         .map((t: any): QuickTask => {
           const p: any = t.payload || {};
           return {
@@ -463,6 +466,11 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
       setErr('请先在图片上拖拽框选题目区域');
       return;
     }
+    // 必须选择学生，否则弹窗提示（解析出的题目需要判给学生并进入待审查）
+    if (!defaultStudent) {
+      setNeedStudentModal(true);
+      return;
+    }
     setRecognizing(true);
     setErr(null);
     try {
@@ -473,7 +481,7 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
       for (let i = 0; i < croppedImages.length; i++) {
         const singleCrop = croppedImages[i];
         try {
-          const res = await fetch(`${API_PREFIX}/jiaoxue/quick-answer`, {
+          const res = await fetch(`${API_PREFIX}/jiaoxue/quick-answer-direct`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({
@@ -524,8 +532,9 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
     }
   };
 
-  const copyAnswer = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => setMsg('答案已复制到剪贴板'));
+  const copyAnswer = async (text: string) => {
+    const ok = await copyToClipboard(text);
+    if (ok) setMsg('答案已复制到剪贴板');
   };
 
   // ===== 框选编辑视图 =====
@@ -558,6 +567,20 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
           </div>
 
           {err && <div className="mb-3 px-4 py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">{err}</div>}
+
+          {/* 未选择学生弹窗 */}
+          {needStudentModal && (
+            <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-center">
+                <div className="w-14 h-14 mx-auto mb-4 bg-amber-50 rounded-full flex items-center justify-center"><AlertTriangle className="w-7 h-7 text-amber-500" /></div>
+                <h3 className="font-black text-slate-800 mb-2 text-lg">请先选择学生</h3>
+                <p className="text-sm text-slate-500 font-medium mb-6">AI解题解析出的题目需要判给学生并在复查通过后进入学生错题本，请先在顶部选择目标学生后再开始识别。</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => setNeedStudentModal(false)} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold cursor-pointer transition">我知道了</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col md:flex-row gap-4">
             {/* 图片框选区 */}
@@ -729,7 +752,10 @@ export default function QuickAnswerList({ defaultStudent }: { defaultStudent?: s
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono mt-0.5">{task.id}</div>
                   {task.status === 'failed' && <div className="text-[11px] text-rose-500 font-semibold mt-1">{task.errorMsg || '处理失败'}</div>}
-                  {!['completed', 'failed'].includes(task.status) && (
+                  {task.status === 'pending_diagnose_review' && (
+                    <div className="text-[11px] text-amber-600 font-bold mt-1 flex items-center gap-1"><Clock className="w-3 h-3" />已生成解题答案，请在「作业批改」页复查归档到学生错题本</div>
+                  )}
+                  {!['completed', 'failed', 'pending_diagnose_review'].includes(task.status) && (
                     <div className="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
                       <div className="h-full bg-blue-600 rounded-full transition-all duration-500" style={{ width: `${Math.max(task.progress || 5, 5)}%` }} />
                     </div>

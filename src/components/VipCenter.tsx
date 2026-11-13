@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Crown, Zap, Sparkles, BookOpen, Award, ArrowRight, Check, X, QrCode, Mail, Copy, CheckCircle2, Star, ShieldAlert } from 'lucide-react';
+import { copyToClipboard } from '../lib/clipboard';
 
 interface VipCenterProps {
   token: string | null;
@@ -138,9 +139,9 @@ export default function VipCenter({ token, userInfo, onRefresh, onNavigate }: Vi
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(contact.wechatId);
-    alert('微信号已复制成功！请在微信中搜索添加。');
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(contact.wechatId);
+    alert(ok ? '微信号已复制成功！请在微信中搜索添加。' : '复制失败，请手动复制');
   };
 
   // 发起模拟支付

@@ -4,6 +4,7 @@ import { db } from "../config/db";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { enqueueTaskForUser } from "./taskController";
 import { generateContentWithFallback, extractJsonString, sanitizeJsonString } from "../services/aiService";
+import { getReportPathPrefix } from "../config/reportPath";
 
 // ================= 学情报表（第二阶段） =================
 
@@ -198,11 +199,14 @@ export const generateReport = async (req: AuthenticatedRequest, res: express.Res
 
     const config = readReportConfig();
     let range = computeRange(reportType, config);
-    // 若前端传了日期范围，则覆盖默认周期
-    if (dateStart && dateEnd) {
+    // 若前端传了任一日期，则覆盖默认周期
+    // 单日（日报只填开始日期）→ 结束日期取同一天；只填结束日期 → 开始日期取同一天
+    if (dateStart || dateEnd) {
+      const effectiveStart = dateStart || dateEnd;
+      const effectiveEnd = dateEnd || dateStart;
       range = {
-        start: `${dateStart} 00:00:00`,
-        end: `${dateEnd} 23:59:59`
+        start: `${effectiveStart} 00:00:00`,
+        end: `${effectiveEnd} 23:59:59`
       };
     }
     const targetStudents = getTargetStudents({ grade, teacherUsername, students });
@@ -233,8 +237,8 @@ export const generateReport = async (req: AuthenticatedRequest, res: express.Res
       Date.now()
     );
 
-    // 生成链接（前端用 window.location.origin 拼绝对地址）
-    const link = `/report/${token}`;
+    // 生成链接（前端用 window.location.origin 拼绝对地址）；可带路径分发前缀（如 /notebook）
+    const link = `${getReportPathPrefix()}/report/${token}`;
     res.json({
       success: true,
       token,
@@ -380,11 +384,12 @@ export const getReportHistory = (req: AuthenticatedRequest, res: express.Respons
         token: row.token,
         reportType: row.reportType,
         filters,
-        link: `/report/${row.token}`,
+        link: `${getReportPathPrefix()}/report/${row.token}`,
         createdAt: row.createdAt,
         expiresAt: row.expiresAt,
         expired: Date.now() > row.expiresAt,
         studentCount: data.reports ? data.reports.length : 0,
+        studentNames: data.reports ? data.reports.map((r: any) => r.realName || r.username).join('、') : '',
         totalQuestions: data.reports ? data.reports.reduce((s: number, r: any) => s + (r.total || 0), 0) : 0
       };
     });

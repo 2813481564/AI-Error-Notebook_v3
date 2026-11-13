@@ -281,6 +281,15 @@ try {
     console.log("正在升级 questions 表以支持 examDirection 考察方向字段...");
     db.exec("ALTER TABLE questions ADD COLUMN examDirection TEXT");
   }
+
+  // 错题来源标签：correct_task=作业批改，quick_answer_direct=AI解题答案，NULL=普通录入
+  const hasSourceType = tableInfo.some(col => col.name === 'sourceType');
+  if (!hasSourceType) {
+    console.log("正在升级 questions 表以支持 sourceType 来源标签字段...");
+    db.exec("ALTER TABLE questions ADD COLUMN sourceType TEXT");
+    // 已归档且带 studentId 的历史错题默认标记为作业批改来源
+    db.exec("UPDATE questions SET sourceType = 'correct_task' WHERE sourceType IS NULL AND studentId IS NOT NULL");
+  }
 } catch (err) {
   console.error("questions 新字段迁移检查失败:", err);
 }
@@ -358,6 +367,7 @@ try {
     { col: 'accompanyEnd', sql: "ALTER TABLE users ADD COLUMN accompanyEnd TEXT" },
     { col: 'teacherUsername', sql: "ALTER TABLE users ADD COLUMN teacherUsername TEXT" },
     { col: 'contactPhone', sql: "ALTER TABLE users ADD COLUMN contactPhone TEXT" },
+    { col: 'studentNo', sql: "ALTER TABLE users ADD COLUMN studentNo INTEGER" },
   ];
   for (const c of phase2Columns) {
     try {
@@ -376,6 +386,28 @@ try {
     db.exec("UPDATE users SET accountType = 'jiaoxue' WHERE role = 'teacher' AND (accountType IS NULL OR accountType = '')");
   } catch (e) {
     console.error("迁移 teacher -> jiaoxue accountType 失败:", e);
+  }
+
+  // 为已有学生回填学生编号 studentNo（从 100 开始递增），仅回填空缺，不覆盖已有编号
+  try {
+    const studentsMissingNo = db.prepare(
+      "SELECT username FROM users WHERE accountType = 'student' AND (studentNo IS NULL OR studentNo = 0) ORDER BY username ASC"
+    ).all() as { username: string }[];
+    if (studentsMissingNo.length > 0) {
+      // 取当前最大编号，若所有学生均无编号则从 100 开始
+      const maxRow = db.prepare(
+        "SELECT MAX(studentNo) as maxNo FROM users WHERE accountType = 'student'"
+      ).get() as { maxNo: number | null };
+      let nextNo = maxRow.maxNo && maxRow.maxNo >= 100 ? maxRow.maxNo : 99; // 99 + 1 = 100
+      const updateStmt = db.prepare("UPDATE users SET studentNo = ? WHERE username = ?");
+      for (const stu of studentsMissingNo) {
+        nextNo += 1;
+        updateStmt.run(nextNo, stu.username);
+      }
+      console.log(`已为 ${studentsMissingNo.length} 名学生回填学生编号（起始编号: ${100}，最大编号: ${nextNo}）`);
+    }
+  } catch (e) {
+    console.error("回填学生编号 studentNo 失败:", e);
   }
 
   console.log("users 表升级检查完成！");

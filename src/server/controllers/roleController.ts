@@ -100,17 +100,19 @@ export const adminCreateJiaoxue = (req: express.Request, res: express.Response) 
 // 教务创建教学老师: POST /api/jiaowu/jiaoxue
 export const jiaowuCreateJiaoxue = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { username, password, realName, nickname } = req.body;
+    const { username, password, realName, nickname, subjects } = req.body;
     const err = validateTeacherInput(username, password, realName);
     if (err) return res.status(400).json({ error: err });
     const cleanUsername = username.trim();
     if (accountExists(cleanUsername)) {
       return res.status(400).json({ error: "该账号已存在" });
     }
+    // 科目支持数组或逗号分隔字符串
+    const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects || "").trim() || null;
     db.prepare(`
-      INSERT INTO users (username, password, role, accountType, realName, nickname, customAiLimit)
-      VALUES (?, ?, 'user', 'jiaoxue', ?, ?, -1)
-    `).run(cleanUsername, hashPassword(password), realName?.trim() || null, nickname?.trim() || null);
+      INSERT INTO users (username, password, role, accountType, realName, nickname, subjects, customAiLimit)
+      VALUES (?, ?, 'user', 'jiaoxue', ?, ?, ?, -1)
+    `).run(cleanUsername, hashPassword(password), realName?.trim() || null, nickname?.trim() || null, subjectsStr);
     res.json({ success: true, message: "教学老师创建成功（AI 额度无限）" });
   } catch (error: any) {
     console.error("Jiaowu Create Jiaoxue Error:", error);

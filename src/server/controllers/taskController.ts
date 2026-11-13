@@ -134,6 +134,46 @@ const processTask = async (id: string) => {
       return;
     }
 
+    // ===== 教学老师 AI 解题：一步式（跳过 OCR 抽取，直接对框选单题图调用视觉模型出答案） =====
+    if (task.uploadMode === 'quick_answer_direct') {
+      // 因前端已手动框选单题，无需再 OCR 抽取文本，一次调用直接看图出答案
+      db.prepare("UPDATE background_tasks SET status = 'generating_answer', progress = 60, updatedAt = ?, isNotified = 0 WHERE id = ?").run(Date.now(), id);
+      console.log(`[TaskQueue] [${id}] AI解题（一步式）：直接生成标准答案/关键步骤`);
+      const optimizedBase64 = await enhanceImageForOcr(payload.imageBase64);
+      const answer = await runAiQuickAnswerDirect(optimizedBase64, payload.mimeType || 'image/jpeg');
+      payload.quickAnswers = [answer];
+      payload.extractedQuestions = [{
+        originalText: answer.originalText,
+        subject: answer.subject
+      }];
+      // 将解题答案转换为可归档的错题结构（sourceType 标记为 AI解题，来源：quick_answer_direct）
+      // 解析题均判给创建任务时绑定的学生；归档进入错题本前仍需教学老师复查（pending_diagnose_review）
+      const qa = answer;
+      payload.diagnosedQuestions = [{
+        id: qa.id || (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString()),
+        imageUrl: payload.savedImageUrl || undefined,
+        originalText: qa.originalText || '',
+        subject: qa.subject || '数学',
+        knowledgePoints: [],
+        examDirection: '',
+        errorReason: '解题答案（可在复查时补充错因）',
+        solution: qa.keySteps || '',
+        createdAt: Date.now(),
+        studentAnswer: '',
+        errorDiagnosis: [],
+        errorAnalysis: '',
+        notebookId: payload.notebookId || undefined,
+        score: null,
+        masteryStatus: 'not_mastered',
+        standardAnswer: qa.standardAnswer || null
+      }];
+      // 完成 AI 解题后进入待审查，由教学老师复查通过后才归档到学生错题本
+      db.prepare("UPDATE background_tasks SET status = 'pending_diagnose_review', progress = 80, payload = ?, updatedAt = ?, isNotified = 0 WHERE id = ?")
+        .run(JSON.stringify(payload), Date.now(), id);
+      console.log(`[TaskQueue] [${id}] AI解题（一步式）完成，已进入待审查列表`);
+      return;
+    }
+
     // ===== 第二阶段：作业批改（完整 OCR + 诊断，完成后进入待审查，归档到学生错题本） =====
     if (task.uploadMode === 'correct_task') {
       if (task.status === 'queued') {
@@ -441,6 +481,58 @@ ${item.studentAnswer ? `- 学生作答（仅供参考）: ${item.studentAnswer}`
     });
   }
   return results;
+};
+
+// ===== 教学老师 AI 解题（一步式）：直接对框选单题图调用视觉模型，一次调用输出题干+标准答案+关键步骤 =====
+const runAiQuickAnswerDirect = async (imageBase64: string, mimeType: string): Promise<any> => {
+  // 剥离 dataURL 前缀，得到纯 base64（供 inlineData 使用）
+  const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
+
+  const prompt = `
+你是一位快速答题助手。请仔细观察我提供的这张"单题截图"（用户已手动框选出的一道题，图中只包含这一道题及可能的小问(1)(2)(3)）。
+
+【要求】
+1. 准确读出图中的完整题目（题干 + 所有小问 + 必要图形/表格说明）。
+2. 只输出【标准答案】和【解题关键步骤】，无需分析错因、无需诊断掌握程度。
+3. 若题目本身有逻辑错误（错题场景），在 keySteps 中给出正确解法的关键思路即可。
+
+【输出要求】请严格按以下 JSON 对象返回，不要包含 Markdown 代码块标记：
+{
+  "originalText": "从图中完整识别出的题目内容",
+  "subject": "学科（数学/物理/化学/语文/英语/其他）",
+  "standardAnswer": "本题的标准答案/正确结果",
+  "keySteps": "解题的关键步骤，分步用 1. 2. 3. 列出，含必要的公式"
+}
+数学公式用标准 $ 或 $$ 包围（LaTeX），JSON 中反斜杠双写转义。
+`;
+
+  const response = await generateContentWithFallback({
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: prompt },
+        { inlineData: { mimeType: mimeType || 'image/jpeg', data: pureBase64 } }
+      ]
+    }],
+    config: { temperature: 0.2 }
+  });
+  const text = response.text || '';
+  const fallback = { originalText: '', subject: '数学', standardAnswer: '', keySteps: '' };
+  if (!text) return fallback;
+  try {
+    const extracted = extractJsonString(text);
+    const parsed = JSON.parse(sanitizeJsonString(extracted));
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString(),
+      originalText: unwrapJsonString(parsed.originalText || '', 'originalText'),
+      subject: parsed.subject || '数学',
+      standardAnswer: unwrapJsonString(parsed.standardAnswer || '', 'standardAnswer'),
+      keySteps: parsed.keySteps || ''
+    };
+  } catch (e) {
+    console.warn("一步式 AI 解题解析失败，返回空结果:", e);
+    return { ...fallback, id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random()).toString() };
+  }
 };
 
 const runAiDiagnoseAll = async (questions: any[], imageBase64: string, notebookId: string | null) => {

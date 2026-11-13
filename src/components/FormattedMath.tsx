@@ -96,10 +96,13 @@ function autoWrapBareLatex(text: string): string {
   if (!text) return '';
   text = unwrapJsonText(text);
   text = repairBrokenLatexCommands(text);
-  const cleaned = text.replace(/(?:\\{1,2})(frac|sqrt|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, '\\$1');
+  // 先还原 AI 双重转义产生的双反斜杠标点转义命令（\\%→\%，\\&→\&，\\#→\#，\\_→\_ 等），
+  // 但严格限定“前面是数字/变量或独立出现”且“未处于 $...$ 公式内部”，避免误伤纯文本反斜杠
+  text = text.replace(/\\(?:\\)(?=[%\&#_$,;\:!])/g, '\\');
+  const cleaned = text.replace(/(?:\\{1,2})(frac|sqrt|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b|%|\&|_)/g, '\\$1');
   return cleaned.split(/(\$\$[\s\S]*?\$\$|\\{1,2}\[[\s\S]*?\\{1,2}\]|\\{1,2}\([\s\S]*?\\{1,2}\)|\\{1,2}begin\{.*?\}[\s\S]*?\\{1,2}end\{.*?\}|\$[^\$\n]*?\$)/g).map((seg, idx) => {
     if (idx % 2 === 1) return seg;
-    return seg.replace(/(?:\\+)(frac\{[^{}]*\}\{[^{}]*\}|sqrt(?:\[[^[\]]*\])?\{[^{}]*\}|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b)/g, (m, p1) => '$\\' + p1 + '$');
+    return seg.replace(/(?:\\+)(frac\{[^{}]*\}\{[^{}]*\}|sqrt(?:\[[^[\]]*\])?\{[^{}]*\}|times|div|pm|pi|alpha|beta|theta|angle|triangle|because|therefore|approx|neq|le|ge|cdot|degree|circ\b|%|\&|_)/g, (m, p1) => '$\\' + p1 + '$');
   }).join('');
 }
 

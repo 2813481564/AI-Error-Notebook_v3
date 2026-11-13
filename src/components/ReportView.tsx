@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, BookOpen, AlertCircle, TrendingUp, Calendar, Printer, XCircle, Sparkles, Tag, AlertOctagon, Lightbulb, Compass } from 'lucide-react';
+import { Loader2, BookOpen, AlertCircle, Calendar, Printer, XCircle, Sparkles } from 'lucide-react';
 import FormattedMath from './FormattedMath';
+import { reportPathPrefix } from '../lib/reportPath';
 
 interface ReportItem {
   no: number;
@@ -42,44 +43,37 @@ interface ReportData {
 }
 
 const REPORT_TYPE_LABEL: Record<string, string> = {
-  daily: '今日学情日报',
-  weekly: '本周学情周报',
-  monthly: '本月学情月报'
+  daily: '作业日报',
+  weekly: '作业周报',
+  monthly: '作业月报'
 };
 
-// 浅色 emoji + 文字 字段标签
-const FieldLabel = ({ icon, children, color = 'slate' }: { icon: string; children: React.ReactNode; color?: 'slate' | 'rose' | 'indigo' | 'blue' | 'purple' | 'amber' }) => {
-  const colorMap: Record<string, string> = {
-    slate: 'text-slate-500',
-    rose: 'text-rose-500',
-    indigo: 'text-indigo-500',
-    blue: 'text-blue-500',
-    purple: 'text-purple-500',
-    amber: 'text-amber-500'
-  };
-  return (
-    <span className={`text-xs font-bold flex items-center gap-1 ${colorMap[color]}`}>
-      <span className="text-sm">{icon}</span>
-      <span>{children}</span>
-    </span>
-  );
-};
+// 工具函数：把日期字符串格式化为 "2026 年 7 月 22 日 星期三"
+function formatChineseDate(input: string | number): string {
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return String(input);
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const weekMap = ['日', '一', '二', '三', '四', '五', '六'];
+  const w = weekMap[d.getDay()];
+  return `${y} 年 ${m} 月 ${day} 日 星期${w}`;
+}
 
-// 学生头像（首字符）
-const StudentAvatar = ({ name }: { name: string }) => {
-  const initial = name ? name.slice(0, 1) : '?';
-  // 固定一个柔和的渐变色
-  return (
-    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-300 to-pink-400 text-white flex items-center justify-center text-lg font-black shadow-sm shrink-0">
-      {initial}
-    </div>
-  );
-};
+// 工具函数：把 ISO/可解析日期格式化为 2026-07-22
+function formatShortDate(input: string | number): string {
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return String(input);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
-// 公式/标签胶囊（浅灰底圆角）
-const MathChip = ({ text }: { text: string }) => (
-  <span className="inline-block px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-sm font-medium">
-    <FormattedMath text={text} />
+// 文档字段标签：与内容同字号，橙黑色加粗，冒号结尾
+const DocField = ({ label, color = '#d97706', size = '16px' }: { label: string; color?: string; size?: string }) => (
+  <span style={{ color, fontWeight: 700, fontSize: size }} className="whitespace-nowrap">
+    {label}：
   </span>
 );
 
@@ -94,7 +88,7 @@ export default function ReportView({ token }: { token: string }) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/report/${token}`);
+        const res = await fetch(`${reportPathPrefix}/api/report/${token}`);
         const text = await res.text();
         const json = text ? JSON.parse(text) : {};
         if (!res.ok) throw new Error(json.error || '加载报表失败');
@@ -112,9 +106,9 @@ export default function ReportView({ token }: { token: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#faf8f3] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-amber-600 mx-auto mb-3" />
+          <Loader2 className="w-10 h-10 animate-spin text-blue-700 mx-auto mb-3" />
           <p className="text-sm font-bold text-slate-500">正在加载学情报表...</p>
         </div>
       </div>
@@ -123,12 +117,12 @@ export default function ReportView({ token }: { token: string }) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#faf8f3] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full p-8 text-center">
           <XCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
           <h2 className="text-lg font-black text-slate-900 mb-2">无法查看报表</h2>
           <p className="text-sm text-slate-500 font-medium mb-6">{error}</p>
-          <a href="/" className="inline-block px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition">返回首页</a>
+          <a href={`${reportPathPrefix}/`} className="inline-block px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-bold transition">返回首页</a>
         </div>
       </div>
     );
@@ -138,234 +132,205 @@ export default function ReportView({ token }: { token: string }) {
 
   const totalQuestions = data.reports.reduce((s, r) => s + r.total, 0);
 
+  // 标题主日期：取范围 start 的日期
+  const titleDate = data.range?.start ? formatChineseDate(data.range.start) : '';
+
   return (
-    <div className="min-h-screen bg-[#faf8f3] py-8 px-4 print:bg-white print:py-0">
-      <div className="max-w-4xl mx-auto space-y-5">
-        {/* 打印按钮 */}
-        <div className="flex justify-end print:hidden">
-          <button onClick={handlePrint} className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer">
+    <div className="min-h-screen bg-white py-8 px-4 print:bg-white print:py-0">
+      <div className="max-w-4xl mx-auto">
+        {/* 顶部操作条（不打印） */}
+        <div className="flex justify-end mb-5 print:hidden">
+          <button onClick={handlePrint} className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer">
             <Printer className="w-4 h-4" />打印报表
           </button>
         </div>
 
-        {/* 报表大标题 */}
-        <div className="text-center py-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-black mb-3">
-            <Sparkles className="w-3.5 h-3.5" />AI 智能学情分析
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{REPORT_TYPE_LABEL[reportType] || '学情报表'}</h1>
-          <p className="text-xs text-slate-500 font-bold mt-2 flex items-center justify-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5" />
-            {data.range.start.slice(0, 16)} ~ {data.range.end.slice(0, 16)}
-          </p>
-        </div>
+        {/* ===== 文档主体（带左侧深蓝装饰条） ===== */}
+        <div
+          className="relative bg-white mx-auto"
+          style={{
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 10px 30px -10px rgba(30, 41, 59, 0.15)',
+            maxWidth: 900
+          }}
+        >
+          {/* 贯穿整页的左侧深蓝装饰条 */}
+          <div
+            className="absolute top-0 bottom-0 left-0 hidden md:block"
+            style={{ width: 22, background: '#1e3a5f' }}
+          />
+          {/* 主体内容区 */}
+          <div className="px-6 md:px-16 py-10 md:py-14">
+            {/* ===== 文档大标题块：深蓝底白字 ===== */}
+            <div
+              className="mx-auto mb-10 text-center"
+              style={{
+                background: '#1e3a5f',
+                color: '#ffffff',
+                padding: '36px 24px 28px 24px',
+                maxWidth: 640
+              }}
+            >
+              <h1
+                className="font-black tracking-widest"
+                style={{
+                  fontSize: 44,
+                  letterSpacing: '0.35em',
+                  fontFamily: 'serif',
+                  marginBottom: 18
+                }}
+              >
+                作业日报
+              </h1>
+              <p
+                className="text-base font-medium"
+                style={{ color: '#cfd8e3', letterSpacing: '0.15em' }}
+              >
+                {titleDate}
+              </p>
+            </div>
 
-        {/* 总体概览（米色卡片） */}
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-3xl border border-amber-100 p-5 shadow-sm">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-3xl font-black text-amber-700">{data.reports.length}</div>
-              <div className="text-xs font-bold text-amber-600 mt-1">覆盖学生</div>
+            {/* ===== 概览条（横排小字） ===== */}
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-600 mb-10 pb-6 border-b border-dashed border-slate-200">
+              <span>覆盖学生 <span className="font-black text-slate-800">{data.reports.length}</span> 人</span>
+              <span className="text-slate-300">|</span>
+              <span>错题总数 <span className="font-black text-slate-800">{totalQuestions}</span> 道</span>
+              <span className="text-slate-300">|</span>
+              <span>周期 <span className="font-bold text-slate-700">{formatShortDate(data.range.start)} ~ {formatShortDate(data.range.end)}</span></span>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-black text-orange-700">{totalQuestions}</div>
-              <div className="text-xs font-bold text-orange-600 mt-1">错题总数</div>
-            </div>
-            <div className="text-center col-span-2 md:col-span-1">
-              <div className="text-3xl font-black text-rose-700">{data.reports.reduce((s, r) => s + r.weakPoints.length, 0)}</div>
-              <div className="text-xs font-bold text-rose-600 mt-1">欠缺考点</div>
-            </div>
-          </div>
-        </div>
 
-        {/* 各学生报告 */}
-        {data.reports.map((student) => (
-          <div key={student.username} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-            {/* 学生信息条 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3 flex-wrap bg-gradient-to-r from-slate-50 to-white">
-              <StudentAvatar name={student.realName} />
-              <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-black text-slate-900">{student.realName}</h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {student.grade && <span className="inline-block mr-2 px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold">{student.grade}</span>}
-                  本次错题 {student.total} 道
-                </p>
-              </div>
-              {student.weakPoints.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 max-w-[420px] justify-end">
-                  <span className="text-[10px] font-black text-amber-600 self-center mr-1">欠缺知识点</span>
-                  {student.weakPoints.slice(0, 5).map((wp, i) => {
-                    const colorPalette = ['bg-rose-50 text-rose-600 border-rose-100', 'bg-amber-50 text-amber-700 border-amber-100', 'bg-indigo-50 text-indigo-600 border-indigo-100', 'bg-emerald-50 text-emerald-600 border-emerald-100', 'bg-purple-50 text-purple-600 border-purple-100'];
-                    return (
-                      <span key={i} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${colorPalette[i % colorPalette.length]}`}>
-                        {wp.name}
-                      </span>
-                    );
-                  })}
+            {/* ===== 各学生报告 ===== */}
+            {data.reports.map((student) => (
+              <div key={student.username} className="mb-12 last:mb-0">
+                {/* 学生名行 */}
+                <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+                  <h2
+                    className="font-black"
+                    style={{ color: '#1e3a5f', fontSize: 22, fontFamily: 'serif' }}
+                  >
+                    {student.realName}学情报告
+                  </h2>
+                  {student.grade && (
+                    <span className="text-xs text-slate-500 font-bold">（{student.grade}）</span>
+                  )}
+                  <span className="text-xs text-slate-500">本次错题 <span className="font-black text-rose-600">{student.total}</span> 道</span>
                 </div>
-              )}
-            </div>
 
-            {/* 各题展开式卡片 */}
-            {student.items.length === 0 ? (
-              <div className="py-12 text-center">
-                <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <p className="text-sm text-slate-400 font-bold">该学生在统计周期内暂无错题数据</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {student.items.map(item => (
-                  <div key={item.no} className="px-6 py-5 hover:bg-slate-50/50 transition">
-                    {/* 题目标题 */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-base font-black text-slate-900">第 · {item.no} · 题</span>
-                      {item.subject && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black border border-blue-100">
-                          {item.subject}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 原题图片 */}
-                    {item.imageUrl && (
-                      <div className="mb-3">
-                        <div className="text-xs font-black text-slate-400 mb-1.5">原题图片</div>
-                        <img src={item.imageUrl} alt={`原题${item.no}`} className="max-w-full max-h-72 rounded-2xl border border-slate-200 object-contain bg-white" />
-                      </div>
-                    )}
-
-                    {/* 字段：日期 */}
-                    <div className="mb-2.5">
-                      <FieldLabel icon="📅">日期</FieldLabel>
-                      <div className="mt-1.5 ml-1 text-sm font-bold text-slate-700">{item.date}</div>
-                    </div>
-
-                    {/* 字段：错题 */}
-                    <div className="mb-2.5">
-                      <FieldLabel icon="📝">错题</FieldLabel>
-                      <div className="mt-1.5 ml-1 text-[15px] leading-relaxed text-slate-800 font-medium">
-                        <FormattedMath text={item.originalText || ''} />
-                      </div>
-                    </div>
-
-                    {/* 字段：考点 */}
-                    {Array.isArray(item.knowledgePoints) && item.knowledgePoints.length > 0 && (
-                      <div className="mb-2.5">
-                        <FieldLabel icon="🎯" color="rose">考点</FieldLabel>
-                        <div className="mt-1.5 ml-1 flex flex-wrap gap-1.5">
-                          {item.knowledgePoints.map((kp: string, i: number) => {
-                            const colorPalette = [
-                              'bg-rose-50 text-rose-700 border-rose-200',
-                              'bg-amber-50 text-amber-700 border-amber-200',
-                              'bg-indigo-50 text-indigo-700 border-indigo-200',
-                              'bg-emerald-50 text-emerald-700 border-emerald-200',
-                              'bg-sky-50 text-sky-700 border-sky-200'
-                            ];
-                            return (
-                              <span key={i} className={`px-2.5 py-1 rounded-full text-xs font-bold border ${colorPalette[i % colorPalette.length]}`}>
-                                {kp}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 字段：错因 */}
-                    {item.errorReason && (
-                      <div className="mb-2.5">
-                        <FieldLabel icon="❌" color="rose">错因</FieldLabel>
-                        <div className="mt-1.5 ml-1 inline-block px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-100 text-sm text-rose-800 font-medium">
-                          <FormattedMath text={item.errorReason} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 字段：解析（分步骤） */}
-                    {item.solution && (
-                      <div className="mb-2.5">
-                        <FieldLabel icon="📐" color="blue">解析</FieldLabel>
-                        <div className="mt-1.5 ml-1 text-sm text-slate-700 leading-relaxed">
-                          <FormattedMath text={item.solution} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 字段：建议 */}
-                    {(item.errorAnalysis || (!item.solution && !item.errorAnalysis)) && (
-                      <div>
-                        <FieldLabel icon="💡" color="amber">建议</FieldLabel>
-                        <div className="mt-1.5 ml-1 text-sm text-slate-700 leading-relaxed">
-                          <FormattedMath text={item.errorAnalysis || '请参考上方解析与诊断' } />
-                        </div>
-                      </div>
-                    )}
+                {student.items.length === 0 ? (
+                  <div className="py-10 text-center text-slate-400 text-sm">
+                    <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    该生在统计周期内暂无错题数据
                   </div>
-                ))}
-              </div>
-            )}
+                ) : (
+                  <div className="space-y-9">
+                    {student.items.map((item) => (
+                      <div key={item.no} className="leading-relaxed">
+                        {/* 题目标题：第·1·题 */}
+                        <h3
+                          className="font-black mb-3"
+                          style={{ color: '#d97706', fontSize: 18 }}
+                        >
+                          第{item.no}题
+                          {item.subject && (
+                            <span
+                              className="ml-2 text-xs font-bold"
+                              style={{ color: '#64748b' }}
+                            >
+                              （{item.subject}）
+                            </span>
+                          )}
+                        </h3>
 
-            {/* 周报：举一反三习题卷附件 */}
-            {reportType === 'weekly' && data.workSheets && Array.isArray(data.workSheets[student.username]) && data.workSheets[student.username].length > 0 && (
-              <div className="px-6 py-5 border-t border-slate-100 bg-amber-50/40">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-black text-amber-700 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4" />举一反三 · 巩固习题卷
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black">
-                    {data.workSheets[student.username].length} 道变式题
-                  </span>
-                </div>
-                <p className="text-xs text-amber-600/80 font-medium mb-4">根据本周错题知识点举一反三生成，帮助巩固欠缺考点</p>
-
-                <div className="space-y-3">
-                  {data.workSheets[student.username].map(q => (
-                    <div key={q.no} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-6 h-6 rounded-full bg-amber-600 text-white text-xs font-black flex items-center justify-center shrink-0">{q.no}</span>
-                        {q.subject && <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black">{q.subject}</span>}
-                      </div>
-                      <div className="text-sm font-bold text-slate-800 mb-2 leading-relaxed"><FormattedMath text={q.originalText || ''} /></div>
-                      {Array.isArray(q.knowledgePoints) && q.knowledgePoints.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {q.knowledgePoints.map((kp: string, i: number) => (
-                            <span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100">{kp}</span>
-                          ))}
+                        {/* 字段：日期（标签+内容同行） */}
+                        <div className="flex items-start gap-2 mb-2 ml-3">
+                          <DocField label="日期" size="16px" />
+                          <span className="text-[16px] text-slate-700 font-medium">
+                            {item.date ? formatShortDate(item.date) : '-'}
+                          </span>
                         </div>
-                      )}
-                      {q.standardAnswer && (
-                        <div className="text-xs text-emerald-700 mb-1"><span className="font-black">答案：</span><FormattedMath text={q.standardAnswer} /></div>
-                      )}
-                      {q.solution && (
-                        <div className="text-xs text-slate-600"><span className="font-black text-slate-500">解析：</span><FormattedMath text={q.solution} /></div>
-                      )}
-                    </div>
-                  ))}
+
+                        {/* 字段：错题（标签+内容同行，不换行） */}
+                        <div className="flex items-start gap-2 mb-2 ml-3">
+                          <DocField label="错题" color="#c2410c" size="16px" />
+                          <span className="text-[16px] text-slate-800">
+                            <FormattedMath text={item.originalText || ''} />
+                          </span>
+                        </div>
+
+                        {/* 字段：考点（标签+内容同行，不换行） */}
+                        {Array.isArray(item.knowledgePoints) && item.knowledgePoints.length > 0 && (
+                          <div className="flex items-start gap-2 mb-2 ml-3">
+                            <DocField label="考点" color="#c2410c" size="16px" />
+                            <span className="text-[16px] text-slate-700">
+                              <FormattedMath text={item.knowledgePoints.join('、')} />
+                            </span>
+                          </div>
+                        )}
+
+                        {/* 字段：错因（标签+内容同行，不换行） */}
+                        {item.errorReason && (
+                          <div className="flex items-start gap-2 mb-2 ml-3">
+                            <DocField label="错因" color="#c2410c" size="16px" />
+                            <span className="text-[16px] text-slate-700">
+                              <FormattedMath text={item.errorReason} />
+                            </span>
+                          </div>
+                        )}
+
+                        {/* 字段：建议（用单次 FormattedMath 整体渲染，避免按句拆分破坏 Markdown 结构） */}
+                        {(item.errorAnalysis || (!item.solution && !item.errorAnalysis)) && (
+                          <div className="flex items-start gap-2 mb-2 ml-3">
+                            <DocField label="建议" color="#c2410c" size="16px" />
+                            <div className="flex-1 min-w-0 text-[16px] text-slate-700 leading-relaxed [&_h1]:text-[16px] [&_h1]:font-bold [&_h1]:mt-2 [&_h2]:text-[16px] [&_h2]:font-bold [&_h2]:mt-1 [&_h3]:text-[14px] [&_h3]:font-bold [&_blockquote]:my-1 [&_blockquote]:py-1 [&_blockquote]:px-2 [&_blockquote]:text-[15px] [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                              <FormattedMath text={item.errorAnalysis || '请参考解析与诊断'} smallHeadings />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 欠缺知识点（放在该学生末尾） */}
+                {student.weakPoints.length > 0 && (
+                  <div className="mt-6 ml-3 pt-4 border-t border-dashed border-slate-200 flex items-start gap-2">
+                    <DocField label="欠缺考点" size="16px" />
+                    <span className="text-[16px] text-slate-700">
+                      <FormattedMath text={student.weakPoints.map(w => w.name).join('、')} />
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* ===== 举一反三试卷入口 ===== */}
+            {data.workSheets && Object.values(data.workSheets).some(ws => Array.isArray(ws) && ws.length > 0) && (
+              <div className="mt-12 pt-6 border-t border-slate-200 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-700">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-slate-900">本报表的举一反三试卷</div>
+                    <p className="text-xs text-slate-500 font-medium">根据本报表错题生成巩固变式题</p>
+                  </div>
                 </div>
+                <a
+                  href={`${reportPathPrefix}/report/${token}/variations`}
+                  className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />进入举一反三
+                </a>
               </div>
             )}
-          </div>
-        ))}
 
-        {/* 举一反三试卷入口 */}
-        <div className="bg-white rounded-3xl border border-amber-200 shadow-sm p-6 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700"><Sparkles className="w-5 h-5" /></div>
-            <div>
-              <div className="text-sm font-black text-slate-900">本报表的举一反三试卷</div>
-              <p className="text-xs text-slate-500 font-medium">根据本报表错题生成巩固变式题，可勾选题目举一反三并打印练习</p>
+            {/* ===== 报表页脚 ===== */}
+            <div className="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400 print:hidden">
+              <span className="inline-flex items-center gap-1.5 font-bold">
+                <BookOpen className="w-3.5 h-3.5" />
+                AI 智能错题本学情报表 生成于 {new Date(data.generatedAt).toLocaleString()}
+              </span>
             </div>
-          </div>
-          <a href={`/report/${token}/variations`} className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer">
-            <Sparkles className="w-4 h-4" />进入举一反三
-          </a>
-        </div>
-
-        {/* 报表页脚 */}
-        <div className="text-center py-6 print:hidden">
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 font-bold">
-            <BookOpen className="w-3.5 h-3.5" />
-            AI 智能错题本 · 学情报表 · 生成于 {new Date(data.generatedAt).toLocaleString()}
           </div>
         </div>
       </div>

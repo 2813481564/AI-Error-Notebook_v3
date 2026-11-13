@@ -64,6 +64,9 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
     if (!contactPhone || contactPhone.trim() === "") {
       return res.status(400).json({ error: "联系方式（登录账号）不能为空" });
     }
+    if (!payType || !payType.trim()) {
+      return res.status(400).json({ error: "付费性质不能为空" });
+    }
     const cleanPhone = contactPhone.trim();
     if (accountExists(cleanPhone)) {
       return res.status(400).json({ error: "该手机号账号已存在" });
@@ -90,6 +93,12 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
     }
     const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects || "");
 
+    // 分配学生编号：从当前最大编号往后递增，至少从 100 开始
+    const maxNoRow = db.prepare(
+      "SELECT MAX(studentNo) as maxNo FROM users WHERE accountType = 'student'"
+    ).get() as { maxNo: number | null };
+    const studentNo = (maxNoRow.maxNo && maxNoRow.maxNo >= 100 ? maxNoRow.maxNo : 99) + 1;
+
     // 创建学生账号（accountType='student'，role='vip'，额度无限 customAiLimit=-1，VIP 过期=伴学结束）
     const tx = db.transaction(() => {
       db.prepare(`
@@ -97,15 +106,15 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
           username, password, role, accountType,
           realName, gender, grade, city, subjects, payType,
           accompanyStart, accompanyEnd, teacherUsername, contactPhone,
-          vipExpireAt, customAiLimit
+          vipExpireAt, customAiLimit, studentNo
         )
-        VALUES (?, ?, 'vip', 'student', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, -1)
+        VALUES (?, ?, 'vip', 'student', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, -1, ?)
       `).run(
         cleanPhone, hashPassword(finalPassword),
         realName.trim(), gender?.trim() || null, grade?.trim() || null, city?.trim() || null,
         subjectsStr || null, payType?.trim() || null,
         accompanyStart, accompanyEnd, teacherUsername?.trim() || null, cleanPhone,
-        accompanyEnd
+        accompanyEnd, studentNo
       );
 
       // 自动创建以姓名命名的错题本 + AI 变式题本
@@ -118,6 +127,7 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
       success: true,
       message: "学生账号创建成功",
       student: {
+        studentNo,
         username: cleanPhone,
         realName: realName.trim(),
         password: finalPassword,
@@ -131,12 +141,12 @@ export const createStudent = (req: AuthenticatedRequest, res: express.Response) 
   }
 };
 
-// 教务查询名下学生列表: GET /api/jiaowu/students?grade=&teacherUsername=
+// 教务查询名下学生列表: GET /api/jiaowu/students?grade=&teacherUsername=&payType=&keyword=
 export const getStudents = (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const { grade, teacherUsername } = req.query;
+    const { grade, teacherUsername, payType, keyword } = req.query;
     let sql = `
-      SELECT username, realName, gender, grade, city, subjects, payType,
+      SELECT username, studentNo, realName, gender, grade, city, subjects, payType,
              accompanyStart, accompanyEnd, teacherUsername, contactPhone, vipExpireAt
       FROM users
       WHERE accountType = 'student'
@@ -150,6 +160,15 @@ export const getStudents = (req: AuthenticatedRequest, res: express.Response) =>
       sql += " AND teacherUsername = ?";
       params.push(teacherUsername);
     }
+    if (payType) {
+      sql += " AND payType = ?";
+      params.push(payType);
+    }
+    if (keyword && String(keyword).trim()) {
+      const like = `%${String(keyword).trim()}%`;
+      sql += " AND (username LIKE ? OR realName LIKE ? OR subjects LIKE ? OR contactPhone LIKE ?)";
+      params.push(like, like, like, like);
+    }
     sql += " ORDER BY username ASC";
     const students = db.prepare(sql).all(...params);
     res.json(students);
@@ -159,17 +178,36 @@ export const getStudents = (req: AuthenticatedRequest, res: express.Response) =>
   }
 };
 
-// 教务查询教学老师列表（带名下学生数）: GET /api/jiaowu/jiaoxues
+// 教务查询教学老师列表（带名下学生数 + 科目 + 支持搜索）:
+// GET /api/jiaowu/jiaoxues?keyword= (按姓名/昵称) | ?username= | ?subject=
 export const getJiaoxues = (req: express.Request, res: express.Response) => {
   try {
-    const rows = db.prepare(`
+    const keyword = (req.query.keyword as string || '').trim();
+    const username = (req.query.username as string || '').trim();
+    const subject = (req.query.subject as string || '').trim();
+    let sql = `
       SELECT
-        j.username, j.realName, j.nickname,
+        j.username, j.realName, j.nickname, j.subjects,
         (SELECT COUNT(*) FROM users s WHERE s.teacherUsername = j.username AND s.accountType = 'student') as studentCount
       FROM users j
       WHERE j.accountType = 'jiaoxue'
-      ORDER BY j.username ASC
-    `).all() as any[];
+    `;
+    const params: any[] = [];
+    if (keyword) {
+      sql += " AND (j.realName LIKE ? OR j.nickname LIKE ?)";
+      const like = `%${keyword}%`;
+      params.push(like, like);
+    }
+    if (username) {
+      sql += " AND j.username LIKE ?";
+      params.push(`%${username}%`);
+    }
+    if (subject) {
+      sql += " AND j.subjects LIKE ?";
+      params.push(`%${subject}%`);
+    }
+    sql += " ORDER BY j.username ASC";
+    const rows = db.prepare(sql).all(...params) as any[];
     res.json(rows);
   } catch (error: any) {
     console.error("Jiaowu Get Jiaoxues Error:", error);
@@ -185,15 +223,18 @@ export const updateJiaoxue = (req: AuthenticatedRequest, res: express.Response) 
     if (!teacher || teacher.accountType !== 'jiaoxue') {
       return res.status(404).json({ error: "教学老师不存在" });
     }
-    const { realName, nickname, password } = req.body;
+    const { realName, nickname, password, subjects } = req.body;
+    const subjectsStr = Array.isArray(subjects) ? subjects.join(",") : (subjects !== undefined ? (subjects || "") : undefined);
     db.prepare(`
       UPDATE users SET
         realName = COALESCE(?, realName),
-        nickname = COALESCE(?, nickname)
+        nickname = COALESCE(?, nickname),
+        subjects = COALESCE(?, subjects)
       WHERE username = ?
     `).run(
       realName?.trim() || null,
       nickname?.trim() || null,
+      subjectsStr === undefined ? null : (subjectsStr || null),
       username
     );
     // 可选重置密码

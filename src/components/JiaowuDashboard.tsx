@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, RefreshCw, Trash2, Pencil, X, Loader2 } from 'lucide-react';
+import { Users, Plus, RefreshCw, Trash2, Pencil, X, Loader2, Search, AlertTriangle, Clock } from 'lucide-react';
 
 const API_PREFIX = '/api';
 
@@ -13,6 +13,7 @@ function getHeaders(): HeadersInit {
 
 interface Student {
   username: string;
+  studentNo: number | null;
   realName: string | null;
   gender: string | null;
   grade: string | null;
@@ -42,6 +43,8 @@ export default function JiaowuDashboard() {
   const [jiaoxues, setJiaoxues] = useState<Jiaoxue[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // 手机号重复弹窗
+  const [dupModal, setDupModal] = useState<string | null>(null);
 
   // 创建学生表单
   const [showStudentForm, setShowStudentForm] = useState(false);
@@ -58,6 +61,8 @@ export default function JiaowuDashboard() {
   // 筛选
   const [filterGrade, setFilterGrade] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('');
+  const [filterPayType, setFilterPayType] = useState('');
+  const [filterKeyword, setFilterKeyword] = useState('');
 
   const loadJiaoxues = async () => {
     try {
@@ -72,6 +77,8 @@ export default function JiaowuDashboard() {
       const params = new URLSearchParams();
       if (filterGrade) params.set('grade', filterGrade);
       if (filterTeacher) params.set('teacherUsername', filterTeacher);
+      if (filterPayType) params.set('payType', filterPayType);
+      if (filterKeyword.trim()) params.set('keyword', filterKeyword.trim());
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`${API_PREFIX}/jiaowu/students${qs}`, { headers: getHeaders() });
       if (!res.ok) throw new Error('获取学生列表失败');
@@ -88,7 +95,7 @@ export default function JiaowuDashboard() {
     loadStudents();
     loadJiaoxues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterGrade, filterTeacher]);
+  }, [filterGrade, filterTeacher, filterPayType, filterKeyword]);
 
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,12 +108,17 @@ export default function JiaowuDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '创建失败');
-      setMsg({ type: 'success', text: `学生「${data.student?.realName}」创建成功，登录账号：${data.student?.username}，密码：${data.student?.password}` });
+      setMsg({ type: 'success', text: `学生「${data.student?.realName}」创建成功，ID：${data.student?.studentNo ?? '-'}，登录账号：${data.student?.username}，密码：${data.student?.password}` });
       setShowStudentForm(false);
       setStudentForm(emptyStudent);
       loadStudents();
     } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
+      // 手机号重复时用弹窗提醒
+      if (e.message && (e.message.includes('已存在') || e.message.includes('重复'))) {
+        setDupModal(e.message);
+      } else {
+        setMsg({ type: 'error', text: e.message });
+      }
     } finally {
       setLoading(false);
     }
@@ -169,6 +181,20 @@ export default function JiaowuDashboard() {
     }
   };
 
+  // 计算付费到期状态：返回 { text, cls } —— 已过期 / N天内到期 / 正常
+  const getExpireStatus = (s: Student): { text: string; cls: string } => {
+    const end = s.accompanyEnd;
+    if (!end) return { text: '未设置', cls: 'text-slate-400' };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((endDate.getTime() - today.getTime()) / 86400000);
+    if (diffDays < 0) return { text: `已过期 ${Math.abs(diffDays)} 天`, cls: 'text-rose-600 bg-rose-50 border-rose-200' };
+    if (diffDays <= 7) return { text: `${diffDays === 0 ? '今天' : `${diffDays} 天后`}到期`, cls: 'text-amber-600 bg-amber-50 border-amber-200' };
+    return { text: '', cls: '' };
+  };
+
   const toggleSubject = (sub: string, isEdit = false) => {
     const setter = isEdit ? setEditForm : setStudentForm;
     const cur = isEdit ? editForm : studentForm;
@@ -185,6 +211,20 @@ export default function JiaowuDashboard() {
         <div className={`px-4 py-3 rounded-2xl text-sm font-semibold ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>{msg.text}</div>
       )}
 
+      {/* 手机号重复弹窗提醒 */}
+      {dupModal && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-center">
+            <div className="w-14 h-14 mx-auto mb-4 bg-rose-50 rounded-full flex items-center justify-center"><AlertTriangle className="w-7 h-7 text-rose-500" /></div>
+            <h3 className="font-black text-slate-800 mb-2 text-lg">创建失败</h3>
+            <p className="text-sm text-slate-500 font-medium mb-6">{dupModal}</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setDupModal(null)} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold cursor-pointer transition">我知道了</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 名下学生数卡片 */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4">
         <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center"><Users className="w-6 h-6 text-blue-600" /></div>
@@ -198,17 +238,36 @@ export default function JiaowuDashboard() {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-3 items-end">
         <div>
           <label className="text-xs font-bold text-slate-500 block mb-1">年级筛选</label>
-          <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} className={inputCls + ' w-40'}>
+          <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} className={inputCls + ' w-36'}>
             <option value="">全部年级</option>
             {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
         <div>
           <label className="text-xs font-bold text-slate-500 block mb-1">教学老师筛选</label>
-          <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} className={inputCls + ' w-44'}>
+          <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} className={inputCls + ' w-36'}>
             <option value="">全部老师</option>
             {jiaoxues.map(j => <option key={j.username} value={j.username}>{j.realName || j.username}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="text-xs font-bold text-slate-500 block mb-1">付费性质</label>
+          <select value={filterPayType} onChange={e => setFilterPayType(e.target.value)} className={inputCls + ' w-32'}>
+            <option value="">全部性质</option>
+            {PAY_TYPES.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div className="relative">
+          <label className="text-xs font-bold text-slate-500 block mb-1">搜索</label>
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={filterKeyword}
+              onChange={e => setFilterKeyword(e.target.value)}
+              placeholder="姓名 / 账号 / 科目"
+              className={inputCls + ' pl-9 w-44'}
+            />
+          </div>
         </div>
         <button onClick={loadStudents} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-1.5"><RefreshCw className="w-4 h-4" />刷新</button>
         <button onClick={() => setShowStudentForm(!showStudentForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 ml-auto"><Plus className="w-4 h-4" />创建学生</button>
@@ -231,8 +290,8 @@ export default function JiaowuDashboard() {
               </select></div>
             <div><label className="text-xs font-bold text-slate-500 block mb-1">所在城市</label>
               <input className={inputCls} value={studentForm.city} onChange={e => setStudentForm({ ...studentForm, city: e.target.value })} placeholder="如：上海" /></div>
-            <div><label className="text-xs font-bold text-slate-500 block mb-1">付费性质</label>
-              <select className={inputCls} value={studentForm.payType} onChange={e => setStudentForm({ ...studentForm, payType: e.target.value })}>
+            <div><label className="text-xs font-bold text-slate-500 block mb-1">付费性质 <span className="text-rose-500">*</span></label>
+              <select className={inputCls} value={studentForm.payType} onChange={e => setStudentForm({ ...studentForm, payType: e.target.value })} required>
                 <option value="">请选择</option>{PAY_TYPES.map(p => <option key={p}>{p}</option>)}
               </select></div>
             <div><label className="text-xs font-bold text-slate-500 block mb-1">所属教学老师</label>
@@ -269,45 +328,106 @@ export default function JiaowuDashboard() {
 
       {/* 学生列表 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                <th className="px-4 py-3 font-bold">姓名</th>
-                <th className="px-4 py-3 font-bold">年级</th>
-                <th className="px-4 py-3 font-bold">科目</th>
-                <th className="px-4 py-3 font-bold">付费性质</th>
-                <th className="px-4 py-3 font-bold">教学老师</th>
-                <th className="px-4 py-3 font-bold">伴学时间</th>
-                <th className="px-4 py-3 font-bold">登录账号</th>
-                <th className="px-4 py-3 font-bold">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto" /></td></tr>
-              ) : students.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs font-bold">暂无学生，点击"创建学生"添加</td></tr>
-              ) : students.map(s => (
-                <tr key={s.username} className="border-b border-slate-50 hover:bg-slate-50/50">
-                  <td className="px-4 py-3 font-bold text-slate-700">{s.realName || '-'} <span className="text-slate-400 text-xs ml-1">{s.gender || ''}</span></td>
-                  <td className="px-4 py-3 text-slate-500">{s.grade || '-'}</td>
-                  <td className="px-4 py-3 text-slate-500">{s.subjects || '-'}</td>
-                  <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${s.payType === '付费用户' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{s.payType || '-'}</span></td>
-                  <td className="px-4 py-3 text-slate-500">{jiaoxues.find(j => j.username === s.teacherUsername)?.realName || s.teacherUsername || '-'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{s.accompanyStart} ~ {s.accompanyEnd}</td>
-                  <td className="px-4 py-3 text-slate-500">{s.username}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(s)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
-                      <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
+        {loading ? (
+          <div className="py-16 text-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" /><p className="text-xs text-slate-400 font-bold">加载中...</p></div>
+        ) : students.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 text-xs font-bold">暂无学生，点击"创建学生"添加</div>
+        ) : (
+          <>
+            {/* 移动端：卡片列表 */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {students.map(s => {
+                const expireSt = getExpireStatus(s);
+                const teacherName = jiaoxues.find(j => j.username === s.teacherUsername)?.realName || s.teacherUsername || '-';
+                return (
+                  <div key={s.username} className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-black text-slate-800 truncate">{s.realName || '-'}</span>
+                        {s.gender && <span className="text-xs text-slate-400">{s.gender}</span>}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${s.payType === '付费用户' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{s.payType || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => openEdit(s)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="编辑"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteStudent(s.username)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition" title="删除"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="flex items-center gap-1.5"><span className="text-slate-400 font-bold shrink-0">ID</span><span className="text-slate-600 font-semibold">{s.studentNo ?? '-'}</span></div>
+                      <div className="flex items-center gap-1.5"><span className="text-slate-400 font-bold shrink-0">年级</span><span className="text-slate-600 font-semibold">{s.grade || '-'}</span></div>
+                      <div className="col-span-2 flex items-center gap-1.5"><span className="text-slate-400 font-bold shrink-0">科目</span><span className="text-slate-600 font-semibold">{s.subjects || '-'}</span></div>
+                      <div className="col-span-2 flex items-center gap-1.5"><span className="text-slate-400 font-bold shrink-0">老师</span><span className="text-slate-600 font-semibold">{teacherName}</span></div>
+                      <div className="col-span-2 flex items-start gap-1.5">
+                        <span className="text-slate-400 font-bold shrink-0">伴学</span>
+                        <div>
+                          <div className="text-slate-600 font-semibold">{s.accompanyStart} ~ {s.accompanyEnd}</div>
+                          {expireSt.text && (
+                            <span className={`inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full border text-[10px] font-black ${expireSt.cls}`}>
+                              {expireSt.text.includes('过期') ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                              {expireSt.text}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1.5"><span className="text-slate-400 font-bold shrink-0">账号</span><span className="text-slate-600 font-semibold break-all">{s.username}</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* PC 端：表格 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                    <th className="px-4 py-3 font-bold">ID</th>
+                    <th className="px-4 py-3 font-bold">姓名</th>
+                    <th className="px-4 py-3 font-bold">年级</th>
+                    <th className="px-4 py-3 font-bold">科目</th>
+                    <th className="px-4 py-3 font-bold">付费性质</th>
+                    <th className="px-4 py-3 font-bold">教学老师</th>
+                    <th className="px-4 py-3 font-bold">伴学时间</th>
+                    <th className="px-4 py-3 font-bold">登录账号</th>
+                    <th className="px-4 py-3 font-bold">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map(s => (
+                    <tr key={s.username} className="border-b border-slate-50 hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-black text-slate-500">{s.studentNo ?? '-'}</td>
+                      <td className="px-4 py-3 font-bold text-slate-700">{s.realName || '-'} <span className="text-slate-400 text-xs ml-1">{s.gender || ''}</span></td>
+                      <td className="px-4 py-3 text-slate-500">{s.grade || '-'}</td>
+                      <td className="px-4 py-3 text-slate-500">{s.subjects || '-'}</td>
+                      <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${s.payType === '付费用户' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{s.payType || '-'}</span></td>
+                      <td className="px-4 py-3 text-slate-500">{jiaoxues.find(j => j.username === s.teacherUsername)?.realName || s.teacherUsername || '-'}</td>
+                      <td className="px-4 py-3">
+                        <div className="text-xs text-slate-500">{s.accompanyStart} ~ {s.accompanyEnd}</div>
+                        {(() => {
+                          const st = getExpireStatus(s);
+                          if (!st.text) return null;
+                          return (
+                            <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-black ${st.cls}`}>
+                              {st.text.includes('过期') ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                              {st.text}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{s.username}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openEdit(s)} className="text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1"><Pencil className="w-3.5 h-3.5" />编辑</button>
+                          <button onClick={() => handleDeleteStudent(s.username)} className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 编辑学生模态框 */}

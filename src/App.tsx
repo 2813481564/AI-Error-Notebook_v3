@@ -22,6 +22,7 @@ import ReportCenter from './components/ReportCenter';
 import ReportVariations from './components/ReportVariations';
 import TeacherManager from './components/TeacherManager';
 import { db } from './lib/db';
+import { reportPathPrefix } from './lib/reportPath';
 import logo from '../logo.png';
 
 type View = 'dashboard' | 'add' | 'library' | 'users' | 'paper' | 'vipCenter' | 'settings' | 'announcements' | 'exercise' | 'papers' | 'tasks' | 'profile' | 'aiVariation' | 'jiaowu' | 'roles' | 'jiaoxue' | 'teacherQuestions' | 'reportCenter' | 'teacherManager';
@@ -495,12 +496,14 @@ export default function App() {
   };
 
   // ===== 第二阶段：免登录报表页（/report/:token）与举一反三页（/report/:token/variations） =====
+  // 兼容路径分发前缀（如 /notebook/report/:token）
   const path = typeof window !== 'undefined' ? window.location.pathname : '';
-  const reportVariationsMatch = path.match(/^\/report\/([a-f0-9]+)\/variations$/);
+  const reportPrefixPattern = `${reportPathPrefix.replace(/\//g, '\\/')}\\/report`;
+  const reportVariationsMatch = path.match(new RegExp(`^${reportPrefixPattern}\\/([a-f0-9]+)\\/variations$`));
   if (reportVariationsMatch) {
     return <ReportVariations token={reportVariationsMatch[1]} />;
   }
-  const reportMatch = path.match(/^\/report\/([a-f0-9]+)$/);
+  const reportMatch = path.match(new RegExp(`^${reportPrefixPattern}\\/([a-f0-9]+)$`));
   if (reportMatch) {
     return <ReportView token={reportMatch[1]} />;
   }
@@ -1209,13 +1212,6 @@ export default function App() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setShowSqlTip(true)}
-              className="text-[0.625rem] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-3 py-1.5 font-bold transition-colors flex items-center gap-1"
-            >
-              <HardDrive className="w-3 h-3" />
-              存储说明
-            </button>
-            <button
               onClick={handleLogout}
               className="text-[0.625rem] bg-rose-50 text-rose-600 rounded-full px-3 py-1.5 font-bold hover:bg-rose-100 transition-colors"
             >
@@ -1323,7 +1319,25 @@ export default function App() {
 
         {/* Mobile Navigation - Only Bottom */}
         <nav className="no-print md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
-          {accountType === 'jiaoxue' ? (
+          {accountType === 'jiaowu' ? (
+            <>
+              <NavItem
+                icon={<Users className="w-5 h-5" />} label="学生管理"
+                active={currentView === 'jiaowu'}
+                onClick={() => setCurrentView('jiaowu')}
+              />
+              <NavItem
+                icon={<GraduationCap className="w-5 h-5" />} label="教学老师管理"
+                active={currentView === 'teacherManager'}
+                onClick={() => setCurrentView('teacherManager')}
+              />
+              <NavItem
+                icon={<FileBarChart className="w-5 h-5" />} label="报表中心"
+                active={currentView === 'reportCenter'}
+                onClick={() => setCurrentView('reportCenter')}
+              />
+            </>
+          ) : accountType === 'jiaoxue' ? (
             <>
               <NavItem
                 icon={<Zap className="w-5 h-5" />} label="AI解题"
