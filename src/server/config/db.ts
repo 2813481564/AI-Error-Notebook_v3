@@ -631,7 +631,7 @@ try {
   stmt.run("PRICE_SVIP_YEAR", "299.00");
 
   // 第二阶段：报表周期口径配置
-  stmt.run("REPORT_DAILY_MODE", "yesterday");        // yesterday / today
+  stmt.run("REPORT_DAILY_MODE", "yesterday");        // yesterday（昨天）/ today（今天）
   stmt.run("REPORT_WEEKLY_MODE", "calendar");        // calendar(自然周) / rolling(滚动7天)
   stmt.run("REPORT_MONTHLY_MODE", "calendar");       // calendar(自然月) / rolling(滚动30天)
   stmt.run("REPORT_LINK_EXPIRY_DAYS", "7");

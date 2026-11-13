@@ -62,7 +62,7 @@ export default function ReportCenter() {
     try {
       const res = await fetch(`${API_PREFIX}/jiaowu/jiaoxues`, { headers: getHeaders() });
       if (res.ok) setJiaoxues(await res.json());
-    } catch (e) { /* ignore */ }
+    } catch (e) { /* 忽略 */ }
   };
 
   const loadStudents = async (teacherUsername: string) => {

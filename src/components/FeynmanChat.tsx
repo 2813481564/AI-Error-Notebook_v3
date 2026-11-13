@@ -129,7 +129,7 @@ export default function FeynmanChat({
     <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6">
       <div className="bg-white w-full max-w-6xl h-full max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row relative">
         
-        {/* Left Side: Question Reference */}
+        {/* 左侧：题目原文 */}
         <div className="w-full md:w-5/12 bg-slate-50 border-r border-slate-200 flex flex-col h-[40vh] md:h-full">
           <div className="p-4 border-b border-slate-200 bg-white">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -145,11 +145,11 @@ export default function FeynmanChat({
           </div>
         </div>
 
-        {/* Right Side: Chat / Report */}
+        {/* 右侧：对话与报告 */}
         <div className="w-full md:w-7/12 bg-white flex flex-col h-[60vh] md:h-full relative">
           
           {evaluation ? (
-            // Evaluation Report
+            // 评价报告
             <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative flex flex-col">
               <div className="absolute top-4 right-4 z-10 flex gap-2">
                 <button onClick={onClose} className="p-2.5 bg-white/10 hover:bg-rose-500/90 text-white rounded-full transition-all backdrop-blur-md shadow-lg border border-white/10">
@@ -159,7 +159,7 @@ export default function FeynmanChat({
 
               <div className="flex-1 flex flex-col items-center py-10 px-6 sm:px-10 max-w-2xl mx-auto w-full">
                 
-                {/* Header */}
+                {/* 头部 */}
                 <div className="flex flex-col items-center text-center mb-8">
                   <div className="bg-emerald-500/20 p-4 rounded-full mb-4 ring-2 ring-emerald-400/50 shadow-[0_0_30px_rgba(52,211,153,0.2)]">
                     <CheckCircle2 className="w-10 h-10 text-emerald-400" />
@@ -176,9 +176,9 @@ export default function FeynmanChat({
                   </div>
                 </div>
                 
-                {/* Radar Chart */}
+                {/* 雷达图 */}
                 <div className="w-full h-72 sm:h-80 mb-10 relative">
-                  {/* Optional background glow for chart */}
+                  {/* 图表可选的背景光晕 */}
                   <div className="absolute inset-0 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none"></div>
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
@@ -196,7 +196,7 @@ export default function FeynmanChat({
                   </ResponsiveContainer>
                 </div>
 
-                {/* Feedback Cards */}
+                {/* 反馈卡片 */}
                 <div className="w-full space-y-5">
                   <div className="bg-white/5 rounded-2xl p-6 sm:p-7 border border-white/10 backdrop-blur-md shadow-xl">
                     <h4 className="font-bold text-lg text-emerald-300 mb-3 flex items-center gap-2">
@@ -227,9 +227,9 @@ export default function FeynmanChat({
               </div>
             </div>
           ) : (
-            // Chat Interface
+            // 对话界面
             <>
-              {/* Chat Header */}
+              {/* 对话头部 */}
               <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <BrainCircuit className="w-5 h-5 text-blue-600" />
@@ -280,7 +280,7 @@ export default function FeynmanChat({
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Chat Input */}
+              {/* 对话输入框 */}
               <div className="p-4 bg-white border-t border-slate-200 flex gap-3 items-end">
                 <div className="flex-1 relative">
                   <textarea

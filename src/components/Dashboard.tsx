@@ -254,7 +254,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
 
-      {/* Title Header */}
+      {/* 标题头部 */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-black text-slate-950 tracking-tight flex items-center gap-2">
@@ -274,7 +274,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
         )}
       </div>
 
-      {/* Overview Cards */}
+      {/* 概览卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
         {/* Card 1: 今日任务 */}
@@ -324,7 +324,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
               <span className="text-3xl font-black text-slate-900 tracking-tight">{masteryRate}</span>
               <span className="text-sm text-slate-500 font-extrabold">%</span>
             </div>
-            {/* Progress bar */}
+            {/* 进度条 */}
             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
               <div
                 className="bg-emerald-500 h-full rounded-full transition-all duration-500"
@@ -373,10 +373,10 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
         </div>
       </div>
 
-      {/* Main Content Sections - Dual Columns */}
+      {/* 主体内容区（双栏） */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-        {/* Column Left: Weak Points List (12 cols) */}
+        {/* 左栏：薄弱点列表（占 12 列） */}
         <div className="lg:col-span-12 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -454,7 +454,7 @@ export default function Dashboard({ onNavigate, pendingTasksCount = 0 }: { onNav
           )}
         </div>
 
-        {/* Column Right: Typical/High-Frequency Error List (5 cols) - HIDE (NOT DELETE) */}
+        {/* 右栏：典型/高频错题列表（占 5 列）——隐藏但勿删 */}
         {/* 
         <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <div>

@@ -65,7 +65,7 @@ function getHeaders(): HeadersInit {
   };
 }
 
-// Net wrapper around SQLite API endpoints
+// SQLite 接口的网络封装
 export const db = {
   async getAllQuestions(notebookType?: string): Promise<ErrorQuestion[]> {
     const query = notebookType ? `?notebookType=${notebookType}` : '';

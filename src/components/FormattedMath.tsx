@@ -21,7 +21,7 @@ function parseMarkdownTables(text: string): string {
         tableHtml.push('<table><tbody>');
       }
       
-      // Skip separator row (e.g. |:---|---:|)
+      // 跳过表格分隔行（如 |:---|---:|）
       const contentWithoutPipes = line.replace(/\|/g, '');
       if (contentWithoutPipes.replace(/[-:\s]/g, '').length === 0) {
         continue;
@@ -113,36 +113,36 @@ export default function FormattedMath({ text = '', className = '', smallHeadings
   // 自动修复并包裹“裸露”的分数、根号等公式命令
   const wrappedText = autoWrapBareLatex(text);
 
-  // Pre-process markdown tables into HTML tables so they can be rendered properly
+  // 先把 Markdown 表格预处理为 HTML 表格，保证正确渲染
   const processedText = parseMarkdownTables(wrappedText);
 
-  // Split text by block math blocks ($$.*?$$, \[...\] and \begin{...}...\end{...}) and HTML tables
+  // 按块级公式（$$...$$、\[...\]、\begin{...}...\end{...}）与 HTML 表格切分文本
   const rawSegments = processedText.split(/(\$\$\s*[\s\S]*?\s*\$\$|\\{1,2}\[\s*[\s\S]*?\s*\\{1,2}\]|\\{1,2}begin\{.*?\}\s*[\s\S]*?\s*\\{1,2}end\{.*?\}|<table[\s\S]*?<\/table>)/gi);
 
-  // Group consecutive math blocks into a single capsule, swallowing intermediate whitespace
+  // 把连续的公式块合并为一个整体，吞掉中间空白
   const groupedSegments: any[] = [];
   for (let i = 0; i < rawSegments.length; i++) {
     const segment = rawSegments[i];
     
     if (i % 2 === 0) {
-      // It's a text segment
+      // 文本片段
       groupedSegments.push({ type: 'text', content: segment });
     } else {
-      // It's a delimiter segment (math or table)
+      // 分隔片段（公式或表格）
       const trimmed = segment.trim();
       if (/^\s*<table/i.test(trimmed)) {
         groupedSegments.push({ type: 'table', content: segment });
       } else {
-        // It's block math. Try to merge with previous math group if separated only by whitespace
+        // 块级公式：若仅以空白分隔，尝试与上一个公式组合并
         let merged = false;
         if (groupedSegments.length >= 2) {
           const lastItem = groupedSegments[groupedSegments.length - 1];
           const secondLastItem = groupedSegments[groupedSegments.length - 2];
           
           if (lastItem.type === 'text' && lastItem.content.trim() === '' && secondLastItem.type === 'math') {
-            // Text is just whitespace. Merge into previous math group.
+            // 该文本仅为空白，合并进上一个公式组
             secondLastItem.items.push(trimmed);
-            // Remove the empty text segment
+            // 移除空的文本片段
             groupedSegments.pop();
             merged = true;
           }
@@ -206,7 +206,7 @@ export default function FormattedMath({ text = '', className = '', smallHeadings
           );
         }
 
-        // It's a text segment
+        // 文本片段
         return <NormalSegment key={index} text={group.content} smallHeadings={smallHeadings} />;
       })}
     </div>
@@ -215,7 +215,7 @@ export default function FormattedMath({ text = '', className = '', smallHeadings
 
 
 function NormalSegment({ text, smallHeadings }: { text: string; key?: any; smallHeadings?: boolean }) {
-  // Split this text segment into separate lines
+  // 把该文本片段按行拆分
   const paragraphs = text.split(/\r?\n/);
 
   return (
@@ -223,7 +223,7 @@ function NormalSegment({ text, smallHeadings }: { text: string; key?: any; small
       {paragraphs.map((para, pIndex) => {
         const trimmed = para.trim();
         if (!trimmed) {
-          // Double lists spacer or empty line spacing
+          // 列表或空行之间的间距
           return <div key={pIndex} className="h-1" />;
         }
 
@@ -390,12 +390,12 @@ export function InlineContent({ text }: { text: string }) {
     .replace(/\x09/g, ' ');
   const processedTextMarkdown = parseMarkdownTables(unescapedText);
 
-  // If the text contains HTML structure tags (like table), splitting into React nodes 
-  // breaks the HTML because dangerouslySetInnerHTML fragments get auto-closed by the browser.
-  // We must process all $math$ and **bold** into raw HTML strings first, and render it whole.
+  // 若文本含 HTML 结构标签（如 table），拆成 React 节点 
+  // 会破坏 HTML，因为 dangerouslySetInnerHTML 片段会被浏览器自动闭合
+  // 必须先把行内公式与加粗标记转成 HTML 字符串，再整体渲染
   if (/<(table|tbody|thead|tr|td|th)(>|\s[^>]*>)/i.test(processedTextMarkdown)) {
     let processedHtml = processedTextMarkdown;
-    // Replace $math$ with Katex HTML
+    // 把行内公式替换为 KaTeX HTML
     processedHtml = processedHtml.replace(/\$(.*?)\$/g, (match, rawMath) => {
       try {
         const sanitizedMath = fixLatexCommands(rawMath);
@@ -409,7 +409,7 @@ export function InlineContent({ text }: { text: string }) {
       }
     });
 
-    // Replace **bold** with <strong>
+    // 把加粗标记替换为 <strong>
     processedHtml = processedHtml.replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-slate-950 tracking-tight">$1</strong>');
 
     return (

@@ -333,7 +333,7 @@ export const testAiConnection = async (req: express.Request, res: express.Respon
       
       return res.json({ success: true, message: "连接成功，API 响应正常！" });
     } else {
-      // Gemini
+      // Gemini 渠道
       if (!geminiApiKey) {
         return res.status(400).json({ error: "Gemini 模式下，API Key 不能为空" });
       }

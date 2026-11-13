@@ -283,7 +283,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-12">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-950 tracking-tight flex items-center gap-2">
@@ -301,7 +301,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
         </button>
       </div>
 
-      {/* Stats Board */}
+      {/* 统计看板 */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-400">进行中</span>
@@ -321,7 +321,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
         </div>
       </div>
 
-      {/* Task List */}
+      {/* 任务列表 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center text-slate-400">
@@ -368,7 +368,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                       <span>模式: {task.autoRun === 1 ? '全自动(免审核)' : '逐步审核'}</span>
                     </div>
 
-                    {/* Progress Bar */}
+                    {/* 进度条 */}
                     <div className="flex items-center gap-3 max-w-md pt-1">
                       <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
                         <div 
@@ -432,7 +432,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
           </div>
         )}
 
-        {/* Pagination */}
+        {/* 分页 */}
         {totalTasks > pageSize && (
           <div className="p-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-xs text-slate-500 font-bold">
@@ -471,7 +471,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       {reviewStep === 2 && activeReviewTask && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-6xl w-full flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
+            {/* 弹窗头部 */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-black text-slate-900">第 1 步：核对识别出的题干与手写</h3>
@@ -485,11 +485,11 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
               </button>
             </div>
 
-            {/* Modal Content */}
+            {/* 弹窗内容 */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                {/* Left Column: Task Source Image */}
+                {/* 左栏：任务原图 */}
                 <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-0">
                   <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                     <span className="text-xs font-black text-slate-500 tracking-wider block">对照参考原图</span>
@@ -507,7 +507,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                   </div>
                 </div>
 
-                {/* Right Column: Editable Question Cards */}
+                {/* 右栏：可编辑题目卡片 */}
                 <div className="lg:col-span-7 space-y-6">
                   <div className="space-y-6">
                     {reviewPayload && reviewPayload.map((item: any, idx: number) => (
@@ -538,7 +538,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                           </select>
                         </div>
 
-                        {/* Question Textarea with FormattedMath */}
+                        {/* 题目输入框（含公式渲染） */}
                         <div className="space-y-1.5">
                           <label className="text-[11px] font-bold text-slate-500">题干正文 (印刷体文字，LaTeX公式使用 $ 符号包围)：</label>
                           {item.originalText && (
@@ -555,7 +555,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                           />
                         </div>
 
-                        {/* Student Answer Textarea with FormattedMath */}
+                        {/* 学生答案输入框（含公式渲染） */}
                         <div className="space-y-1.5">
                           <label className="text-[11px] font-bold text-slate-500">学生作答 (手写提取文本，留空则无需步骤诊断批改)：</label>
                           {item.studentAnswer && (
@@ -572,7 +572,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                           />
                         </div>
 
-                        {/* Standard Answer Textarea with FormattedMath */}
+                        {/* 标准答案输入框（含公式渲染） */}
                         <div className="space-y-1.5">
                           <label className="text-[11px] font-bold text-slate-500">参考标准答案 (可选，支持 LaTeX)：</label>
                           {item.standardAnswer && (
@@ -592,7 +592,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                     ))}
                   </div>
 
-                  {/* Add card button */}
+                  {/* 添加卡片按钮 */}
                   <button
                     onClick={handleAddNewCard}
                     className="w-full border border-dashed border-slate-350 hover:border-blue-500 hover:text-blue-600 text-slate-500 py-3.5 rounded-xl transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer bg-white"
@@ -605,7 +605,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
               </div>
             </div>
 
-            {/* Modal Footer */}
+            {/* 弹窗底部 */}
             <div className="p-6 border-t border-slate-100 flex items-center justify-between">
               <button
                 onClick={() => { setReviewStep(null); setActiveReviewTask(null); }}
@@ -629,7 +629,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
       {reviewStep === 3 && activeReviewTask && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-6xl w-full flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
+            {/* 弹窗头部 */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-black text-slate-900">第 2 步：核对诊断结果并选择归档</h3>
@@ -643,11 +643,11 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
               </button>
             </div>
 
-            {/* Modal Content */}
+            {/* 弹窗内容 */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                {/* Left Column: Task Source Image */}
+                {/* 左栏：任务原图 */}
                 <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-0">
                   <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                     <span className="text-xs font-black text-slate-500 tracking-wider block">对照参考原图</span>
@@ -665,9 +665,9 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                   </div>
                 </div>
 
-                {/* Right Column: Diagnosed Question Cards and Notebook Selector */}
+                {/* 右栏：诊断结果卡片与错题本选择 */}
                 <div className="lg:col-span-7 space-y-6">
-                  {/* Select Notebook Container */}
+                  {/* 错题本选择容器 */}
                   <div className="bg-blue-50/50 border border-blue-100/80 p-4.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-2 text-slate-800">
                       <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
@@ -685,7 +685,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                     </select>
                   </div>
 
-                  {/* diagnosed list */}
+                  {/* 诊断列表 */}
                   <div className="space-y-6">
                     {reviewPayload && reviewPayload.map((item: any, idx: number) => {
                       const isExcluded = item.errorReason === '不纳入归档';
@@ -717,7 +717,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             )}
                           </div>
 
-                          {/* Question Text */}
+                          {/* 题目内容 */}
                           <div className="space-y-1.5">
                             <h5 className="text-xs font-bold text-slate-505">题干内容</h5>
                             <div className="bg-white p-3.5 border border-slate-100 rounded-xl text-xs font-medium text-slate-900 leading-relaxed">
@@ -725,7 +725,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             </div>
                           </div>
 
-                          {/* Standard Solution */}
+                          {/* 标准解法 */}
                           {item.solution && (
                             <div className="pt-2 border-t border-slate-200/30">
                               <button
@@ -745,7 +745,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
 
 
 
-                          {/* Error Analysis or Step Diagnosis */}
+                          {/* 错误分析或步骤诊断 */}
                           {!isExcluded && item.errorAnalysis && (
                             <div className="pt-4 border-t border-slate-200/40 space-y-3">
                               {item.errorAnalysis ? (
@@ -801,7 +801,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             </div>
                           )}
 
-                          {/* Knowledge Points & Exam Direction */}
+                          {/* 知识点与考点方向 */}
                           <div className="flex items-center gap-2 flex-wrap pt-2">
                             {item.examDirection && (
                               <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200/60 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -819,7 +819,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
                             )}
                           </div>
 
-                          {/* Error Reason Input */}
+                          {/* 错误原因输入 */}
                           <div className="pt-4 border-t border-slate-200/40 flex flex-col gap-3">
                             <div className="flex items-center gap-3">
                               <label className="text-xs font-bold text-slate-450 whitespace-nowrap w-24">考察方向：</label>
@@ -855,7 +855,7 @@ export default function TaskCenter({ onNavigate }: { onNavigate: (v: any) => voi
               </div>
             </div>
 
-            {/* Modal Footer */}
+            {/* 弹窗底部 */}
             <div className="p-6 border-t border-slate-100 flex items-center justify-between">
               <button
                 onClick={() => { setReviewStep(null); setActiveReviewTask(null); }}

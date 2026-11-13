@@ -299,7 +299,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
 
   return (
     <div className="space-y-6 font-sans">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600">
@@ -324,7 +324,7 @@ export default function UserManagement({ onNavigate }: { onNavigate: (view: any)
         )}
       </div>
 
-      {/* Tab Switcher */}
+      {/* 标签切换 */}
       <div className="flex bg-slate-100 p-1 rounded-2xl w-fit">
         <button
           onClick={() => setActiveTab('users')}

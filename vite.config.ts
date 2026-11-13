@@ -20,10 +20,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       allowedHosts: true, // 允许通过反向代理的任意域名（如 course.studystudio.top）访问 Vite
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      // 通过 DISABLE_HMR 环境变量关闭热更新（部署环境或代理场景下使用）
+      // 关闭热更新时同步关闭文件监听，避免空转占用 CPU
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

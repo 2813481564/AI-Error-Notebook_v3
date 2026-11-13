@@ -379,7 +379,7 @@ export default function SystemSettings() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  {/* AI Provider */}
+                  {/* AI 服务商 */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500">AI 核心服务提供商</label>
                     <select
@@ -395,7 +395,7 @@ export default function SystemSettings() {
 
                   {settings.AI_PROVIDER === 'openai' ? (
                     <>
-                      {/* OpenAI API Key */}
+                      {/* OpenAI 接口密钥 */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500">OpenAI API Key (密钥)</label>
                         <div className="relative">
@@ -416,7 +416,7 @@ export default function SystemSettings() {
                         </div>
                       </div>
 
-                      {/* API Base URL */}
+                      {/* 接口基础地址 */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500">OpenAI API 基准地址 (Base URL)</label>
                         <input
@@ -429,7 +429,7 @@ export default function SystemSettings() {
                         <p className="text-[11px] text-slate-400">末尾不需要以 / 结尾，通常到 /v1 或 /v4 即可</p>
                       </div>
 
-                      {/* Models */}
+                      {/* 模型列表 */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500">常规文本/出题大模型</label>
@@ -455,7 +455,7 @@ export default function SystemSettings() {
                     </>
                   ) : (
                     <>
-                      {/* Gemini API Key */}
+                      {/* Gemini 接口密钥 */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500">Gemini API Key (密钥)</label>
                         <div className="relative">
@@ -476,7 +476,7 @@ export default function SystemSettings() {
                         </div>
                       </div>
 
-                      {/* Gemini Models */}
+                      {/* Gemini 模型列表 */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500">常规文本/出题大模型 (Gemini)</label>
@@ -626,7 +626,7 @@ export default function SystemSettings() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  {/* Host and Port */}
+                  {/* 主机与端口 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500">SMTP 主机服务器</label>
@@ -650,7 +650,7 @@ export default function SystemSettings() {
                     </div>
                   </div>
 
-                  {/* Mail Account */}
+                  {/* 邮箱账号 */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500">发信服务 QQ 邮箱</label>
                     <input
@@ -662,7 +662,7 @@ export default function SystemSettings() {
                     />
                   </div>
 
-                  {/* Authorization Code */}
+                  {/* 授权码 */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500">邮箱授权码 (而非邮箱独立登录密码)</label>
                     <div className="relative">
@@ -695,7 +695,7 @@ export default function SystemSettings() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  {/* Limits */}
+                  {/* 限额 */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500">普通用户 (User) 每日 AI 限额</label>
@@ -726,7 +726,7 @@ export default function SystemSettings() {
                     </div>
                   </div>
 
-                  {/* Capacities */}
+                  {/* 容量 */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500">普通用户 (User) 错题容量上限</label>
@@ -757,7 +757,7 @@ export default function SystemSettings() {
                     </div>
                   </div>
 
-                  {/* Allow student role to use AI */}
+                  {/* 允许学生角色使用 AI */}
                   <div className="space-y-2 bg-slate-50 p-4 border border-slate-100 rounded-2xl">
                     <div className="flex items-center justify-between">
                       <div>

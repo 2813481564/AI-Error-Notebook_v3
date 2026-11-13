@@ -526,7 +526,7 @@ export const getAllTeacherQuestions = (req: AuthenticatedRequest, res: express.R
 };
 
 // 获取已完成并绑定了学生的 AI 解题错题（供作业批改直接下拉复用，避免重复上传）:
-// GET /api/jiaoxue/quick-answer-bound-questions
+// GET /api/jiaoxue/quick-answer-bound-questions（已完成并绑定学生的 AI 解题错题）
 export const getQuickAnswerBoundQuestions = (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const rows = db.prepare(`

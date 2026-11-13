@@ -269,10 +269,10 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
     }
   };
 
-  // Stage 2 states (extracted questions for review)
+  // 阶段 2 状态：待复核的抽取结果
   const [extractedQuestions, setExtractedQuestions] = useState<{ subject: string; originalText: string; studentAnswer: string; standardAnswer?: string }[] | null>(null);
 
-  // Stage 3 states (diagnosed results)
+  // 阶段 3 状态：诊断结果
   const [diagnosing, setDiagnosing] = useState<Record<number, 'pending' | 'loading' | 'success' | 'error'>>({});
   const [parsedData, setParsedData] = useState<ErrorQuestion[] | null>(null);
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
@@ -529,9 +529,9 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
 
   // 调用 AI 提取文本
 
-  // ========== NEW SSE STREAMING PIPELINE ==========
+  // ========== 新版 SSE 流式管线 ==========
 
-  // ========== ASYNC TASK QUEUE PIPELINE ==========
+  // ========== 异步任务队列管线 ==========
   const submitBackgroundTasks = async () => {
     let finalImageStr = imageStr;
     let finalMimeType = mimeType;
@@ -568,7 +568,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
       const curNotebook = notebooks.find(nb => nb.id === selectedNotebook);
       const grade = curNotebook?.grade;
 
-      // Submit all images as background tasks concurrently
+      // 所有图片并发提交为后台任务
       const promises = imagesToProcess.map(async (imgBase64, index) => {
         const res = await fetch('/api/tasks', {
           method: 'POST',
@@ -578,8 +578,8 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
           },
           body: JSON.stringify({
             taskName: `录题任务 ${new Date().toLocaleString()} - 题目${index + 1}`,
-            autoRun: 1, // Auto run directly to completion
-            uploadMode: 'single', // Force single to trigger strict single-question logic
+            autoRun: 1, // 直接自动执行到完成
+            uploadMode: 'single', // 强制单题模式，以启用严格单题逻辑
             notebookId: selectedNotebook || undefined,
             payload: {
               imageBase64: imgBase64,
@@ -599,7 +599,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
 
       alert(`已成功提交 ${imagesToProcess.length} 道题目到后台解析队列！请在错题本中查看进度。`);
 
-      // Jump to Notebook immediately!
+      // 立即跳转到错题本
       onNavigate('library', { notebookId: selectedNotebook || 'unclassified' });
 
     } catch (err: any) {
@@ -632,7 +632,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-12">
 
-      {/* Step Indicator */}
+      {/* 步骤指示器 */}
       <div className="hidden flex items-center justify-between mb-8 max-w-md mx-auto">
         <div className="flex flex-col items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors duration-300 ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1</div>
@@ -668,7 +668,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
         </div>
       )}
 
-      {/* STEP 1: Upload & Mode Select */}
+      {/* 步骤 1：上传与模式选择 */}
       {step === 1 && (
         <>
           {/* 关联错题本 */}
@@ -769,7 +769,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </div>
           )}
 
-          {/* Mode Selector Tab */}
+          {/* 模式选择标签 */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm mb-5 space-y-3">
             <label className="text-[13px] font-bold text-slate-400 uppercase tracking-wider block pl-0.5">选择录题模式</label>
             <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
@@ -825,7 +825,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </p>
           </div>
 
-          {/* Upload Area for Single/Multi Mode */}
+          {/* 单题/多题模式上传区 */}
           {uploadMode !== 'crossPage' && (
             <>
               {!imageStr ? (
@@ -1015,7 +1015,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
             </>
           )}
 
-          {/* Upload Area for Cross Page Mode */}
+          {/* 跨页模式上传区 */}
           {uploadMode === 'crossPage' && (
             <div className="space-y-4">
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
@@ -1100,7 +1100,7 @@ export default function AddQuestion({ onNavigate, initialUploadMode }: { onNavig
                       </div>
                     ))}
 
-                    {/* Add More button */}
+                    {/* 添加更多按钮 */}
                     <div
                       onClick={() => multiFileInputRef.current?.click()}
                       className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/20 aspect-[3/4] h-full justify-self-center min-w-[120px] justify-center"

@@ -114,7 +114,7 @@ function computeRange(reportType: string, config: { dailyMode: string; weeklyMod
     monday.setDate(today.getDate() - (day - 1));
     return { start: `${toDateStr(monday)} 00:00:00`, end: fmt(today) };
   }
-  // monthly
+  // 月度模式
   if (config.monthlyMode === 'rolling') {
     const start = new Date(today);
     start.setDate(today.getDate() - 29);

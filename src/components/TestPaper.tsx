@@ -304,7 +304,7 @@ export default function TestPaper({
             position: static !important;
             background: transparent !important;
           }
-          /* Hide scrollbars during print */
+          /* 打印时隐藏滚动条 */
           ::-webkit-scrollbar {
             display: none !important;
           }
@@ -332,7 +332,7 @@ export default function TestPaper({
         }
       `}</style>
 
-      {/* Loading Overlay (Wow Aesthetics) */}
+      {/* 加载遮罩（视觉美化） */}
       {generating && (
         <div className="no-print fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-2xl max-w-sm w-full text-center space-y-6 flex flex-col items-center">
@@ -360,7 +360,7 @@ export default function TestPaper({
         </div>
       )}
 
-      {/* Control Bar (no-print) */}
+      {/* 控制栏（打印时隐藏） */}
       <div className="no-print flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-white border border-slate-200/60 p-5 rounded-3xl shadow-sm">
         <button 
           onClick={onBack}
@@ -371,7 +371,7 @@ export default function TestPaper({
         </button>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Mode Switcher */}
+          {/* 模式切换 */}
           <button
             onClick={() => setIsTeacherMode(!isTeacherMode)}
             className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
@@ -404,7 +404,7 @@ export default function TestPaper({
             </button>
           )}
 
-          {/* Save Paper Trigger */}
+          {/* 保存试卷入口 */}
           <button
             onClick={handleOpenSaveModal}
             className="flex items-center gap-1.5 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold hover:bg-slate-50 transition-colors shadow-sm cursor-pointer w-full sm:w-auto justify-center"
@@ -413,7 +413,7 @@ export default function TestPaper({
             <span>保存试卷</span>
           </button>
 
-          {/* Print Trigger */}
+          {/* 打印入口 */}
           <button
             onClick={handlePrint}
             className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-extrabold hover:from-blue-700 hover:to-indigo-700 transition-colors shadow-md shadow-blue-500/10 cursor-pointer w-full sm:w-auto justify-center"
@@ -424,12 +424,12 @@ export default function TestPaper({
         </div>
       </div>
 
-      {/* Paper Container */}
+      {/* 试卷容器 */}
       <div className="print-main-area bg-white border border-slate-200/60 rounded-3xl p-8 md:p-12 shadow-sm space-y-8 relative overflow-hidden">
         
-        {/* Paper Header */}
+        {/* 试卷头部 */}
         <div className="text-center space-y-5 pb-6 border-b-2 border-slate-900">
-          {/* Editable Title */}
+          {/* 可编辑标题 */}
           <div className="flex items-center justify-center gap-2 group">
             {isEditingTitle ? (
               <div className="no-print flex items-center gap-2 max-w-xl w-full">
@@ -463,7 +463,7 @@ export default function TestPaper({
             )}
           </div>
 
-          {/* Candidate Info Grid */}
+          {/* 考生信息网格 */}
           <div className="max-w-md mx-auto grid grid-cols-3 gap-6 text-xs text-slate-700 font-bold">
             <div className="flex items-center gap-1">
               <span>班级：</span>
@@ -479,7 +479,7 @@ export default function TestPaper({
             </div>
           </div>
 
-          {/* Scores Indicator */}
+          {/* 分数指示 */}
           <div className="max-w-md mx-auto border border-slate-800 grid grid-cols-3 text-xs font-black divide-x divide-slate-800 text-center">
             <div className="p-2">大题</div>
             <div className="p-2">得 分</div>
@@ -487,14 +487,14 @@ export default function TestPaper({
           </div>
         </div>
 
-        {/* Paper Body */}
+        {/* 试卷正文 */}
         <div className="divide-y divide-slate-100 space-y-6">
           {displayedQuestions.map((q, index) => (
             <div 
               key={q.id} 
               className="print-question-card pt-6 first:pt-0 space-y-4"
             >
-              {/* Question Index & Subject */}
+              {/* 题号与科目 */}
               <div className="flex items-center justify-between text-xs">
                 <span className="font-black text-slate-900 text-sm">
                   第 {index + 1} 题. 
@@ -532,7 +532,7 @@ export default function TestPaper({
                 </span>
               </div>
 
-              {/* Question Image (if any) */}
+              {/* 题目图片（如有） */}
               {q.imageUrl && !hiddenImages[q.id] && (
                 <div className="py-2 flex justify-center group relative">
                   <img src={croppedImages[q.id] || q.imageUrl} alt="题目图片" className="max-w-full max-h-[300px] object-contain rounded-lg border border-slate-200" />
@@ -557,20 +557,20 @@ export default function TestPaper({
                 </div>
               )}
 
-              {/* Geometry Area */}
+              {/* 几何图形区 */}
               {q.geometry && q.geometry.type !== 'none' && (
                 <div className="py-2">
                   <GeometryRenderer geometry={q.geometry} />
                 </div>
               )}
 
-              {/* Question Text */}
+              {/* 题目内容 */}
               <FormattedMath 
                 text={q.text} 
                 className="text-sm text-slate-900 leading-relaxed font-bold" 
               />
 
-              {/* Answers Area depending on Mode */}
+              {/* 答案区（随模式变化） */}
               {isTeacherMode ? (
                 // 教师解析版
                 <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
@@ -601,14 +601,14 @@ export default function TestPaper({
           ))}
         </div>
 
-        {/* Paper Footer */}
+        {/* 试卷页脚 */}
         <div className="text-center pt-8 border-t border-slate-300 text-[10px] text-slate-400 font-bold">
           <span>（本试卷由 AI 智能错题系统组卷自动生成，仅限个人巩固复习与班级练习使用）</span>
         </div>
 
       </div>
 
-      {/* Save Modal */}
+      {/* 保存弹窗 */}
       {showSaveModal && (
         <div className="no-print fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
@@ -665,7 +665,7 @@ export default function TestPaper({
         </div>
       )}
 
-      {/* Crop Modal */}
+      {/* 裁剪弹窗 */}
       {cropModalData && (
         <div className="no-print fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col w-full max-w-4xl max-h-[90vh]">

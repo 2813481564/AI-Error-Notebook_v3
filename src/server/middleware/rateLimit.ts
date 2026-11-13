@@ -40,7 +40,7 @@ export const checkAiLimit = (req: AuthenticatedRequest, res: express.Response, n
       if (end && today <= end) return next();
     }
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]; // 日期格式：YYYY-MM-DD
     let used = user.aiUsedToday;
     let role = user.role;
 

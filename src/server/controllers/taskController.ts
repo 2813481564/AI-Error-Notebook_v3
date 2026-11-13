@@ -19,7 +19,7 @@ interface QueueTask {
   autoRun: number;
   uploadMode: string;
   notebookId: string | null;
-  payload: string; // JSON string
+  payload: string; // JSON 字符串
 }
 
 // ===== 第二阶段：按 userId 分组的线程池队列 =====

@@ -14,7 +14,7 @@ function getHeaders(): HeadersInit {
 
 interface QuickTask {
   id: string;
-  status: string;      // queued/extracting/generating_answer/completed/failed
+  status: string;      // 排队/抽取中/生成答案/已完成/失败
   taskName: string;
   progress: number;
   thumbnail?: string;

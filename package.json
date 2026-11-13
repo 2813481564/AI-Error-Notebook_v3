@@ -1,7 +1,26 @@
 {
-  "name": "react-example",
+  "name": "ai-error-notebook",
   "private": true,
-  "version": "0.0.0",
+  "version": "3.0.0",
+  "description": "AI 智能错题本：拍照录入错题，AI 诊断错因、生成变式题与学情报表，支持教务/教学/学生多角色协同。",
+  "keywords": [
+    "错题本",
+    "AI",
+    "教育",
+    "学情分析",
+    "React",
+    "Express",
+    "SQLite",
+    "Gemini",
+    "OpenAI",
+    "education",
+    "error-notebook"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2813481564/AI-Error-Notebook_v3.git"
+  },
+  "homepage": "https://github.com/2813481564/AI-Error-Notebook_v3#readme",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

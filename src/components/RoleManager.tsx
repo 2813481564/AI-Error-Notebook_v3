@@ -85,7 +85,7 @@ export default function RoleManager() {
 
   return (
     <div className="space-y-6 font-sans">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-600">

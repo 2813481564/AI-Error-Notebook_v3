@@ -765,7 +765,7 @@ export default function AIVariationLibrary({
             )}
           </div>
 
-          {/* Filter and Tab section */}
+          {/* 筛选与标签页区域 */}
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-200/60 pb-4">
             {/* 左侧掌握状态 Tab（hideMasteryUI 时隐藏） */}
             {!hideMasteryUI && (
@@ -838,7 +838,7 @@ export default function AIVariationLibrary({
             </div>
           </div>
 
-          {/* List */}
+          {/* 列表 */}
           {loadingQuestions ? (
             <div className="min-h-[300px] flex flex-col items-center justify-center space-y-4 bg-white rounded-3xl border border-slate-100 shadow-sm">
               <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />

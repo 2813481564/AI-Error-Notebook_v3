@@ -512,10 +512,10 @@ export default function App() {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f4f6f9] font-sans text-slate-700 p-4 md:p-6 overflow-y-auto">
 
-        {/* Main Card Container */}
+        {/* 主卡片容器 */}
         <div className="w-full max-w-[1200px] min-h-[560px] bg-white rounded-[24px] shadow-xl shadow-slate-200/50 flex overflow-hidden border border-slate-100/80">
 
-          {/* Left Intro Pane (Hidden on Mobile) */}
+          {/* 左侧介绍区（移动端隐藏） */}
           <div
             className="hidden md:flex w-[42%] flex-col justify-between p-10 bg-[#f0f6ff] relative select-none shrink-0"
             style={{
@@ -523,12 +523,12 @@ export default function App() {
               backgroundSize: '16px 16px'
             }}
           >
-            {/* Top Logo */}
+            {/* 顶部 Logo */}
             <div className="flex items-center gap-3.5 z-10">
               <img src={logo} alt="数学满分" className="w-9 h-9 object-contain" />
             </div>
 
-            {/* Title & Slogan */}
+            {/* 标题与标语 */}
             <div className="z-10">
               <h1 className="text-[28px] font-extrabold text-slate-800 tracking-tight leading-tight">
                 探索智能解析，
@@ -541,7 +541,7 @@ export default function App() {
               </p>
             </div>
 
-            {/* Social Proof Card */}
+            {/* 口碑展示卡片 */}
             <div className="bg-white/80 backdrop-blur-md p-4 rounded-[18px] border border-white/50 shadow-sm shadow-blue-100/40 flex items-center gap-3.5 z-10">
               <div className="flex items-center">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-500 border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shadow-sm">
@@ -562,11 +562,11 @@ export default function App() {
 
           </div>
 
-          {/* Right Form Pane */}
+          {/* 右侧表单区 */}
           <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-white">
             <div className="w-full max-w-[450px] mx-auto space-y-6">
 
-              {/* Form Header */}
+              {/* 表单头部 */}
               <div>
                 <h2 className="text-[26px] font-black text-slate-800 tracking-tight">
                   {isForgotMode ? '找回密码' : isRegisterMode ? '加入我们' : '欢迎登录'}
@@ -576,7 +576,7 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Error & Success Messages */}
+              {/* 错误与成功提示 */}
               {authError && (
                 <div className="bg-rose-50 text-rose-600 border border-rose-100 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
@@ -596,7 +596,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Form Box */}
+              {/* 表单框 */}
               {isForgotMode ? (
                 // ================= 找回/重置密码表单 =================
                 <form onSubmit={handleResetPassword} className="space-y-4">
@@ -829,7 +829,7 @@ export default function App() {
                 </form>
               )}
 
-              {/* Bottom Switch Link */}
+              {/* 底部切换链接 */}
               <div className="text-center text-xs font-semibold select-none pt-2">
                 {isForgotMode ? (
                   <>
@@ -874,7 +874,7 @@ export default function App() {
 
         </div>
 
-        {/* Brand Footer */}
+        {/* 品牌页脚 */}
         <div className="flex flex-col items-center gap-3 mt-8">
           <div className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase select-none">
             www.baidu.com
@@ -888,7 +888,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-full bg-slate-50 font-sans text-slate-800 overflow-hidden">
 
-      {/* Sidebar Navigation - Desktop */}
+      {/* 侧边栏导航（桌面端） */}
       <aside className="no-print w-64 bg-white border-r border-slate-200 hidden md:flex flex-col shrink-0">
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -1194,10 +1194,10 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Container */}
+      {/* 主容器 */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
 
-        {/* Mobile Header (Hidden on Desktop) */}
+        {/* 移动端头部（桌面端隐藏） */}
         <header className="no-print md:hidden flex h-16 bg-white border-b border-slate-200 items-center justify-between px-5 sticky top-0 z-25 shrink-0">
           <div className="flex items-center gap-2">
             <button
@@ -1220,7 +1220,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Content Area */}
+        {/* 内容区 */}
         <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="w-full space-y-6 transition-all">
             {currentView === 'jiaowu' && <JiaowuDashboard />}
@@ -1317,7 +1317,7 @@ export default function App() {
           </div>
         </main>
 
-        {/* Mobile Navigation - Only Bottom */}
+        {/* 移动端导航（仅底部） */}
         <nav className="no-print md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-20">
           {accountType === 'jiaowu' ? (
             <>
@@ -1399,7 +1399,7 @@ export default function App() {
           )}
         </nav>
 
-        {/* Mobile Drawer Menu */}
+        {/* 移动端抽屉菜单 */}
         {mobileMenuOpen && (
           <div className="no-print md:hidden fixed inset-0 z-30">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
@@ -1522,7 +1522,7 @@ export default function App() {
         )}
       </div>
 
-      {/* SQLite Instruction Modal */}
+      {/* SQLite 说明弹窗 */}
       {showSqlTip && (
         <div className="no-print fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
@@ -1578,7 +1578,7 @@ export default function App() {
                   'border-blue-200 bg-blue-50/20'
               }`}
           >
-            {/* Status Icons */}
+            {/* 状态图标 */}
             <div className="shrink-0 pt-0.5">
               {n.type === 'success' && <span className="text-xl">✅</span>}
               {n.type === 'warning' && <span className="text-xl">🔍</span>}
@@ -1594,7 +1594,7 @@ export default function App() {
                 {n.message}
               </p>
 
-              {/* Action Buttons */}
+              {/* 操作按钮 */}
               <div className="flex items-center gap-2 pt-2">
                 {['pending_extract_review', 'pending_diagnose_review', 'failed'].includes(n.status) ? (
                   <button
@@ -1636,7 +1636,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Top right close icon */}
+            {/* 右上角关闭图标 */}
             <button
               onClick={() => handleDismissNotification(n.id, n.alertKey)}
               className="text-slate-350 hover:text-slate-500 shrink-0 self-start text-xs font-black cursor-pointer"
